@@ -283,16 +283,26 @@ misses are guaranteed, so this is the common case, not the edge.
   alert with three entries in `uncounted_doses`. Two unmatched ingredients in
   one product is two alerts, because the user has two separate things to look
   up.
-- `contributing_doses` is empty; `uncounted_doses` lists the dose(s) of the
-  product, each with `unmodeled_reason: "unmatched"` and `ingredient_name` set.
+- `uncounted_doses` lists the dose(s) of the product, each with
+  `unmodeled_reason: "unmatched"` and `ingredient_name` set.
 - **Severity is `caution`, with one escalation to `urgent`:** when the same
   product also contributes a counted dose of a substance whose counted 24h
   total is already at or past the approach fraction of its (profile-adjusted)
   `threshold_24h_mg`. That is an unidentified ingredient sitting next to a
   total that is already climbing, which is materially more dangerous than an
-  unrecognized ingredient in isolation. When escalated, `notes` names that
-  substance and its counted total, so the cause of the higher severity is
-  shown. **[filled in: carried in `notes`]**
+  unrecognized ingredient in isolation.
+- **An escalated alert must be traceable like any other.** The counted doses
+  that drove the escalation go in `contributing_doses` — they are genuinely
+  what the alert is built from. An `urgent` severity the user can't trace to
+  specific doses is the exact thing `contributing_doses` exists to prevent.
+  `notes` **also** names the substance and its counted total; keep both.
+- `contributing_doses` is therefore **empty when not escalated** and
+  **non-empty when escalated.**
+
+> **`substance: null` does not imply no counted doses.** An escalated
+> product-level `incomplete_data` alert has `substance: null` *and* a
+> non-empty `contributing_doses` (doses of the escalating substance). Client
+> code must not assume a null substance means `contributing_doses` is empty.
 - Message shape: *"We couldn't identify {ingredient string} in {product name},
   so it isn't included in any totals. If you know what it is, enter it
   manually."*
@@ -532,16 +542,7 @@ with `modelable: false`.
 | 14 | Unmatched ingredients silencing alerts | `incomplete_data` also fires at the **product level**: any logged product in the 24h window with an `unmatched` ingredient, regardless of whether any substance total is computable. `substance` is `null` on this trigger alone. Normalization misses are guaranteed (spec §5), so this is the common case. |
 | 15 | Product-level alert count | One alert per (product, unmatched ingredient), listing every dose of that product in the 24h window. Three doses → one alert, three `uncounted_doses`. Two unmatched ingredients → two alerts. |
 | 16 | Product-level severity | `caution`. Escalates to `urgent` when the same product also contributes a counted dose of a substance whose counted 24h total is at or past the approach fraction. |
-
-### Still open
-
-- **Which doses the escalation cites.** An escalated product-level alert is
-  urgent *because of* counted doses of another substance, but under the
-  current shape those doses don't appear in `contributing_doses` (which is
-  empty for this trigger). The contract puts the cause in `notes`. Should the
-  counted doses that drove the escalation also be listed in
-  `contributing_doses`, so the higher severity is traceable to specific doses
-  like everything else?
+| 17 | Escalation traceability | Escalating doses are listed in `contributing_doses` on the product-level alert, and `notes` still names the substance and total. A null `substance` may therefore come with non-empty `contributing_doses`. |
 
 ## Implementation follow-ups
 
@@ -588,7 +589,9 @@ Contract-level decisions that need code. **Write the tests first** (CLAUDE.md).
     ingredient;
   - escalation: product has an unmatched ingredient **and** a counted dose of a
     substance whose 24h total is at or past the approach fraction → `urgent`,
-    with `notes` naming that substance and total;
+    with `notes` naming that substance and total, **and** the escalating doses
+    in `contributing_doses` while `substance` stays `null`;
+  - not escalated → `contributing_doses` is empty;
   - no escalation: same product, but that substance's total is **below** the
     approach fraction → stays `caution`;
   - no escalation from another product: the climbing total comes only from a
@@ -600,6 +603,31 @@ Contract-level decisions that need code. **Write the tests first** (CLAUDE.md).
   an alert with both empty fails. Make `substance_id` nullable **only** for
   product-level `incomplete_data` (test: any other kind with no substance
   fails). Add `incomplete_data` to the `kind` comment.
+
+---
+
+## Open for Punya
+
+Undecided. To settle together before this contract is frozen.
+
+1. **Which doses count as "escalating".** Decision 17 lists them in
+   `contributing_doses`. Is that only the escalating substance's doses **from
+   this product**, or every counted dose making up that substance's 24h total
+   (including other products)? The first is narrower; the second shows the
+   whole climbing total the escalation is reacting to.
+2. **Everything tagged [filled in].** Types, shapes and defaults Anish's list
+   didn't specify, and that the client will build against. Confirm or change:
+   - `{id}` is an opaque string; `quantity` is a count of product units;
+   - `/curve`: `from`/`to` required; `substance`, `peak`, `current` shapes;
+     `modelable` present on every response;
+   - `substance` object shape on alerts; `ingredient_name` on uncounted doses;
+   - `/products/search`: empty `q` → `422`; `ingredients` empty only if
+     decomposition failed; Ingredient shape; `unmatched` beats
+     `unknown_strength` when both apply;
+   - the error body shape and status codes.
+3. **Check against the spec.** Not yet compared with the technical spec PDF's
+   §7. Differences will be reported before anything changes, since the
+   contract may be right where the spec is inconsistent.
 
 ---
 
