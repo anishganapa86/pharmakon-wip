@@ -249,7 +249,7 @@ time passed. If the user is still over the limit, the alert is active at hour
 | `accumulation` | `caution` | Daily trough concentrations are rising. |
 | `unmodelable` | `info` | The substance can't be modeled (e.g. zero-order alcohol). |
 | `incomplete_data` — substance-level | `caution` | A **known substance** with a `threshold_24h_mg` has one or more `unknown_strength` doses in the 24h window — **regardless of the counted total.** `substance` is set. |
-| `incomplete_data` — product-level | `caution` **[filled in]** | Any logged product in the 24h window has an **`unmatched` ingredient** — regardless of whether any substance total is computable. `substance` is `null`. |
+| `incomplete_data` — product-level | `caution`; `urgent` on escalation (below) | Any logged product in the 24h window has an **`unmatched` ingredient** — regardless of whether any substance total is computable. `substance` is `null`. One alert per (product, unmatched ingredient). |
 
 #### `incomplete_data`
 
@@ -278,8 +278,21 @@ misses are guaranteed, so this is the common case, not the edge.
 
 - `substance` is `null`. **This is the only case in the API where an alert's
   `substance` is `null`.**
+- **One alert per (product, unmatched ingredient).** The alert lists every
+  dose of that product in the 24h window. Three doses of one product is one
+  alert with three entries in `uncounted_doses`. Two unmatched ingredients in
+  one product is two alerts, because the user has two separate things to look
+  up.
 - `contributing_doses` is empty; `uncounted_doses` lists the dose(s) of the
   product, each with `unmodeled_reason: "unmatched"` and `ingredient_name` set.
+- **Severity is `caution`, with one escalation to `urgent`:** when the same
+  product also contributes a counted dose of a substance whose counted 24h
+  total is already at or past the approach fraction of its (profile-adjusted)
+  `threshold_24h_mg`. That is an unidentified ingredient sitting next to a
+  total that is already climbing, which is materially more dangerous than an
+  unrecognized ingredient in isolation. When escalated, `notes` names that
+  substance and its counted total, so the cause of the higher severity is
+  shown. **[filled in: carried in `notes`]**
 - Message shape: *"We couldn't identify {ingredient string} in {product name},
   so it isn't included in any totals. If you know what it is, enter it
   manually."*
@@ -517,17 +530,18 @@ with `modelable: false`.
 | 12 | Exclusion silencing an alert | New kind `incomplete_data`, severity `caution`: fires when a substance with `threshold_24h_mg` has any `unknown_strength` dose in the 24h window, regardless of counted total. |
 | 13 | Traceability rule | `contributing_doses` and `uncounted_doses` are **together** non-empty for every alert; each alone may be empty. A rule change, not an exemption for one kind. |
 | 14 | Unmatched ingredients silencing alerts | `incomplete_data` also fires at the **product level**: any logged product in the 24h window with an `unmatched` ingredient, regardless of whether any substance total is computable. `substance` is `null` on this trigger alone. Normalization misses are guaranteed (spec §5), so this is the common case. |
+| 15 | Product-level alert count | One alert per (product, unmatched ingredient), listing every dose of that product in the 24h window. Three doses → one alert, three `uncounted_doses`. Two unmatched ingredients → two alerts. |
+| 16 | Product-level severity | `caution`. Escalates to `urgent` when the same product also contributes a counted dose of a substance whose counted 24h total is at or past the approach fraction. |
 
 ### Still open
 
-- **Product-level granularity.** If the same product is logged three times in
-  the window, is that one `incomplete_data` alert with three `uncounted_doses`,
-  or three alerts? And a product with two unmatched ingredients: one alert or
-  two? Proposed: one alert per (product, unmatched ingredient string), listing
-  every dose of that product in the window. That keeps the message naming one
-  ingredient in one product.
-- **Product-level severity** is marked **[filled in]** as `caution`, matching
-  the substance-level trigger. Confirm.
+- **Which doses the escalation cites.** An escalated product-level alert is
+  urgent *because of* counted doses of another substance, but under the
+  current shape those doses don't appear in `contributing_doses` (which is
+  empty for this trigger). The contract puts the cause in `notes`. Should the
+  counted doses that drove the escalation also be listed in
+  `contributing_doses`, so the higher severity is traceable to specific doses
+  like everything else?
 
 ## Implementation follow-ups
 
@@ -567,7 +581,18 @@ Contract-level decisions that need code. **Write the tests first** (CLAUDE.md).
     no `incomplete_data`;
   - product with one matched and one unmatched ingredient → the matched one is
     still counted normally, and the product-level alert names only the
-    unmatched one.
+    unmatched one;
+  - same product logged three times in the window → **one** alert with three
+    `uncounted_doses`;
+  - product with two unmatched ingredients → **two** alerts, one per
+    ingredient;
+  - escalation: product has an unmatched ingredient **and** a counted dose of a
+    substance whose 24h total is at or past the approach fraction → `urgent`,
+    with `notes` naming that substance and total;
+  - no escalation: same product, but that substance's total is **below** the
+    approach fraction → stays `caution`;
+  - no escalation from another product: the climbing total comes only from a
+    *different* product → stays `caution`.
 - **Traceability invariant** (`Alert` dataclass). Today the dataclass only
   requires `contributing_dose_ids` to be *passed*; nothing checks it's
   non-empty. Add a check that `contributing_dose_ids` and `uncounted_doses` are
