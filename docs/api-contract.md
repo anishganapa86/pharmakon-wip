@@ -36,11 +36,15 @@ These apply to every endpoint. A response that violates one is a bug.
 
 ### Traceability
 
-Every alert carries `contributing_doses`: a **non-empty** array identifying the
-exact logged doses that produced it. An alert the user can't trace back to
-specific doses is not actionable. The server must never emit an alert without
-it; the client may treat an alert with a missing or empty
-`contributing_doses` as malformed.
+Every alert carries two arrays of doses: `contributing_doses` (counted in the
+alert's figure) and `uncounted_doses` (excluded from it). **For every alert,
+the two are together non-empty.** Either one alone may be empty. An alert the
+user can't trace back to specific doses is not actionable. The server must
+never emit an alert with both arrays empty; the client may treat such an alert,
+or one missing either array, as malformed.
+
+This rule applies to every alert kind with no exceptions, so there is no
+special case to forget.
 
 ### Causes
 
@@ -244,23 +248,43 @@ time passed. If the user is still over the limit, the alert is active at hour
 | `threshold` | `caution` \| `urgent` | Same, from a single product. |
 | `accumulation` | `caution` | Daily trough concentrations are rising. |
 | `unmodelable` | `info` | The substance can't be modeled (e.g. zero-order alcohol). |
-| `incomplete_data` | `caution` | The substance has a `threshold_24h_mg` **and** one or more unmodeled doses in the 24h window — **regardless of the counted total.** |
+| `incomplete_data` — substance-level | `caution` | A **known substance** with a `threshold_24h_mg` has one or more `unknown_strength` doses in the 24h window — **regardless of the counted total.** `substance` is set. |
+| `incomplete_data` — product-level | `caution` **[filled in]** | Any logged product in the 24h window has an **`unmatched` ingredient** — regardless of whether any substance total is computable. `substance` is `null`. |
 
 #### `incomplete_data`
 
-Excluding a dose of unknown strength can hold the counted total below the
-warning fraction. The duplication detector would then stay silent in precisely
-the case the product exists to catch, and silence reads to a user as "you are
-fine". An explicit "we cannot answer this" is the only honest output.
+Silence reads to a user as "you are fine". When the data can't support an
+answer, an explicit "we cannot answer this" is the only honest output. There
+are two ways the data fails, so there are two triggers.
+
+**Substance-level: known substance, unknown strength.** Excluding a dose of
+unknown strength can hold the counted total below the warning fraction. The
+duplication detector would then stay silent in precisely the case the product
+exists to catch.
 
 - Fires independently of `duplication` / `threshold`. If the counted total
   is already over the warning fraction, both alerts are active.
-- `uncounted_doses` is non-empty by definition.
 - Message shape: *"We can't total your acetaminophen because we don't know the
   strength of {product/ingredient}. Your counted total is {N} mg of a {M} mg
   limit, and this figure is incomplete. Check the label or enter the amount."*
 
-> **Not implemented yet.** `app/detect/alerts.py` does not produce this kind.
+**Product-level: unidentified ingredient, no substance at all.** An
+`unmatched` ingredient attaches to no substance, so no substance-level alert
+can ever fire for it. Example: a cold medicine's acetaminophen appears under a
+label string normalization misses, and the user also takes Tylenol. The
+duplication detector sums only the Tylenol and stays quiet — total silence in
+the exact scenario this product was built for. Spec §5 says normalization
+misses are guaranteed, so this is the common case, not the edge.
+
+- `substance` is `null`. **This is the only case in the API where an alert's
+  `substance` is `null`.**
+- `contributing_doses` is empty; `uncounted_doses` lists the dose(s) of the
+  product, each with `unmodeled_reason: "unmatched"` and `ingredient_name` set.
+- Message shape: *"We couldn't identify {ingredient string} in {product name},
+  so it isn't included in any totals. If you know what it is, enter it
+  manually."*
+
+> **Not implemented yet.** `app/detect/alerts.py` produces neither trigger.
 > See [Implementation follow-ups](#implementation-follow-ups).
 
 ### Alert object
@@ -270,11 +294,11 @@ fine". An explicit "we cannot answer this" is the only honest output.
 | `id` | string | required | Alert id. |
 | `kind` | string enum | required | `duplication` \| `threshold` \| `accumulation` \| `unmodelable` \| `incomplete_data`. See [Alert kinds](#alert-kinds). |
 | `severity` | string enum | required | `info` \| `caution` \| `urgent`. |
-| `substance` | `{ id: string, display_name: string }` | required | Same shape as on the curve. **[filled in shape]** |
+| `substance` | `{ id: string, display_name: string }` | nullable **only for product-level `incomplete_data`**; required for every other kind | Same shape as on the curve. **[filled in shape]** |
 | `message` | string | required | User-facing text. Must keep the "estimate, not medical advice" framing. **If `uncounted_doses` is non-empty, the message must say the total is incomplete.** |
 | `computed_at` | string (ISO 8601 + tz) | required | When the detector produced this alert. |
-| `contributing_doses` | ContributingDose[] | required, **non-empty** | Doses counted in the alert's figure. See below and the open question on `incomplete_data`. |
-| `uncounted_doses` | UncountedDose[] | required, may be empty | Doses of this substance in the alert's window that were **excluded** from the figure. Never omitted. |
+| `contributing_doses` | ContributingDose[] | required, may be empty | Doses counted in the alert's figure. Never omitted. **Together with `uncounted_doses`, non-empty** (see [Traceability](#traceability)). |
+| `uncounted_doses` | UncountedDose[] | required, may be empty | Doses in the alert's window that were **excluded** from the figure. Never omitted. **Together with `contributing_doses`, non-empty.** |
 | `notes` | string[] | required, may be empty | Causes behind the alert (population clearance used, threshold lowered for hepatic impairment). Never omitted. |
 | `dismissed_at` | string (ISO 8601 + tz) | nullable | When the user dismissed the alert. **Always `null` in v1** — no v1 endpoint sets it. |
 | `resolved_at` | string (ISO 8601 + tz) | nullable | When recomputation stopped producing the alert. `null` if still produced. |
@@ -291,7 +315,8 @@ fine". An explicit "we cannot answer this" is the only honest output.
 
 #### UncountedDose object
 
-Same shape as ContributingDose, with two differences:
+Same shape as ContributingDose, with `amount_mg` always `null` and two added
+fields:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -299,8 +324,9 @@ Same shape as ContributingDose, with two differences:
 | `product_id` | string | required | |
 | `product_name` | string | required | |
 | `taken_at` | string (ISO 8601 + tz) | required | |
-| `amount_mg` | null | required | Always `null` — the dose couldn't be quantified for this substance. |
+| `amount_mg` | null | required | Always `null` — the dose couldn't be quantified. |
 | `unmodeled_reason` | string enum | required | `unknown_strength` \| `unmatched`. Same values as on [Ingredient](#4-product-search). |
+| `ingredient_name` | string | required **[filled in]** | The ingredient as labelled, so the UI can name what's uncounted without a second lookup. Needed for the product-level message. |
 
 The whole point of `contributing_doses` is that a user can see what a number
 is built from. A total that hides an omission fails that for the same reason,
@@ -339,7 +365,22 @@ so omissions are listed, not footnoted.
       { "dose_event_id": "dose_12", "product_id": "prod_tylenol_es_500", "product_name": "Tylenol Extra Strength", "taken_at": "2026-09-13T14:30:00-07:00", "amount_mg": 1000 }
     ],
     "uncounted_doses": [
-      { "dose_event_id": "dose_13", "product_id": "prod_example_cold_multi", "product_name": "Example Multi-Symptom Cold", "taken_at": "2026-09-13T11:00:00-07:00", "amount_mg": null, "unmodeled_reason": "unknown_strength" }
+      { "dose_event_id": "dose_13", "product_id": "prod_example_cold_multi", "product_name": "Example Multi-Symptom Cold", "taken_at": "2026-09-13T11:00:00-07:00", "amount_mg": null, "unmodeled_reason": "unknown_strength", "ingredient_name": "ACETAMINOPHEN" }
+    ],
+    "notes": [],
+    "dismissed_at": null,
+    "resolved_at": null
+  },
+  {
+    "id": "alert_9K5",
+    "kind": "incomplete_data",
+    "severity": "caution",
+    "substance": null,
+    "message": "We couldn't identify PHENYLEPHRINE HCL in Example Multi-Symptom Cold, so it isn't included in any totals. If you know what it is, enter it manually.",
+    "computed_at": "2026-09-13T18:02:11-07:00",
+    "contributing_doses": [],
+    "uncounted_doses": [
+      { "dose_event_id": "dose_13", "product_id": "prod_example_cold_multi", "product_name": "Example Multi-Symptom Cold", "taken_at": "2026-09-13T11:00:00-07:00", "amount_mg": null, "unmodeled_reason": "unmatched", "ingredient_name": "PHENYLEPHRINE HCL" }
     ],
     "notes": [],
     "dismissed_at": null,
@@ -473,43 +514,67 @@ with `modelable: false`.
 | 9 | What makes an alert inactive | Dismissal (`dismissed_at`) or recomputation no longer producing it (`resolved_at`). No auto-expiry; the recompute decides, not a timer. |
 | 10 | Dismissal | Not in v1. `dismissed_at` stays in the schema, always `null`; only recomputation sets an alert inactive. Intended future shape: `POST /users/{id}/alerts/{alert_id}/dismiss`. |
 | 11 | Uncounted doses on alerts | Required `uncounted_doses[]` on every alert, same shape as `contributing_doses` with `amount_mg: null` and `unmodeled_reason`. Non-empty → message must say the total is incomplete. |
-| 12 | Exclusion silencing an alert | New kind `incomplete_data`, severity `caution`: fires when a substance with `threshold_24h_mg` has any unmodeled dose in the 24h window, regardless of counted total. |
+| 12 | Exclusion silencing an alert | New kind `incomplete_data`, severity `caution`: fires when a substance with `threshold_24h_mg` has any `unknown_strength` dose in the 24h window, regardless of counted total. |
+| 13 | Traceability rule | `contributing_doses` and `uncounted_doses` are **together** non-empty for every alert; each alone may be empty. A rule change, not an exemption for one kind. |
+| 14 | Unmatched ingredients silencing alerts | `incomplete_data` also fires at the **product level**: any logged product in the 24h window with an `unmatched` ingredient, regardless of whether any substance total is computable. `substance` is `null` on this trigger alone. Normalization misses are guaranteed (spec §5), so this is the common case. |
 
 ### Still open
 
-- **`incomplete_data` with no counted doses.** If every dose of the substance
-  in the window is uncounted (e.g. one dose of an unknown-strength product),
-  `contributing_doses` is empty, which breaks the "required, non-empty" rule.
-  Either that rule becomes "`contributing_doses` and `uncounted_doses` together
-  are non-empty", or `incomplete_data` is exempt. The traceability intent is met
-  either way, since every uncounted dose is listed; the rule's wording needs to
-  say which.
-- **`unmatched` doses and `incomplete_data`.** An `unmatched` ingredient has
-  `substance_id: null`, so it can't be attributed to any substance's window.
-  In practice `incomplete_data` can only be triggered by `unknown_strength`.
-  Confirm that's intended; `uncounted_doses` keeps both reasons in its enum.
+- **Product-level granularity.** If the same product is logged three times in
+  the window, is that one `incomplete_data` alert with three `uncounted_doses`,
+  or three alerts? And a product with two unmatched ingredients: one alert or
+  two? Proposed: one alert per (product, unmatched ingredient string), listing
+  every dose of that product in the window. That keeps the message naming one
+  ingredient in one product.
+- **Product-level severity** is marked **[filled in]** as `caution`, matching
+  the substance-level trigger. Confirm.
 
 ## Implementation follow-ups
 
 Contract-level decisions that need code. **Write the tests first** (CLAUDE.md).
 
-- **`incomplete_data` detector** (`app/detect/alerts.py`). Not implemented.
-  Needs: an unmodeled-dose representation alongside `LoggedDose`; a detector
-  that fires on substance-with-`threshold_24h_mg` + any unmodeled dose in the
-  trailing 24h; `uncounted_doses` populated on it and on `duplication` /
-  `threshold`; incomplete-total wording in messages when non-empty. Tests to
-  write first, at minimum:
+- **`incomplete_data` detector, substance-level** (`app/detect/alerts.py`).
+  Not implemented. Needs: an unmodeled-dose representation alongside
+  `LoggedDose`; a detector that fires on substance-with-`threshold_24h_mg` +
+  any `unknown_strength` dose in the trailing 24h; `uncounted_doses` populated
+  on it and on `duplication` / `threshold`; incomplete-total wording in
+  messages when non-empty. Tests to write first, at minimum:
   - counted total **below** the warning fraction + one unknown-strength dose →
     `incomplete_data` fires (the case this kind exists for);
   - counted total **above** it + one unknown-strength dose → both
     `duplication`/`threshold` and `incomplete_data` fire, and the duplication
     message says the total is incomplete;
+  - **only** unknown-strength doses, no counted doses → `incomplete_data` fires
+    with empty `contributing_doses` and non-empty `uncounted_doses`;
   - no unmodeled doses → no `incomplete_data` (silence on the negative case);
-  - unmodeled dose of a substance with `threshold_24h_mg: null` → no
+  - unknown-strength dose of a substance with `threshold_24h_mg: null` → no
     `incomplete_data`;
-  - unmodeled dose outside the 24h window → no `incomplete_data`.
-- **`Alert` dataclass** needs `uncounted_doses` next to `contributing_dose_ids`,
-  and `incomplete_data` added to the `kind` comment.
+  - unknown-strength dose outside the 24h window → no `incomplete_data`.
+- **`incomplete_data` detector, product-level** (`app/detect/alerts.py`).
+  Not implemented. Needs a representation of logged products with their
+  ingredient strings, since an unmatched ingredient has no `substance_id` to
+  hang off `LoggedDose`. Tests to write first, at minimum:
+  - the motivating case: Tylenol (matched acetaminophen) + a cold medicine
+    whose acetaminophen label string doesn't normalize → duplication stays
+    silent on the counted Tylenol total, **and** product-level
+    `incomplete_data` fires naming the unmatched string and the product;
+  - product-level alert has `substance: null`, empty `contributing_doses`,
+    non-empty `uncounted_doses` with `unmodeled_reason: "unmatched"` and
+    `ingredient_name`;
+  - fires even when no substance in the window has a computable total;
+  - **fully matched product → nothing fires** (the negative case);
+  - product with an unmatched ingredient logged **outside** the 24h window →
+    no `incomplete_data`;
+  - product with one matched and one unmatched ingredient → the matched one is
+    still counted normally, and the product-level alert names only the
+    unmatched one.
+- **Traceability invariant** (`Alert` dataclass). Today the dataclass only
+  requires `contributing_dose_ids` to be *passed*; nothing checks it's
+  non-empty. Add a check that `contributing_dose_ids` and `uncounted_doses` are
+  together non-empty, and add a test that constructing
+  an alert with both empty fails. Make `substance_id` nullable **only** for
+  product-level `incomplete_data` (test: any other kind with no substance
+  fails). Add `incomplete_data` to the `kind` comment.
 
 ---
 
