@@ -19,7 +19,12 @@ from app.pk.engine import (
     troughs_per_day,
 )
 from app.pk.individualize import Patient, adjusted_ke, cockcroft_gault
-from app.registry.loader import load_registry, normalize, strip_salt_tokens
+from app.registry.loader import (
+    Registry,
+    load_registry,
+    normalize,
+    strip_salt_tokens,
+)
 
 CAFFEINE = PKParams("caffeine", 5.0, 0.6, 0.99, 1.4, "hepatic")
 METFORMIN = PKParams("metformin", 5.0, 4.0, 0.55, 0.9, "renal")
@@ -176,3 +181,23 @@ def test_salt_suffix_stripping():
 def test_unknown_ingredient_returns_none_rather_than_guessing():
     """None routes to manual entry, which works. A wrong guess mis-attributes a dose."""
     assert load_registry().resolve("zzqx anti-inflammatory complex") is None
+
+
+def test_every_entry_declares_threshold_concentration_null_at_launch():
+    """Null until a defensible published concentration exists for that substance.
+
+    Never derived from threshold_24h_mg: that conversion depends on Vd, timing
+    and accumulation state, so a computed value would be invented. If this fails
+    because a value was added, confirm it has a real citation, then update it.
+    """
+    reg = load_registry()
+    for entry in reg.all():
+        assert "threshold_concentration_mg_per_l" in entry, entry["id"]
+        assert reg.threshold_concentration_mg_per_l(entry["id"]) is None, entry["id"]
+
+
+def test_entry_missing_threshold_concentration_field_is_rejected():
+    """An absent key must not be read as 'no threshold'; absent and null differ."""
+    entry = {"id": "x", "name": "X", "aliases": []}
+    with pytest.raises(KeyError, match="threshold_concentration_mg_per_l"):
+        Registry([entry])
