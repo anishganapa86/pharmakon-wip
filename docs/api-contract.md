@@ -82,11 +82,26 @@ authentication first, and that is a contract change.
 | `taken_at` | string (ISO 8601 + tz) | required | When the dose was taken, not when it was logged. |
 | `quantity` | number | required | Count of product units (e.g. 2 tablets). Must be > 0. The server converts to mg per ingredient using the product's ingredient strengths. **[filled in]** |
 
-Products with unmatched ingredients **are loggable** (manual-entry fallback,
-spec §5). An ingredient with `substance_id: null` is stored with the dose but
-excluded from PK modeling and duplication detection. It is never silently
-dropped: the product carries `has_unmodeled_ingredients: true` so the UI can
-show which ingredient isn't covered.
+Products with unmodeled ingredients **are loggable** (manual-entry fallback,
+spec §5). An ingredient is unmodeled for one of two reasons, carried per
+ingredient as `unmodeled_reason` (see [Ingredient](#4-product-search)):
+
+- **`unmatched`** — the name didn't normalize to a registry substance.
+  `substance_id` is `null`.
+- **`unknown_strength`** — the substance is recognized (`substance_id`
+  resolves normally) but the label gives no usable mass, so the ingredient's
+  `amount_mg` for the dose is `null`.
+
+Either way the ingredient is stored with the dose but **excluded from both the
+PK model and the 24-hour duplication sum.** It is never silently dropped: the
+product carries `has_unmodeled_ingredients: true`, and the UI must name which
+ingredient is uncounted and why. The two reasons are different sentences to a
+user ("we don't recognize this ingredient" vs "we recognize it but don't know
+the dose") and must not be collapsed.
+
+Why exclusion must be visible: a duplication total that silently omits an
+unknown-strength contribution is worse than no total, because it reads as
+authoritative. Acetaminophen is exactly where this bites.
 
 ```json
 {
@@ -191,11 +206,27 @@ a client error. It mirrors the `unmodelable` alert kind in
 
 | Param | Type | Required | Description |
 |---|---|---|---|
-| `active` | boolean | optional | Default `true`: only currently active alerts. `false` returns all alerts, including inactive ones. **[filled in: meaning of `false`, and what makes an alert inactive, is defined by the implementation]** |
+| `active` | string enum | optional | `true` \| `false` \| `all`. Default `true`. `true` returns only active alerts; `false` returns **only inactive** alerts; `all` returns both. Any other value → `422`. |
 
 ### Response — `200 OK`
 
 An array of [Alert](#alert-object). Empty array if none.
+
+### Active and inactive alerts
+
+An alert becomes inactive in exactly two ways:
+
+1. **Dismissed** — the user dismisses it. `dismissed_at` is set.
+2. **Resolved** — recomputation no longer produces it: the 24-hour window has
+   rolled past the contributing doses, or a profile change moved the threshold.
+   `resolved_at` is set.
+
+**There is no auto-expiry.** An alert never becomes inactive purely because
+time passed. If the user is still over the limit, the alert is active at hour
+23 and at hour 25 alike. The recompute decides, not a timer.
+
+An alert is active if and only if both `dismissed_at` and `resolved_at` are
+`null`.
 
 ### Alert object
 
@@ -209,6 +240,8 @@ An array of [Alert](#alert-object). Empty array if none.
 | `computed_at` | string (ISO 8601 + tz) | required | When the detector produced this alert. |
 | `contributing_doses` | ContributingDose[] | required, **non-empty** | See below. |
 | `notes` | string[] | required, may be empty | Causes behind the alert (population clearance used, threshold lowered for hepatic impairment). Never omitted. |
+| `dismissed_at` | string (ISO 8601 + tz) | nullable | When the user dismissed the alert. `null` if not dismissed. |
+| `resolved_at` | string (ISO 8601 + tz) | nullable | When recomputation stopped producing the alert. `null` if still produced. |
 
 #### ContributingDose object
 
@@ -245,7 +278,9 @@ An array of [Alert](#alert-object). Empty array if none.
         "amount_mg": 650
       }
     ],
-    "notes": []
+    "notes": [],
+    "dismissed_at": null,
+    "resolved_at": null
   }
 ]
 ```
@@ -269,15 +304,16 @@ An array of [Alert](#alert-object). Empty array if none.
 | `id` | string | required | Use as `product_id` when logging. |
 | `brand_name` | string | required | |
 | `ingredients` | Ingredient[] | required | Active ingredients. **[filled in: may be empty only if label decomposition failed entirely]** |
-| `has_unmodeled_ingredients` | boolean | required | `true` if any ingredient has `substance_id: null`. The product is still loggable; those ingredients are excluded from PK and duplication, and the UI must show which ones. |
+| `has_unmodeled_ingredients` | boolean | required | `true` if any ingredient has a non-null `unmodeled_reason`. The product is still loggable; those ingredients are excluded from PK and duplication, and the UI must name them. |
 
 Ingredient **[filled in shape]**:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `substance_id` | string | nullable | Registry id. `null` when the openFDA name didn't normalize to a known substance — refuse rather than guess. The ingredient is kept, shown as not modeled, and excluded from PK and duplication. |
+| `substance_id` | string | nullable | Registry id. `null` only when `unmodeled_reason` is `unmatched` — refuse rather than guess. |
 | `name` | string | required | Ingredient name as labelled. |
-| `strength_mg` | number | nullable | mg per product unit. `null` if the label doesn't give a usable mass. |
+| `strength_mg` | number | nullable | mg per product unit. `null` when the label gives no usable mass (and then `unmodeled_reason` is `unknown_strength` if the substance was recognized). |
+| `unmodeled_reason` | string enum | nullable | `unmatched` \| `unknown_strength`. `null` means the ingredient is modeled. If both apply, `unmatched` wins. **[filled in: precedence]** |
 
 ```json
 [
@@ -285,9 +321,18 @@ Ingredient **[filled in shape]**:
     "id": "prod_tylenol_es_500",
     "brand_name": "Tylenol Extra Strength",
     "ingredients": [
-      { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": 500 }
+      { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": 500, "unmodeled_reason": null }
     ],
     "has_unmodeled_ingredients": false
+  },
+  {
+    "id": "prod_example_cold_multi",
+    "brand_name": "Example Multi-Symptom Cold",
+    "ingredients": [
+      { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": null, "unmodeled_reason": "unknown_strength" },
+      { "substance_id": null, "name": "PHENYLEPHRINE HCL", "strength_mg": 5, "unmodeled_reason": "unmatched" }
+    ],
+    "has_unmodeled_ingredients": true
   }
 ]
 ```
@@ -343,7 +388,7 @@ The spec does not define errors. Proposed shape for every non-2xx response:
 | Status | When |
 |---|---|
 | `404` | Unknown user, product, or substance. |
-| `422` | Validation failure (missing field, bad enum, `resolution` not `15m`/`1h`, timestamp without offset, `to` ≤ `from`, non-positive number). |
+| `422` | Validation failure (missing field, bad enum, `resolution` not `15m`/`1h`, `active` not `true`/`false`/`all`, timestamp without offset, `to` ≤ `from`, non-positive number). |
 
 An unmodelable substance on `/curve` is **not** an error; it returns `200`
 with `modelable: false`.
@@ -357,18 +402,26 @@ with `modelable: false`.
 | 1 | Threshold on `/curve` | Field renamed `threshold_concentration_mg_per_l`, nullable, `null` for every substance at launch. Never derived from a dose threshold. 24h dose totals live on Alerts. Curves screen must work with no threshold line. Registry gains a nullable field of the same name. |
 | 2 | Alcohol / unmodelable on `/curve` | `200` with `modelable: false`, a `reason`, and empty `points`. A documented model limit, not a client error. |
 | 3 | `resolution` | Whitelist `15m` and `1h`; `422` otherwise. `1h` is decimation of the fixed 15-minute grid; no interpolation (spec §8). |
-| 4 | `active` default | `true`. |
+| 4 | `active` | `true` \| `false` \| `all`, default `true`; `false` returns only inactive alerts. |
 | 5 | Alert `notes` | Required array on every alert, may be empty (spec §8: never show a warning without its cause). `payload` is not part of the contract. |
 | 6 | Unmatched ingredients | Loggable (spec §5). `substance_id: null`, excluded from PK and duplication, product flagged with `has_unmodeled_ingredients`. Never silently dropped. |
 | 7 | Auth | None in v1. Hard constraint: the public deployment runs on seeded synthetic data only; nobody logs real medications into it. |
+| 8 | Recognized ingredient, unknown strength | Loggable, unmodeled. `substance_id` resolves, `amount_mg` is `null`, excluded from PK and the 24h duplication sum. Per-ingredient `unmodeled_reason: "unknown_strength"`, distinct from `"unmatched"`. UI names the uncounted ingredient. |
+| 9 | What makes an alert inactive | Dismissal (`dismissed_at`) or recomputation no longer producing it (`resolved_at`). No auto-expiry; the recompute decides, not a timer. |
 
 ### Still open
 
-- **Unknown strength.** An ingredient with a `substance_id` but
-  `strength_mg: null` can't be converted to mg. Is the product still loggable,
-  and if so is that ingredient treated like an unmatched one?
-- **Inactive alerts.** What makes an alert inactive, and so what
-  `active=false` returns.
+- **Dismissing an alert.** Decision 9 stores `dismissed_at`, but none of the
+  five endpoints lets the client dismiss an alert. Needs a sixth endpoint or a
+  deliberate "not in v1".
+- **Where the uncounted ingredient is shown.** Decision 8 says the UI must name
+  it, but `POST /doses` returns only `dose_event_id` and alerts, and
+  `contributing_doses` lists only counted doses. The client can name it at log
+  time from the search result. Should a duplication alert also say "this total
+  excludes N uncounted doses"? Otherwise the alert's total can still read as
+  complete.
+- **No alert because of exclusion.** If excluded unknown-strength doses keep
+  the total under the warning level, no alert exists to carry that caveat.
 
 ---
 
