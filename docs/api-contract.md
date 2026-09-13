@@ -1,0 +1,377 @@
+# Pharmakon API contract
+
+Status: **DRAFT — not frozen.** Freezes when Anish and Punya both approve it in
+a single-purpose PR. After that it changes only by agreement of both, in a PR
+that touches nothing else (see SPLIT.md).
+
+Endpoints and top-level field names come from the technical spec §7 (the
+technical spec PDF in `docs/` is the only source of truth; check this document
+against it once it's added). Anything the spec did not state (types, nullability, nested shapes) is marked
+**[filled in]** so it can be challenged before the freeze. The seven open
+questions from the first draft have been decided; see
+[Decision log](#decision-log).
+
+## Global rules
+
+These apply to every endpoint. A response that violates one is a bug.
+
+### Units
+
+| Quantity | Unit | Notes |
+|---|---|---|
+| Concentration | **mg/L** | The only concentration unit in this API. Never µg/mL, never mixed. Every response that carries a concentration also carries `"unit": "mg/L"`. |
+| Mass | mg | Field names end in `_mg`. |
+| Body weight | kg | `weight_kg` |
+| Serum creatinine | mg/dL | `serum_creatinine_mg_dl` |
+| Age | years | `age_years` |
+
+### Timestamps
+
+- ISO 8601 **with a timezone offset**, always: `2026-09-13T08:30:00-07:00` or
+  `2026-09-13T15:30:00Z`.
+- A timestamp without an offset (`2026-09-13T08:30:00`) is rejected with `422`.
+  The server never guesses a timezone.
+- The engine works in float hours internally. Conversion happens at the API
+  boundary and nowhere else; hours never appear in the API.
+
+### Traceability
+
+Every alert carries `contributing_doses`: a **non-empty** array identifying the
+exact logged doses that produced it. An alert the user can't trace back to
+specific doses is not actionable. The server must never emit an alert without
+it; the client may treat an alert with a missing or empty
+`contributing_doses` as malformed.
+
+### Causes
+
+Every alert carries `notes`: a **required** array of strings, which may be
+empty. This is where the cause of a caveat is shown, e.g. "No serum creatinine
+on file, so population clearance was used" or a threshold lowered for hepatic
+impairment. Never show a warning without showing its cause (spec §8).
+
+### Authentication and data — v1 constraint
+
+There is **no authentication in v1.** This is acceptable only under a hard
+constraint:
+
+> **The deployed demo runs on seeded synthetic data only. Neither Anish nor
+> Punya — nor anyone else — logs real medications into the public instance.**
+
+This is a constraint on how the system is operated, not a TODO. Any
+deployment that accepts real personal medication data requires
+authentication first, and that is a contract change.
+
+### Notation
+
+- **required** — always present; never `null`.
+- **optional** — may be omitted from requests.
+- **nullable** — always present in responses, but the value may be `null`.
+- `{id}` is the user id, an opaque string. **[filled in]**
+
+---
+
+## 1. Log a dose
+
+`POST /users/{id}/doses`
+
+### Request
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `product_id` | string | required | From `GET /products/search`. |
+| `taken_at` | string (ISO 8601 + tz) | required | When the dose was taken, not when it was logged. |
+| `quantity` | number | required | Count of product units (e.g. 2 tablets). Must be > 0. The server converts to mg per ingredient using the product's ingredient strengths. **[filled in]** |
+
+Products with unmatched ingredients **are loggable** (manual-entry fallback,
+spec §5). An ingredient with `substance_id: null` is stored with the dose but
+excluded from PK modeling and duplication detection. It is never silently
+dropped: the product carries `has_unmodeled_ingredients: true` so the UI can
+show which ingredient isn't covered.
+
+```json
+{
+  "product_id": "prod_tylenol_es_500",
+  "taken_at": "2026-09-13T08:30:00-07:00",
+  "quantity": 2
+}
+```
+
+### Response — `201 Created`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `dose_event_id` | string | required | Id of the logged dose. The same id appears in `contributing_doses` on alerts. |
+| `triggered_alerts` | Alert[] | required | Alerts that became active **because of this dose**. Empty array if none — never omitted, never `null`. Same shape as `GET /alerts` (see [Alert](#alert-object)). |
+
+```json
+{
+  "dose_event_id": "dose_01J8Z3",
+  "triggered_alerts": []
+}
+```
+
+---
+
+## 2. Concentration curve
+
+`GET /users/{id}/curve`
+
+### Query parameters
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `substance_id` | string | required | Registry id, e.g. `acetaminophen`. |
+| `from` | string (ISO 8601 + tz) | required **[filled in]** | Start of window, inclusive. URL-encode the `+` in offsets. |
+| `to` | string (ISO 8601 + tz) | required **[filled in]** | End of window, inclusive. Must be after `from`. |
+| `resolution` | string enum | optional | `15m` \| `1h`. Default `15m`. Any other value → `422`. The engine computes on a fixed 15-minute grid; `1h` is decimation of that grid. Arbitrary resolutions would require interpolation, which spec §8 forbids. |
+
+### Response — `200 OK`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `substance` | `{ id: string, display_name: string }` | required | **[filled in shape]** |
+| `modelable` | boolean | required | `false` when the model cannot represent this substance (e.g. zero-order alcohol). **[filled in: present on every response]** |
+| `reason` | string | nullable | Why the substance isn't modelable. `null` when `modelable` is `true`. |
+| `unit` | string | required | Always `"mg/L"`. |
+| `points` | `{ t: string, concentration: number }[]` | required | `t` is ISO 8601 + tz; `concentration` in mg/L, ≥ 0. Ordered by `t` ascending. Empty when `modelable` is `false`. |
+| `threshold_concentration_mg_per_l` | number | nullable | A published toxic or therapeutic plasma concentration, in mg/L, from the registry field of the same name. **`null` for every substance at launch.** |
+| `peak` | `{ t: string, concentration: number }` | nullable | Highest point within `[from, to]`. `null` if there are no doses in range or `modelable` is `false`. **[filled in shape]** |
+| `current` | `{ t: string, concentration: number }` | nullable | Estimate at request time. `null` if "now" is outside `[from, to]` or `modelable` is `false`. **[filled in shape]** |
+
+**Thresholds on curves.** `threshold_concentration_mg_per_l` is never derived
+from a dose threshold such as `threshold_24h_mg`. That conversion depends on
+volume of distribution, dose timing and accumulation state, so any computed
+value would be invented. The field is populated only where a defensible
+published concentration exists. The 24-hour dose total versus
+`threshold_24h_mg` belongs on Alerts, not overlaid on a curve. **The Curves
+screen must render correctly with no threshold line.**
+
+```json
+{
+  "substance": { "id": "caffeine", "display_name": "Caffeine" },
+  "modelable": true,
+  "reason": null,
+  "unit": "mg/L",
+  "points": [
+    { "t": "2026-09-13T16:00:00-07:00", "concentration": 0.0 },
+    { "t": "2026-09-13T16:15:00-07:00", "concentration": 1.42 }
+  ],
+  "threshold_concentration_mg_per_l": null,
+  "peak": { "t": "2026-09-13T16:45:00-07:00", "concentration": 2.87 },
+  "current": { "t": "2026-09-13T16:15:00-07:00", "concentration": 1.42 }
+}
+```
+
+### Unmodelable substances — still `200 OK`
+
+A substance the model can't represent is a documented limit of the model, not
+a client error. It mirrors the `unmodelable` alert kind in
+`app/detect/alerts.py`.
+
+```json
+{
+  "substance": { "id": "ethanol", "display_name": "Alcohol (ethanol)" },
+  "modelable": false,
+  "reason": "Zero-order elimination; the one-compartment first-order model cannot represent it.",
+  "unit": "mg/L",
+  "points": [],
+  "threshold_concentration_mg_per_l": null,
+  "peak": null,
+  "current": null
+}
+```
+
+---
+
+## 3. Alerts
+
+`GET /users/{id}/alerts`
+
+### Query parameters
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `active` | boolean | optional | Default `true`: only currently active alerts. `false` returns all alerts, including inactive ones. **[filled in: meaning of `false`, and what makes an alert inactive, is defined by the implementation]** |
+
+### Response — `200 OK`
+
+An array of [Alert](#alert-object). Empty array if none.
+
+### Alert object
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | required | Alert id. |
+| `kind` | string enum | required | `duplication` \| `threshold` \| `accumulation` \| `unmodelable` (matches `app/detect/alerts.py`). |
+| `severity` | string enum | required | `info` \| `caution` \| `urgent`. |
+| `substance` | `{ id: string, display_name: string }` | required | Same shape as on the curve. **[filled in shape]** |
+| `message` | string | required | User-facing text. Must keep the "estimate, not medical advice" framing. |
+| `computed_at` | string (ISO 8601 + tz) | required | When the detector produced this alert. |
+| `contributing_doses` | ContributingDose[] | required, **non-empty** | See below. |
+| `notes` | string[] | required, may be empty | Causes behind the alert (population clearance used, threshold lowered for hepatic impairment). Never omitted. |
+
+#### ContributingDose object
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `dose_event_id` | string | required | Same id returned by `POST /doses`. |
+| `product_id` | string | required | |
+| `product_name` | string | required | Brand name as shown to the user, so a duplication alert can name the products without a second lookup. |
+| `taken_at` | string (ISO 8601 + tz) | required | |
+| `amount_mg` | number | required | Mass of **this alert's substance** in this dose, in mg (not the product quantity). For a combination product, only the relevant ingredient. |
+
+```json
+[
+  {
+    "id": "alert_7Q2",
+    "kind": "duplication",
+    "severity": "urgent",
+    "substance": { "id": "acetaminophen", "display_name": "Acetaminophen" },
+    "message": "Acetaminophen is in 2 of the products you logged (DayQuil, Tylenol Extra Strength). Your 24-hour total is 4150 mg, which exceeds the 4000 mg limit. Talk to a pharmacist or your prescriber.",
+    "computed_at": "2026-09-13T18:02:11-07:00",
+    "contributing_doses": [
+      {
+        "dose_event_id": "dose_01J8Z3",
+        "product_id": "prod_tylenol_es_500",
+        "product_name": "Tylenol Extra Strength",
+        "taken_at": "2026-09-13T08:30:00-07:00",
+        "amount_mg": 1000
+      },
+      {
+        "dose_event_id": "dose_01J8Z9",
+        "product_id": "prod_dayquil_liquicap",
+        "product_name": "DayQuil",
+        "taken_at": "2026-09-13T12:00:00-07:00",
+        "amount_mg": 650
+      }
+    ],
+    "notes": []
+  }
+]
+```
+
+---
+
+## 4. Product search
+
+`GET /products/search`
+
+### Query parameters
+
+| Param | Type | Required | Description |
+|---|---|---|---|
+| `q` | string | required | Brand, generic, or partial name. Empty `q` → `422`. **[filled in]** |
+
+### Response — `200 OK`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | required | Use as `product_id` when logging. |
+| `brand_name` | string | required | |
+| `ingredients` | Ingredient[] | required | Active ingredients. **[filled in: may be empty only if label decomposition failed entirely]** |
+| `has_unmodeled_ingredients` | boolean | required | `true` if any ingredient has `substance_id: null`. The product is still loggable; those ingredients are excluded from PK and duplication, and the UI must show which ones. |
+
+Ingredient **[filled in shape]**:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `substance_id` | string | nullable | Registry id. `null` when the openFDA name didn't normalize to a known substance — refuse rather than guess. The ingredient is kept, shown as not modeled, and excluded from PK and duplication. |
+| `name` | string | required | Ingredient name as labelled. |
+| `strength_mg` | number | nullable | mg per product unit. `null` if the label doesn't give a usable mass. |
+
+```json
+[
+  {
+    "id": "prod_tylenol_es_500",
+    "brand_name": "Tylenol Extra Strength",
+    "ingredients": [
+      { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": 500 }
+    ],
+    "has_unmodeled_ingredients": false
+  }
+]
+```
+
+---
+
+## 5. Update profile
+
+`PUT /users/{id}/profile`
+
+Full replacement (PUT semantics): omitting an optional field clears it.
+
+### Request
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `age_years` | number | required | > 0. |
+| `weight_kg` | number | required | > 0. |
+| `sex` | string enum | required | `male` \| `female` (Cockcroft-Gault input; matches `app/pk/individualize.py`). |
+| `serum_creatinine_mg_dl` | number | **optional** | mg/dL, > 0. If omitted, population renal clearance is used and curves carry a note saying so. |
+| `hepatic_impairment` | string enum | required | `none` \| `mild` \| `moderate` \| `severe`. Lowers thresholds; does **not** apply a numerical clearance correction. |
+
+```json
+{
+  "age_years": 67,
+  "weight_kg": 72.5,
+  "sex": "female",
+  "serum_creatinine_mg_dl": 1.1,
+  "hepatic_impairment": "none"
+}
+```
+
+### Response — `200 OK`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `recomputed` | boolean | required | `true` once cached curves and alerts have been recomputed against the new profile. |
+
+```json
+{ "recomputed": true }
+```
+
+---
+
+## Errors **[filled in]**
+
+The spec does not define errors. Proposed shape for every non-2xx response:
+
+```json
+{ "error": { "code": "invalid_timestamp", "message": "taken_at must include a timezone offset" } }
+```
+
+| Status | When |
+|---|---|
+| `404` | Unknown user, product, or substance. |
+| `422` | Validation failure (missing field, bad enum, `resolution` not `15m`/`1h`, timestamp without offset, `to` ≤ `from`, non-positive number). |
+
+An unmodelable substance on `/curve` is **not** an error; it returns `200`
+with `modelable: false`.
+
+---
+
+## Decision log
+
+| # | Question | Decision |
+|---|---|---|
+| 1 | Threshold on `/curve` | Field renamed `threshold_concentration_mg_per_l`, nullable, `null` for every substance at launch. Never derived from a dose threshold. 24h dose totals live on Alerts. Curves screen must work with no threshold line. Registry gains a nullable field of the same name. |
+| 2 | Alcohol / unmodelable on `/curve` | `200` with `modelable: false`, a `reason`, and empty `points`. A documented model limit, not a client error. |
+| 3 | `resolution` | Whitelist `15m` and `1h`; `422` otherwise. `1h` is decimation of the fixed 15-minute grid; no interpolation (spec §8). |
+| 4 | `active` default | `true`. |
+| 5 | Alert `notes` | Required array on every alert, may be empty (spec §8: never show a warning without its cause). `payload` is not part of the contract. |
+| 6 | Unmatched ingredients | Loggable (spec §5). `substance_id: null`, excluded from PK and duplication, product flagged with `has_unmodeled_ingredients`. Never silently dropped. |
+| 7 | Auth | None in v1. Hard constraint: the public deployment runs on seeded synthetic data only; nobody logs real medications into it. |
+
+### Still open
+
+- **Unknown strength.** An ingredient with a `substance_id` but
+  `strength_mg: null` can't be converted to mg. Is the product still loggable,
+  and if so is that ingredient treated like an unmatched one?
+- **Inactive alerts.** What makes an alert inactive, and so what
+  `active=false` returns.
+
+---
+
+*Pharmakon is not a medical device. Outputs are estimates from a
+one-compartment, population-average model, for educational and demonstrative
+use only.*
