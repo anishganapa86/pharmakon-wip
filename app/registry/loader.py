@@ -50,6 +50,14 @@ _SALT_TOKENS = {
 
 class Registry:
     def __init__(self, entries: list[dict]):
+        for e in entries:
+            # Required key, nullable value. A missing key would read the same as
+            # "no published threshold", which hides an incomplete entry.
+            if "threshold_concentration_mg_per_l" not in e:
+                raise KeyError(
+                    f"registry entry {e.get('id')!r} is missing "
+                    "threshold_concentration_mg_per_l (use null if none)"
+                )
         self._by_id = {e["id"]: e for e in entries}
         self._alias_index: dict[str, str] = {}
         for e in entries:
@@ -61,6 +69,15 @@ class Registry:
 
     def all(self) -> list[dict]:
         return list(self._by_id.values())
+
+    def threshold_concentration_mg_per_l(self, substance_id: str) -> float | None:
+        """Published toxic or therapeutic plasma concentration, in mg/L, or None.
+
+        Populated only from a cited source. Never derived from threshold_24h_mg:
+        a dose limit converts to a concentration only via Vd, timing and
+        accumulation state, so any computed value would be invented.
+        """
+        return self._by_id[substance_id]["threshold_concentration_mg_per_l"]
 
     def unverified(self) -> list[str]:
         return [e["id"] for e in self._by_id.values() if not e.get("verified", False)]
