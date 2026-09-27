@@ -229,7 +229,7 @@
   height: 300px;
 
   @media (max-width: 640px) {
-    height: 240px;
+    height: 250px;
   }
 }
 
