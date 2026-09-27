@@ -210,6 +210,7 @@ class CurveResult:
     points: list[dict]
     peak: dict | None
     current: dict | None
+    notes: list[str]  # causes behind the curve, from adjusted_ke
 
 
 def _point(origin: datetime, t_hours: float, conc: float) -> dict:
@@ -238,9 +239,9 @@ def compute_curve(
     try:
         params.check_modelable()
     except UnsupportedKinetics as exc:
-        return CurveResult(False, str(exc), [], None, None)
+        return CurveResult(False, str(exc), [], None, None, [])
 
-    ke, _ = adjusted_ke(params, patient)
+    ke, notes = adjusted_ke(params, patient)
     doses = [
         Dose(d.t_hours, d.amount_mg)
         for d in logged_doses(events, origin=start)
@@ -268,4 +269,4 @@ def compute_curve(
         c_now = superpose(doses, params, patient.weight_kg, np.array([now_h]), ke=ke)
         current = _point(start, now_h, c_now[0])
 
-    return CurveResult(True, None, points, peak, current)
+    return CurveResult(True, None, points, peak, current, notes)

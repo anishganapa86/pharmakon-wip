@@ -281,6 +281,20 @@ def test_curve_reflects_logged_doses_in_mg_per_l(client):
     assert datetime.fromisoformat(body["current"]["t"]) == NOW
 
 
+def test_renal_substance_curve_notes_population_clearance(client):
+    """No creatinine on the default patient: say so, don't hide it."""
+    body = curve(client, substance_id="metformin").json()
+    assert any("population clearance" in n for n in body["notes"])
+
+
+def test_hepatic_substance_curve_has_empty_notes(client):
+    assert curve(client).json()["notes"] == []
+
+
+def test_unmodelable_curve_still_carries_notes(client):
+    assert curve(client, substance_id="ethanol").json()["notes"] == []
+
+
 def test_hourly_resolution_is_decimation_of_the_15m_grid(client):
     log(client, "prod_nodoz_200", 3)
     fine = curve(client).json()["points"]

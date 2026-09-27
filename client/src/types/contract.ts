@@ -72,6 +72,9 @@ export interface SubstanceCurve {
   threshold_concentration_mg_per_l: number | null;
   peak: ConcentrationPoint | null;
   current: ConcentrationPoint | null;
+  // Causes behind the curve (e.g. population clearance used because no serum
+  // creatinine is on file). May be empty, never omitted.
+  notes: string[];
 }
 
 // ---------------------------------------------------------------------------

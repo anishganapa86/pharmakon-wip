@@ -193,6 +193,7 @@ def get_curve(
         ),
         "peak": result.peak,
         "current": result.current,
+        "notes": result.notes,
     }
 
 
