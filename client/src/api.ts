@@ -10,6 +10,7 @@ import type {
   LoggedDoseEvent,
   ProductSearchResult,
   SubstanceCurve,
+  SymptomCheckResponse,
 } from "./types/contract";
 
 const API_BASE = "http://localhost:8000";
@@ -72,4 +73,12 @@ export function searchProducts(
 ): Promise<ProductSearchResult[]> {
   const params = new URLSearchParams({ q });
   return request(`/products/search?${params}`, { signal });
+}
+
+export function checkSymptom(symptom: string): Promise<SymptomCheckResponse> {
+  return request("/symptom-check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symptom }),
+  });
 }

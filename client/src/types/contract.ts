@@ -177,6 +177,38 @@ export interface LoggedDoseEvent {
 }
 
 // ---------------------------------------------------------------------------
+// POST /symptom-check  (see docs/api-contract.md, section 7)
+// ---------------------------------------------------------------------------
+
+export interface SymptomCheckRequest {
+  symptom: string;
+}
+
+export type AssociationSource = "openfda_label" | "local_reference";
+
+/**
+ * An association, never a cause: the symptom is listed for a substance the
+ * user has at or above 75% of its limit.
+ */
+export interface SymptomMatch {
+  substance: SubstanceRef;
+  symptom: string;
+  source: AssociationSource;
+  source_label: string; // human-readable source, e.g. "FDA drug label"
+  current_level_mg_l: number | null; // null when the substance can't be modeled
+  total_24h_mg: number;
+  threshold_24h_mg: number | null;
+  threshold_status: "above" | "approaching";
+  contributing_doses: ContributingDose[];
+  message: string;
+}
+
+export interface SymptomCheckResponse {
+  matches: SymptomMatch[]; // empty when nothing qualifies
+  message: string;
+}
+
+// ---------------------------------------------------------------------------
 // 5. PUT /users/{id}/profile  (full replacement)
 // ---------------------------------------------------------------------------
 

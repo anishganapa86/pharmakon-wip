@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
-from . import service
+from . import service, side_effects
 from .db import Base, DoseEvent, DoseIngredient, make_engine
 from .products import PRODUCTS, decompose, search
 
@@ -284,3 +284,22 @@ def search_products(q: str, registry: Reg) -> list[dict]:
             }
         )
     return out
+
+
+# --- POST /symptom-check ------------------------------------------------------------
+
+
+class SymptomCheckRequest(BaseModel):
+    symptom: str = Field(max_length=100)
+
+
+@app.post("/symptom-check")
+def symptom_check(
+    body: SymptomCheckRequest, session: Db, registry: Reg, now: Now
+) -> dict:
+    """v1 has one user, so this checks DEFAULT_USER's doses."""
+    if len(side_effects.normalize_symptom(body.symptom)) < 3:
+        return _error(422, "validation_error", "symptom: at least 3 letters")
+    return side_effects.check_symptom(
+        session, DEFAULT_USER, registry, now, body.symptom
+    )

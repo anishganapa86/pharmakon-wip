@@ -531,6 +531,48 @@ same enum as [Ingredient](#4-product-search)).
 
 ---
 
+## 7. Symptom check **[added after freeze]**
+
+`POST /symptom-check`
+
+Checks the free-text symptom against every substance the user logged in the
+last 24 hours. v1 has one user, so this reads `default`'s doses. A substance
+matches only when **all three** hold:
+
+1. the symptom is listed in the adverse_reactions section of a
+   single-ingredient openFDA label for it (case-insensitive phrase match on
+   word boundaries), or, only when openFDA has no such label or can't be
+   reached, in the registry's `common_side_effects` fallback list;
+2. it was logged in the last 24 hours;
+3. its 24-hour total (or current concentration, where the registry has a
+   published concentration threshold) is at or above 75% of the limit.
+
+This is an association, never a cause. Messages say the symptom "is listed
+as an adverse reaction of" the substance, never that it is probably causing
+it, and always name the source.
+
+### Request
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `symptom` | string | required | Free text, ≤ 100 chars, at least 3 letters/digits → otherwise `422`. |
+
+### Response — `200 OK`
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `matches` | SymptomMatch[] | required | Empty when nothing qualifies. |
+| `message` | string | required | When empty: "None of your current substances at elevated levels are associated with this symptom." |
+
+SymptomMatch: `substance` (SubstanceRef), `symptom` (string, as typed),
+`source` (`openfda_label` \| `local_reference`), `source_label` (string),
+`current_level_mg_l` (number, nullable: `null` when the substance can't be
+modeled), `total_24h_mg` (number), `threshold_24h_mg` (number, nullable),
+`threshold_status` (`above` \| `approaching`), `contributing_doses`
+(ContributingDose[], the doses behind the level), `message` (string).
+
+---
+
 ## Errors **[filled in]**
 
 The spec does not define errors. Proposed shape for every non-2xx response:

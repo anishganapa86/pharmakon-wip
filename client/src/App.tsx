@@ -7,6 +7,7 @@ import {
   type TimeWindow,
 } from "./components/ConcentrationChart";
 import { ProductSearch } from "./components/ProductSearch";
+import { SymptomCheck } from "./components/SymptomCheck";
 import { ingredientLabel } from "./labels";
 import { HOUR_MS } from "./time";
 import type {
@@ -213,6 +214,11 @@ function App() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="panel">
+        <h2>How are you feeling?</h2>
+        <SymptomCheck />
       </section>
 
       <section className="panel">
