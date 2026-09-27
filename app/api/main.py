@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
-from . import logger, openfda, service, side_effects
+from . import logger, openfda, service, side_effects, skincare
 from .db import Base, DoseEvent, DoseIngredient, make_engine
 from .products import PRODUCTS, decompose, search
 
@@ -490,3 +490,27 @@ def get_timeline(
         )
     entries.sort(key=lambda e: datetime.fromisoformat(e["timestamp"]))
     return entries
+
+
+# --- Skincare ingredient interaction checker -----------------------------------
+#
+# Not PK modeling: no curve, no concentration, no risk score. See
+# app/api/skincare.py and app/data/ingredient_interactions.json.
+
+
+class SkincareProductRequest(BaseModel):
+    name: str = Field(min_length=1)
+    ingredients: list[str] = Field(min_length=1)
+
+
+class SkincareCheckRequest(BaseModel):
+    products: list[SkincareProductRequest] = Field(min_length=1)
+
+
+@app.post("/skincare-check")
+def skincare_check(body: SkincareCheckRequest) -> dict:
+    products = [
+        skincare.Product(name=p.name, ingredients=tuple(p.ingredients))
+        for p in body.products
+    ]
+    return skincare.check_ingredients(products)
