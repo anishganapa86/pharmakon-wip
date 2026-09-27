@@ -18,9 +18,12 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+
+from .products import LabelIngredient
 
 DATA_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "ingredient_interactions.json"
@@ -181,3 +184,71 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
         "irritants": irritants_found,
         "clear": clear,
     }
+
+
+def annotate_eczema_context(result: dict, recent_skin_texts: list[str]) -> dict:
+    """Adds a contextual note to an already-flagged irritant when the user has
+    a recent daily-log entry mentioning eczema AND that irritant's own
+    documented (source-cited) effect text calls out eczema-prone skin.
+
+    This never introduces a new claim -- it only surfaces text already present
+    in the cited entry, at the moment it's relevant to what the user logged.
+    """
+    if not any("eczema" in normalize(t) for t in recent_skin_texts):
+        return result
+    for finding in result["irritants"]:
+        if "eczema" in finding["effect"].lower():
+            finding["note"] = (
+                "You've recently logged something about eczema. This "
+                "ingredient's documented effect specifically calls out "
+                "eczema-prone skin."
+            )
+    return result
+
+
+# --- User-entered products ----------------------------------------------------
+#
+# Most cosmetics aren't FDA-regulated drugs, so openFDA has no label for them
+# (module docstring in app/api/openfda.py). When search finds nothing, the
+# user can paste the ingredient list from the product's packaging instead.
+# Kept in-process for the lifetime of the server, same pattern as
+# app.api.openfda._discovered.
+
+
+@dataclass(frozen=True)
+class UserEnteredProduct:
+    id: str
+    brand_name: str
+    # LabelIngredient (name + strength_mg=None), the same shape
+    # app.api.products.decompose() already knows how to resolve -- a
+    # user-entered ingredient goes through the identical registry lookup, and
+    # comes back `unmatched` for the same honest reason a cosmetic ingredient
+    # in an openFDA label would.
+    ingredients: tuple[LabelIngredient, ...]
+
+
+_user_products: dict[str, UserEnteredProduct] = {}
+
+
+def register_user_product(
+    brand_name: str, ingredient_names: list[str]
+) -> UserEnteredProduct:
+    product = UserEnteredProduct(
+        id=f"user_{uuid.uuid4().hex[:12]}",
+        brand_name=brand_name,
+        ingredients=tuple(
+            LabelIngredient(name=n.strip(), strength_mg=None)
+            for n in ingredient_names
+            if n.strip()
+        ),
+    )
+    _user_products[product.id] = product
+    return product
+
+
+def get_user_product(product_id: str) -> UserEnteredProduct | None:
+    return _user_products.get(product_id)
+
+
+def clear_user_products() -> None:
+    _user_products.clear()

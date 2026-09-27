@@ -118,11 +118,27 @@ class DoseRequest(BaseModel):
 
 
 def _find_product(product_id: str):
-    """The synthetic catalog, or a product discovered via openFDA search."""
+    """The synthetic catalog, a product discovered via openFDA search, or one
+    the user pasted an ingredient list for (app/api/skincare.py)."""
     product = PRODUCTS.get(product_id)
     if product is not None:
         return product
-    return openfda.get_discovered(product_id)
+    product = openfda.get_discovered(product_id)
+    if product is not None:
+        return product
+    return skincare.get_user_product(product_id)
+
+
+def _topical_ingredients(product) -> list[str] | None:
+    """Full ingredient list to store for the skincare checker, or None when
+    this product isn't one it applies to. Never derived from the PK
+    ingredient decomposition below -- these are unresolved label strings."""
+    names = getattr(product, "topical_ingredients", None)
+    if names:
+        return list(names)
+    if isinstance(product, skincare.UserEnteredProduct):
+        return [ing.name for ing in product.ingredients]
+    return None
 
 
 @app.post("/users/{id}/doses", status_code=201)
@@ -144,6 +160,7 @@ def log_dose(
         product_name=product.brand_name,
         taken_at=body.taken_at.isoformat(),
         quantity=body.quantity,
+        topical_ingredients=_topical_ingredients(product),
     )
     for ing in decompose(product, registry):
         event.ingredients.append(
@@ -514,3 +531,76 @@ def skincare_check(body: SkincareCheckRequest) -> dict:
         for p in body.products
     ]
     return skincare.check_ingredients(products)
+
+
+# How far back to look for an eczema mention in the daily log when
+# auto-checking logged skincare products.
+ECZEMA_LOOKBACK_DAYS = 14
+
+
+@app.get("/users/{id}/skincare-check")
+def get_skincare_check(user_id: UserId, session: Db, now: Now) -> dict:
+    """Automatically checks every topical product logged in the last 24
+    hours against the same rules as POST /skincare-check, so the user doesn't
+    have to re-enter ingredients for products they've already logged.
+    Products with no stored ingredient list are skipped, not guessed at --
+    see DoseEvent.topical_ingredients (app/api/db.py).
+    """
+    products = []
+    for ev in service.load_doses(session, user_id):
+        taken_at = datetime.fromisoformat(ev.taken_at)
+        if not (-24.0 <= service.hours_since(taken_at, now) <= 0.0):
+            continue
+        if ev.topical_ingredients:
+            products.append(
+                skincare.Product(
+                    name=ev.product_name, ingredients=tuple(ev.topical_ingredients)
+                )
+            )
+    result = skincare.check_ingredients(products)
+
+    recent_logs = logger.list_logs(
+        session, user_id, now - timedelta(days=ECZEMA_LOOKBACK_DAYS), now
+    )
+    recent_skin_texts = [
+        text for r in recent_logs for text in (r.category, r.value, r.notes) if text
+    ]
+    return skincare.annotate_eczema_context(result, recent_skin_texts)
+
+
+# --- POST /products/user-entered -----------------------------------------------
+
+
+class UserEnteredProductRequest(BaseModel):
+    name: str = Field(min_length=1)
+    ingredients: list[str] = Field(min_length=1)
+
+
+@app.post("/products/user-entered", status_code=201)
+def create_user_entered_product(body: UserEnteredProductRequest, registry: Reg) -> dict:
+    """For products openFDA has no label for -- most cosmetics, since FDA
+    regulates drugs, not cosmetics (app/api/openfda.py). The user pastes the
+    ingredient list from the packaging; it's stored and made loggable exactly
+    like a catalog or openFDA-discovered product, and checked against the
+    skincare ingredient database, never against the PK model.
+    """
+    product = skincare.register_user_product(body.name, body.ingredients)
+    ingredients = [
+        {
+            "substance_id": ing.substance_id,
+            "name": ing.name,
+            "strength_mg": ing.strength_mg,
+            "unmodeled_reason": ing.unmodeled_reason,
+        }
+        for ing in decompose(product, registry)
+    ]
+    return {
+        "id": product.id,
+        "brand_name": product.brand_name,
+        "ingredients": ingredients,
+        "has_unmodeled_ingredients": any(
+            i["unmodeled_reason"] is not None for i in ingredients
+        ),
+        "source": "user_entered",
+        "route": "TOPICAL",
+    }

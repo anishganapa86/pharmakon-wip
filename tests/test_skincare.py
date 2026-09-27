@@ -1,4 +1,4 @@
-"""app.api.skincare and POST /skincare-check.
+"""app.api.skincare, POST /skincare-check, and GET /users/{id}/skincare-check.
 
 Not PK modeling: no openFDA calls happen for the ingredient checker itself.
 tests/conftest.py's autouse fixture already stubs app.api.openfda to "no
@@ -6,15 +6,16 @@ matches" for every test, so any accidental network dependency would surface
 as an empty result rather than a real request.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api import main, skincare
+from app.api import main, openfda, skincare
 from app.api.db import Base
 
 NOW = datetime.fromisoformat("2026-09-13T18:00:00-07:00")
@@ -36,8 +37,10 @@ def client():
 
     main.app.dependency_overrides[main.get_session] = session_override
     main.app.dependency_overrides[main.get_now] = lambda: NOW
+    skincare.clear_user_products()
     yield TestClient(main.app)
     main.app.dependency_overrides.clear()
+    skincare.clear_user_products()
 
 
 # --- app.api.skincare.check_ingredients (pure function) -----------------------
@@ -135,3 +138,133 @@ def test_post_skincare_check_endpoint(client):
     assert r.status_code == 200, r.text
     body = r.json()
     assert len(body["incompatibilities"]) == 1
+
+
+# --- GET /users/{id}/skincare-check ----------------------------------------------
+
+
+def register_and_log(client, name, ingredients, hours_ago=1):
+    created = client.post(
+        "/products/user-entered", json={"name": name, "ingredients": ingredients}
+    )
+    assert created.status_code == 201, created.text
+    product_id = created.json()["id"]
+    r = client.post(
+        "/users/default/doses",
+        json={
+            "product_id": product_id,
+            "taken_at": (NOW - timedelta(hours=hours_ago)).isoformat(),
+            "quantity": 1,
+        },
+    )
+    assert r.status_code == 201, r.text
+    return product_id
+
+
+def test_get_skincare_check_finds_products_logged_in_last_24h(client):
+    register_and_log(client, "Night Serum", ["Retinol"], hours_ago=2)
+    register_and_log(client, "Morning Toner", ["Glycolic Acid"], hours_ago=1)
+
+    r = client.get("/users/default/skincare-check")
+
+    assert r.status_code == 200, r.text
+    assert len(r.json()["incompatibilities"]) == 1
+
+
+def test_get_skincare_check_ignores_doses_older_than_24h(client):
+    register_and_log(client, "Night Serum", ["Retinol"], hours_ago=30)
+    register_and_log(client, "Morning Toner", ["Glycolic Acid"], hours_ago=1)
+
+    r = client.get("/users/default/skincare-check")
+
+    assert r.json()["incompatibilities"] == []
+
+
+def test_sls_irritant_flagged_and_annotated_when_eczema_logged_recently(client):
+    register_and_log(client, "Face Wash", ["Sodium Lauryl Sulfate"])
+    log_r = client.post(
+        "/users/default/log",
+        json={
+            "category": "skin",
+            "value": "Noticed my eczema flaring up today",
+        },
+    )
+    assert log_r.status_code == 201, log_r.text
+
+    r = client.get("/users/default/skincare-check")
+
+    (found,) = r.json()["irritants"]
+    assert found["ingredient"] == "Sodium Lauryl Sulfate"
+    assert "eczema" in found["note"].lower()
+
+
+def test_sls_irritant_flagged_without_note_when_no_eczema_mention(client):
+    register_and_log(client, "Face Wash", ["Sodium Lauryl Sulfate"])
+
+    r = client.get("/users/default/skincare-check")
+
+    (found,) = r.json()["irritants"]
+    assert "note" not in found
+
+
+def test_openfda_discovered_topical_product_is_checked_automatically(
+    client, monkeypatch
+):
+    def fake_transport(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "openfda": {
+                            "brand_name": ["Cortizone-10"],
+                            "substance_name": ["HYDROCORTISONE"],
+                            "route": ["TOPICAL"],
+                        },
+                        "inactive_ingredient": ["Fragrance, Water."],
+                    }
+                ]
+            },
+        )
+
+    monkeypatch.setattr(
+        openfda, "_http", httpx.Client(transport=httpx.MockTransport(fake_transport))
+    )
+    openfda.clear_discovered()
+
+    found = client.get("/products/search", params={"q": "cortizone"}).json()["results"]
+    (product,) = [p for p in found if p["brand_name"] == "Cortizone-10"]
+
+    r = client.post(
+        "/users/default/doses",
+        json={"product_id": product["id"], "taken_at": NOW.isoformat(), "quantity": 1},
+    )
+    assert r.status_code == 201, r.text
+
+    check = client.get("/users/default/skincare-check").json()
+    (found_irritant,) = check["irritants"]
+    assert found_irritant["ingredient"] == "Fragrance"
+
+    openfda.clear_discovered()
+
+
+def test_products_without_stored_ingredients_are_skipped(client):
+    # A regular (non-topical, non-user-entered) catalog dose has no
+    # topical_ingredients -- it must not show up in the skincare check at all.
+    r = client.post(
+        "/users/default/doses",
+        json={
+            "product_id": "prod_tylenol_es_500",
+            "taken_at": NOW.isoformat(),
+            "quantity": 1,
+        },
+    )
+    assert r.status_code == 201, r.text
+
+    r = client.get("/users/default/skincare-check")
+    assert r.json() == {
+        "products": [],
+        "incompatibilities": [],
+        "irritants": [],
+        "clear": [],
+    }

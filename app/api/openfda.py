@@ -31,6 +31,7 @@ degrade. `app/api/main.py` falls back to whatever results it already has
 from __future__ import annotations
 
 import hashlib
+import re
 from dataclasses import dataclass
 
 import httpx
@@ -65,6 +66,11 @@ class OpenFDAProduct:
     ingredients: tuple[OpenFDAIngredient, ...]
     route: str | None  # e.g. "ORAL", "TOPICAL", as labelled; None if absent
     matched_via: str  # "name" | "indications_and_usage" | "purpose"
+    # Full ingredient list (active + inactive) as labelled, for TOPICAL
+    # products only -- for the skincare ingredient checker (app/api/skincare.py),
+    # never for app.pk. None when the label has no active_ingredient /
+    # inactive_ingredient text, or the route isn't topical.
+    topical_ingredients: tuple[str, ...] | None = None
 
 
 # product_id -> OpenFDAProduct, populated as search results are parsed, so a
@@ -101,6 +107,34 @@ def _product_id(brand_name: str, substance_names: list[str]) -> str:
     return "openfda_" + hashlib.sha1(key.encode()).hexdigest()[:12]
 
 
+def _parse_ingredient_list(text: str) -> list[str]:
+    """Split a label's free-text ingredient paragraph into names.
+
+    Real label text ("Water, Glycerin, Fragrance...") is comma/semicolon
+    delimited prose, not a structured list, so this is a delimiter split, not
+    a dose parse -- unlike a milligram value (CLAUDE.md: "refuse rather than
+    guess"), a missed or extra token here can't misattribute a dose; the
+    failure mode is a name the checker doesn't see, not a fabricated number.
+    """
+    parts = re.split(r"[,;\n]", text)
+    return [p.strip().strip(".") for p in parts if p.strip().strip(".")]
+
+
+def _topical_ingredients(result: dict, route: str | None) -> tuple[str, ...] | None:
+    if route != "TOPICAL":
+        return None
+    names: list[str] = []
+    seen: set[str] = set()
+    for field in ("active_ingredient", "inactive_ingredient"):
+        for text in result.get(field, []):
+            for name in _parse_ingredient_list(text):
+                key = name.lower()
+                if key not in seen:
+                    seen.add(key)
+                    names.append(name)
+    return tuple(names) if names else None
+
+
 def _to_product(result: dict, matched_via: str) -> OpenFDAProduct | None:
     """None when the label carries no ingredient names to hang a dose on."""
     meta = result.get("openfda", {})
@@ -119,6 +153,7 @@ def _to_product(result: dict, matched_via: str) -> OpenFDAProduct | None:
         ingredients=tuple(OpenFDAIngredient(name=s) for s in substances),
         route=route,
         matched_via=matched_via,
+        topical_ingredients=_topical_ingredients(result, route),
     )
     _discovered[pid] = product
     return product

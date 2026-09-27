@@ -79,11 +79,22 @@ def fake_openfda(monkeypatch):
     openfda.clear_discovered()
 
 
-def label(brand_name: str, substances: list[str], route: str | None = None) -> dict:
+def label(
+    brand_name: str,
+    substances: list[str],
+    route: str | None = None,
+    active_ingredient: list[str] | None = None,
+    inactive_ingredient: list[str] | None = None,
+) -> dict:
     meta = {"brand_name": [brand_name], "substance_name": substances}
     if route:
         meta["route"] = [route]
-    return {"openfda": meta}
+    result = {"openfda": meta}
+    if active_ingredient:
+        result["active_ingredient"] = active_ingredient
+    if inactive_ingredient:
+        result["inactive_ingredient"] = inactive_ingredient
+    return result
 
 
 # --- app.api.openfda: name search --------------------------------------------
@@ -174,6 +185,52 @@ def test_search_by_name_falls_back_to_drugsfda(fake_openfda, monkeypatch):
     assert product.brand_name == "Old Rx Drug"
     assert [i.name for i in product.ingredients] == ["SOME SUBSTANCE"]
     assert drugsfda_calls  # the drugsfda endpoint was actually queried
+
+
+def test_topical_product_carries_full_ingredient_list_for_skincare_check(
+    fake_openfda,
+):
+    fake_openfda.routes["brand_name"] = [
+        label(
+            "Cortizone-10",
+            ["HYDROCORTISONE"],
+            route="TOPICAL",
+            active_ingredient=["Hydrocortisone 1%"],
+            inactive_ingredient=["Water, Fragrance, Glycerin."],
+        )
+    ]
+
+    (product,) = openfda.search_by_name("cortizone")
+
+    assert product.topical_ingredients == (
+        "Hydrocortisone 1%",
+        "Water",
+        "Fragrance",
+        "Glycerin",
+    )
+
+
+def test_non_topical_product_has_no_topical_ingredients(fake_openfda):
+    fake_openfda.routes["brand_name"] = [
+        label(
+            "Amoxil",
+            ["AMOXICILLIN"],
+            route="ORAL",
+            inactive_ingredient=["Starch, Talc."],
+        )
+    ]
+
+    (product,) = openfda.search_by_name("amoxil")
+
+    assert product.topical_ingredients is None
+
+
+def test_topical_product_with_no_ingredient_text_has_none(fake_openfda):
+    fake_openfda.routes["brand_name"] = [label("Plain", ["SOMETHING"], route="TOPICAL")]
+
+    (product,) = openfda.search_by_name("plain")
+
+    assert product.topical_ingredients is None
 
 
 def test_result_limit_is_ten(fake_openfda):

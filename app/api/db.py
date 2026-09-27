@@ -28,6 +28,12 @@ class DoseEvent(Base):
     product_name: Mapped[str] = mapped_column(String)
     taken_at: Mapped[str] = mapped_column(String)  # ISO 8601 + offset
     quantity: Mapped[float] = mapped_column(Float)
+    # Full ingredient list (active + inactive) as labelled, for topical/
+    # cosmetic products only -- see app/api/skincare.py. Null for anything
+    # not checked against the skincare ingredient database. Deliberately
+    # separate from `ingredients` below: these are unresolved label strings,
+    # never PK-decomposed, and never fed to app.pk or app.detect.
+    topical_ingredients: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     ingredients: Mapped[list[DoseIngredient]] = relationship(
         back_populates="dose_event", cascade="all, delete-orphan", lazy="selectin"
