@@ -17,6 +17,7 @@ from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, BaseModel, Field
 from sqlalchemy.orm import Session, sessionmaker
@@ -40,6 +41,14 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="Pharmakon", lifespan=lifespan)
+
+# Vite's dev server. No credentials: v1 has no auth.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 # --- Dependencies (overridden in tests) ---------------------------------------

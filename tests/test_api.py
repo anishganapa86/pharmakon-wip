@@ -407,3 +407,24 @@ def test_still_over_the_limit_means_still_active(client, clock):
 
 def test_unknown_user_alerts_is_404(client):
     assert client.get("/users/nobody/alerts").status_code == 404
+
+
+# --- CORS ----------------------------------------------------------------------
+
+
+def test_cors_allows_the_vite_dev_server(client):
+    r = client.options(
+        "/users/default/doses",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert r.status_code == 200
+    assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_cors_does_not_allow_other_origins(client):
+    r = client.get("/users/default/alerts", headers={"Origin": "http://evil.test"})
+    assert "access-control-allow-origin" not in r.headers
