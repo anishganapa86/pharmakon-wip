@@ -109,7 +109,11 @@ def test_caffeine_above_threshold_with_label_match_is_flagged(client, openfda):
     body = check(client, "headache")
 
     (match,) = body["matches"]
-    assert match["substance"] == {"id": "caffeine", "display_name": "Caffeine"}
+    assert match["substance"] == {
+        "id": "caffeine",
+        "display_name": "Caffeine",
+        "description": "Stimulant found in coffee, tea, and energy drinks",
+    }
     assert match["symptom"] == "headache"
     assert match["source"] == "openfda_label"
     assert match["threshold_status"] == "above"

@@ -19,6 +19,9 @@ export type ConcentrationUnit = "mg/L";
 export interface SubstanceRef {
   id: string; // registry id, e.g. "acetaminophen"
   display_name: string;
+  // Plain-language "what this is / does", from the registry field of the
+  // same name. null unless the registry documents one -- never invented.
+  description: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -191,6 +194,10 @@ export interface ProductSearchResponse {
 export interface LoggedIngredient {
   name: string; // as labelled
   substance_id: string | null;
+  // Registry display name and plain-language description, both null when
+  // substance_id is null (unmatched -- no registry entry to pull from).
+  display_name: string | null;
+  description: string | null;
   amount_mg: number | null; // null when unmodeled
   unmodeled_reason: UnmodeledReason | null;
 }

@@ -310,6 +310,10 @@
   color: var(--text-h);
 }
 
+.chart-subtitle {
+  margin: 0 0 8px;
+}
+
 .chart-plot {
   width: 100%;
   height: 300px;

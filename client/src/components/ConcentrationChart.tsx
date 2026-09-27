@@ -34,6 +34,17 @@ function Notes({ notes }: { notes: string[] }) {
   );
 }
 
+function SubstanceHeading({ curve }: { curve: SubstanceCurve }) {
+  return (
+    <>
+      <h3>{curve.substance.display_name}</h3>
+      {curve.substance.description && (
+        <p className="chart-subtitle muted small">{curve.substance.description}</p>
+      )}
+    </>
+  );
+}
+
 export function ConcentrationChart({ curve, window }: Props) {
   const name = curve.substance.display_name;
 
@@ -42,7 +53,7 @@ export function ConcentrationChart({ curve, window }: Props) {
   if (!curve.modelable) {
     return (
       <div className="chart">
-        <h3>{name}</h3>
+        <SubstanceHeading curve={curve} />
         <p>This substance can't be charted: {curve.reason}</p>
         <Notes notes={curve.notes} />
       </div>
@@ -52,7 +63,7 @@ export function ConcentrationChart({ curve, window }: Props) {
   if (curve.points.length === 0) {
     return (
       <div className="chart">
-        <h3>{name}</h3>
+        <SubstanceHeading curve={curve} />
         <p>No data points yet.</p>
         <Notes notes={curve.notes} />
       </div>
@@ -71,7 +82,7 @@ export function ConcentrationChart({ curve, window }: Props) {
 
   return (
     <div className="chart">
-      <h3>{name}</h3>
+      <SubstanceHeading curve={curve} />
       <div className="chart-plot">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>

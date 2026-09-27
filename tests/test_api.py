@@ -174,6 +174,7 @@ def test_hidden_acetaminophen_across_products_triggers_duplication(client):
             "damage. Exceeding it repeatedly can cause acute liver failure. "
             "Risk increases with alcohol use or liver impairment."
         ),
+        "description": "Pain reliever and fever reducer",
     }
     assert alert["uncounted_doses"] == []
 
@@ -261,7 +262,11 @@ def test_curve_shape_with_no_doses(client):
     r = curve(client)
     assert r.status_code == 200
     body = r.json()
-    assert body["substance"] == {"id": "caffeine", "display_name": "Caffeine"}
+    assert body["substance"] == {
+        "id": "caffeine",
+        "display_name": "Caffeine",
+        "description": "Stimulant found in coffee, tea, and energy drinks",
+    }
     assert body["modelable"] is True
     assert body["reason"] is None
     assert body["unit"] == "mg/L"
@@ -516,6 +521,8 @@ def test_dose_list_returns_doses_oldest_first_with_ingredients(client):
         {
             "name": "ACETAMINOPHEN",
             "substance_id": "acetaminophen",
+            "display_name": "Acetaminophen",
+            "description": "Pain reliever and fever reducer",
             "amount_mg": 1000,
             "unmodeled_reason": None,
         }

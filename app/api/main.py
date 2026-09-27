@@ -187,7 +187,7 @@ def log_dose(
 
 
 @app.get("/users/{id}/doses")
-def list_doses(user_id: UserId, session: Db) -> list[dict]:
+def list_doses(user_id: UserId, session: Db, registry: Reg) -> list[dict]:
     """Every logged dose, oldest first, as decomposed at logging time."""
     events = sorted(
         service.load_doses(session, user_id),
@@ -201,13 +201,7 @@ def list_doses(user_id: UserId, session: Db) -> list[dict]:
             "taken_at": ev.taken_at,
             "quantity": ev.quantity,
             "ingredients": [
-                {
-                    "name": ing.ingredient_name,
-                    "substance_id": ing.substance_id,
-                    "amount_mg": ing.amount_mg,
-                    "unmodeled_reason": ing.unmodeled_reason,
-                }
-                for ing in ev.ingredients
+                service.ingredient_json(ing, registry) for ing in ev.ingredients
             ],
         }
         for ev in events
@@ -245,7 +239,11 @@ def get_curve(
         now,
     )
     return {
-        "substance": {"id": substance_id, "display_name": entry["name"]},
+        "substance": {
+            "id": substance_id,
+            "display_name": entry["name"],
+            "description": entry.get("description"),
+        },
         "modelable": result.modelable,
         "reason": result.reason,
         "unit": "mg/L",
@@ -452,6 +450,7 @@ def delete_log(log_id: str, user_id: UserId, session: Db) -> None:
 def get_timeline(
     user_id: UserId,
     session: Db,
+    registry: Reg,
     now: Now,
     from_: Annotated[AwareDatetime | None, Query(alias="from")] = None,
     to: AwareDatetime | None = None,
@@ -483,13 +482,7 @@ def get_timeline(
                 "product_name": ev.product_name,
                 "quantity": ev.quantity,
                 "ingredients": [
-                    {
-                        "name": ing.ingredient_name,
-                        "substance_id": ing.substance_id,
-                        "amount_mg": ing.amount_mg,
-                        "unmodeled_reason": ing.unmodeled_reason,
-                    }
-                    for ing in ev.ingredients
+                    service.ingredient_json(ing, registry) for ing in ev.ingredients
                 ],
             }
         )

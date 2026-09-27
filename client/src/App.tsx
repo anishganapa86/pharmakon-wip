@@ -18,7 +18,12 @@ import { SideEffectProfile } from "./components/SideEffectProfile";
 import { Skincare } from "./components/Skincare";
 import { SymptomCheck } from "./components/SymptomCheck";
 import { Timeline } from "./components/Timeline";
-import { ingredientLabel, notModeledReason, productModelable } from "./labels";
+import {
+  ingredientLabel,
+  loggedIngredientLabel,
+  notModeledReason,
+  productModelable,
+} from "./labels";
 import { formatDateClock, HOUR_MS } from "./time";
 import type {
   Alert,
@@ -370,6 +375,9 @@ function App() {
                         <strong>{d.product_name}</strong>
                         <span className="muted">
                           {formatDateClock(new Date(d.taken_at).getTime())}
+                        </span>
+                        <span className="muted small">
+                          {d.ingredients.map(loggedIngredientLabel).join(" · ")}
                         </span>
                       </div>
                       {modeled ? (

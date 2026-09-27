@@ -1,4 +1,8 @@
-import type { Ingredient, ProductSearchResult } from "./types/contract";
+import type {
+  Ingredient,
+  LoggedIngredient,
+  ProductSearchResult,
+} from "./types/contract";
 
 /** One ingredient as a user should read it, naming why it isn't counted. */
 export function ingredientLabel(i: Ingredient): string {
@@ -95,3 +99,36 @@ export function showsBodyLocation(category: string): boolean {
 /** A logged dose with no modelable ingredient, shown on the timeline. Same
  * honest framing as notModeledReason, worded for the timeline card. */
 export const TIMELINE_DOSE_NOT_MODELED = "Logged — not modeled (topical/unmatched)";
+
+/** Title Case for a raw openFDA label string (e.g. "GLYCERIN" -> "Glycerin").
+ * Used only when there's no registry match -- ALL CAPS reads as shouting,
+ * but there's no canonical registry name to show instead. */
+export function titleCaseIngredient(raw: string): string {
+  return raw
+    .toLowerCase()
+    .split(" ")
+    .map((w) => (w.length === 0 ? w : w[0].toUpperCase() + w.slice(1)))
+    .join(" ");
+}
+
+/** The name to show for a logged ingredient: the registry's canonical name
+ * when resolved, else the raw label title-cased. */
+export function ingredientDisplayName(i: LoggedIngredient): string {
+  return i.display_name ?? titleCaseIngredient(i.name);
+}
+
+/** A logged ingredient as a user should read it: canonical name, its
+ * plain-language description in parentheses when the registry has one
+ * (never for an unmatched ingredient -- there's no entry to describe it),
+ * and why it isn't counted when it isn't. */
+export function loggedIngredientLabel(i: LoggedIngredient): string {
+  const name = ingredientDisplayName(i);
+  const withDescription = i.description ? `${name} (${i.description})` : name;
+  if (i.unmodeled_reason === "unmatched") {
+    return `${withDescription} (not recognized, not counted)`;
+  }
+  if (i.unmodeled_reason === "unknown_strength") {
+    return `${withDescription} (strength unknown, not counted)`;
+  }
+  return `${withDescription} ${i.amount_mg} mg`;
+}

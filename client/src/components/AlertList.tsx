@@ -18,6 +18,11 @@ function AlertItem({ alert }: { alert: Alert }) {
         {alert.substance && (
           <span className="alert-substance">{alert.substance.display_name}</span>
         )}
+        {alert.substance?.description && (
+          <span className="alert-substance-description muted small">
+            {alert.substance.description}
+          </span>
+        )}
         <span className="alert-kind">{alert.kind.replace("_", " ")}</span>
       </div>
       <p>{alert.message}</p>

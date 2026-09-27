@@ -26,7 +26,7 @@ from ..pk.engine import (
 )
 from ..pk.individualize import Patient, adjusted_ke
 from ..registry.loader import Registry
-from .db import AlertRecord, DoseEvent
+from .db import AlertRecord, DoseEvent, DoseIngredient
 
 # Population reference subject, used until PUT /profile exists. No serum
 # creatinine, so renally cleared substances get the population-clearance note.
@@ -42,6 +42,29 @@ def hours_since(t: datetime, origin: datetime) -> float:
 
 def load_doses(session: Session, user_id: str) -> list[DoseEvent]:
     return list(session.scalars(select(DoseEvent).where(DoseEvent.user_id == user_id)))
+
+
+def ingredient_json(ing: DoseIngredient, registry: Registry) -> dict:
+    """One logged ingredient as shown to the user.
+
+    `display_name` and `description` come from the registry and are null
+    when `substance_id` is null (unmatched) -- there's no entry to pull them
+    from. The client falls back to title-casing the raw label in that case.
+    """
+    display_name = None
+    description = None
+    if ing.substance_id is not None:
+        entry = registry.get(ing.substance_id)
+        display_name = entry["name"]
+        description = entry.get("description")
+    return {
+        "name": ing.ingredient_name,
+        "substance_id": ing.substance_id,
+        "display_name": display_name,
+        "description": description,
+        "amount_mg": ing.amount_mg,
+        "unmodeled_reason": ing.unmodeled_reason,
+    }
 
 
 def logged_doses(events: list[DoseEvent], origin: datetime) -> list[LoggedDose]:
@@ -188,6 +211,9 @@ def alert_json(record: AlertRecord, registry: Registry) -> dict:
             # invented here (CLAUDE.md: never a plausible-looking coefficient
             # or claim without a source).
             "threshold_explanation": entry.get("threshold_explanation"),
+            # Plain-language "what this is / does", from the registry field
+            # of the same name. Null unless the registry documents one.
+            "description": entry.get("description"),
         }
     return {
         "id": record.id,

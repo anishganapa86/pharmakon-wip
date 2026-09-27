@@ -9,6 +9,7 @@
     "common_side_effects: a short local fallback list for the symptom check, used only when openFDA has no label.",
     "It is from general knowledge, not a cited source, and is unverified like everything else here.",
     "threshold_explanation: why the threshold_24h_mg limit matters, shown as 'Why this matters' next to an alert. Null unless the limit's clinical consequence is documented; conservative and factual only -- no frequency, mortality, or comparison claims unless cited. Unverified like everything else here.",
+    "description: a brief plain-language explanation of what the substance IS and what it DOES, shown next to the substance name throughout the app (curves, timeline, dose history, alerts). Null unless written and checked against general pharmacology knowledge; unverified like everything else here. Never a dosing or safety claim -- that's threshold_explanation's job.",
     "Units: half_life_hours h | vd_l_per_kg L/kg | ka_per_hour 1/h | threshold_24h_mg, threshold_single_mg mg | threshold_concentration_mg_per_l mg/L (null unless a published concentration is cited; never derived from a dose threshold)"
   ],
   "substances": [
@@ -18,6 +19,7 @@
      "threshold_24h_mg": 400, "threshold_single_mg": 200, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": "Above 400 mg/day, caffeine is associated with anxiety, insomnia, rapid heartbeat, and digestive issues. Individual sensitivity varies widely.",
      "common_side_effects": ["headache", "insomnia", "anxiety", "palpitations"],
+     "description": "Stimulant found in coffee, tea, and energy drinks",
      "source": "PLACEHOLDER", "verified": false},
 
     {"id": "acetaminophen", "name": "Acetaminophen", "aliases": ["paracetamol", "APAP", "acetaminoph", "N-acetyl-p-aminophenol"],
@@ -26,6 +28,7 @@
      "threshold_24h_mg": 4000, "threshold_single_mg": 1000, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": "The 4000 mg daily limit is set by the FDA to prevent liver damage. Exceeding it repeatedly can cause acute liver failure. Risk increases with alcohol use or liver impairment.",
      "common_side_effects": ["nausea", "rash"],
+     "description": "Pain reliever and fever reducer",
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Canonical duplication case. Threshold drops with hepatic impairment or chronic alcohol use."},
 
@@ -35,6 +38,7 @@
      "threshold_24h_mg": 1200, "threshold_single_mg": 400, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": "The 1200 mg OTC daily limit reduces the risk of stomach bleeding, kidney problems, and cardiovascular events. Higher doses are sometimes prescribed under supervision.",
      "common_side_effects": ["stomach pain", "nausea", "headache", "dizziness"],
+     "description": "Anti-inflammatory pain reliever (NSAID)",
      "source": "PLACEHOLDER", "verified": false,
      "notes": "1200 mg is the OTC ceiling; prescription ceiling is higher. Registry should eventually carry both."},
 
@@ -44,6 +48,7 @@
      "threshold_24h_mg": 660, "threshold_single_mg": 220, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": "Anti-inflammatory pain reliever (NSAID)",
      "source": "PLACEHOLDER", "verified": false},
 
     {"id": "aspirin", "name": "Aspirin", "aliases": ["acetylsalicylic acid", "ASA", "salicylate"],
@@ -52,6 +57,7 @@
      "threshold_24h_mg": 4000, "threshold_single_mg": 1000, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": "Pain reliever, anti-inflammatory, blood thinner",
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Hydrolysed to salicylate, which has saturable elimination. The engine refuses to curve this; show a warning instead."},
 
@@ -61,6 +67,7 @@
      "threshold_24h_mg": 300, "threshold_single_mg": 50, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": "Exceeding 300 mg in 24 hours increases risk of seizures, hallucinations, and cardiac arrhythmia. Older adults are more sensitive.",
      "common_side_effects": ["drowsiness", "dry mouth", "dizziness"],
+     "description": "Antihistamine for allergies and sleep",
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Second duplication case: sleep aids and cold medicines both carry it."},
 
@@ -70,6 +77,7 @@
      "threshold_24h_mg": 10, "threshold_single_mg": 10, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": "Non-drowsy antihistamine for allergies",
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Active metabolite desloratadine has a longer half-life; single-parent modelling understates duration."},
 
@@ -79,6 +87,7 @@
      "threshold_24h_mg": 10, "threshold_single_mg": 10, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": "Antihistamine for allergies",
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Good renal-adjustment demo: largely excreted unchanged."},
 
@@ -88,6 +97,7 @@
      "threshold_24h_mg": 2550, "threshold_single_mg": 1000, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": ["nausea", "diarrhea", "stomach pain"],
+     "description": "Blood sugar control for type 2 diabetes",
      "source": "PLACEHOLDER", "verified": false,
      "notes": "The strongest case for Cockcroft-Gault in the registry."},
 
@@ -97,6 +107,7 @@
      "threshold_24h_mg": 40, "threshold_single_mg": 40, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false},
 
     {"id": "amoxicillin", "name": "Amoxicillin", "aliases": ["amoxicillin trihydrate", "amoxycillin"],
@@ -105,6 +116,7 @@
      "threshold_24h_mg": null, "threshold_single_mg": null, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false},
 
     {"id": "azithromycin", "name": "Azithromycin", "aliases": ["azithromycin dihydrate"],
@@ -113,6 +125,7 @@
      "threshold_24h_mg": null, "threshold_single_mg": null, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Very long half-life; useful as an accumulation demo over a 5-day course."},
 
@@ -122,6 +135,7 @@
      "threshold_24h_mg": 200, "threshold_single_mg": 200, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": "Antidepressant (SSRI)",
      "source": "PLACEHOLDER", "verified": false},
 
     {"id": "atorvastatin", "name": "Atorvastatin", "aliases": ["atorvastatin calcium"],
@@ -130,6 +144,7 @@
      "threshold_24h_mg": 80, "threshold_single_mg": 80, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false},
 
     {"id": "warfarin", "name": "Warfarin", "aliases": ["warfarin sodium"],
@@ -138,6 +153,7 @@
      "threshold_24h_mg": null, "threshold_single_mg": null, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Dosing is INR-driven, not concentration-driven. No threshold is meaningful. The UI must not imply the curve tells you whether a dose is safe."},
 
@@ -147,6 +163,7 @@
      "threshold_24h_mg": 40, "threshold_single_mg": 40, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": "Reduces stomach acid (proton pump inhibitor)",
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Plasma half-life is short but the pharmacodynamic effect long outlasts it. Concentration curve is a poor proxy for effect here."},
 
@@ -156,6 +173,7 @@
      "threshold_24h_mg": 10, "threshold_single_mg": 10, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Supplement; bioavailability is highly variable between people and products."},
 
@@ -165,6 +183,7 @@
      "threshold_24h_mg": null, "threshold_single_mg": null, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Bioavailability differs enormously by route. One value across gum, patch and inhalation is wrong; split into route-specific entries in Phase 2."},
 
@@ -174,6 +193,7 @@
      "threshold_24h_mg": null, "threshold_single_mg": null, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Zero-order elimination, roughly a fixed amount per hour regardless of concentration. The first-order engine cannot model it and raises UnsupportedKinetics. Either implement Widmark separately or drop alcohol from v1."},
 
@@ -183,6 +203,7 @@
      "threshold_24h_mg": null, "threshold_single_mg": null, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false,
      "notes": "Transdermal absorption is low but nonzero and highly variable with scalp condition. This is the substance the overview leans on rhetorically, so its numbers need real sourcing before it appears in any demo."},
 
@@ -192,6 +213,7 @@
      "threshold_24h_mg": 5, "threshold_single_mg": 5, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
+     "description": null,
      "source": "PLACEHOLDER", "verified": false},
 
     {"id": "doxylamine", "name": "Doxylamine", "aliases": ["doxylamine succinate"],
@@ -200,6 +222,7 @@
      "threshold_24h_mg": 25, "threshold_single_mg": 25, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": ["drowsiness", "dry mouth", "dizziness"],
+     "description": "Antihistamine used as a sleep aid and in cold medicines",
      "source": "TODO — verify", "verified": false,
      "notes": "Sleep-aid label max is 25 mg/24h; also present at low dose in NyQuil-type combination products, another duplication case alongside diphenhydramine."},
 
@@ -209,6 +232,7 @@
      "threshold_24h_mg": 60, "threshold_single_mg": 10, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": ["nervousness", "headache", "elevated blood pressure"],
+     "description": "Nasal decongestant",
      "source": "TODO — verify", "verified": false,
      "notes": "Oral bioavailability is low and disputed (extensive first-pass metabolism); the FDA's 2023 advisory review questioned its OTC efficacy at labelled doses. Population value here is a rough placeholder, not a settled number."},
 
@@ -218,6 +242,7 @@
      "threshold_24h_mg": 2400, "threshold_single_mg": 400, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": ["nausea", "headache", "dizziness"],
+     "description": "Expectorant \u2014 loosens mucus",
      "source": "TODO — verify", "verified": false,
      "notes": "Immediate-release OTC ceiling; extended-release products dose differently (up to 1200 mg per dose) and aren't distinguished here yet."},
 
@@ -227,6 +252,7 @@
      "threshold_24h_mg": 40, "threshold_single_mg": 20, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": ["headache", "dizziness", "constipation"],
+     "description": "Reduces stomach acid (H2 blocker)",
      "source": "TODO — verify", "verified": false,
      "notes": "OTC (Pepcid AC) label ceiling; prescription dosing is higher and not modelled here. Largely renally excreted, another Cockcroft-Gault candidate."},
 
@@ -236,6 +262,7 @@
      "threshold_24h_mg": 120, "threshold_single_mg": 30, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": ["dizziness", "drowsiness", "nausea"],
+     "description": "Cough suppressant",
      "source": "TODO — verify", "verified": false,
      "notes": "CYP2D6 substrate; half-life is markedly longer in poor metabolizers, so a single population value understates exposure for that subgroup. Present in NyQuil, DayQuil, and Mucinex DM -- a third duplication case alongside acetaminophen and doxylamine."}
   ]

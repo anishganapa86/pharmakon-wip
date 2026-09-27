@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchTimeline } from "../api";
-import { categoryColor, TIMELINE_DOSE_NOT_MODELED } from "../labels";
+import {
+  categoryColor,
+  loggedIngredientLabel,
+  TIMELINE_DOSE_NOT_MODELED,
+} from "../labels";
 import { dayKey, formatClock, formatDateHeader } from "../time";
 import type { TimelineDoseEntry, TimelineEntry } from "../types/contract";
 
@@ -14,16 +18,6 @@ function entryMs(e: TimelineEntry): number {
   return new Date(e.timestamp).getTime();
 }
 
-function doseIngredientLabel(i: TimelineDoseEntry["ingredients"][number]): string {
-  if (i.unmodeled_reason === "unmatched") {
-    return `${i.name} (not recognized, not counted)`;
-  }
-  if (i.unmodeled_reason === "unknown_strength") {
-    return `${i.name} (strength unknown, not counted)`;
-  }
-  return `${i.name} ${i.amount_mg} mg`;
-}
-
 function DoseCard({ entry }: { entry: TimelineDoseEntry }) {
   const modeled = entry.ingredients.some((i) => i.unmodeled_reason === null);
   return (
@@ -34,7 +28,7 @@ function DoseCard({ entry }: { entry: TimelineDoseEntry }) {
         <span className="muted timeline-time">{formatClock(entryMs(entry))}</span>
       </div>
       <p className="timeline-detail">
-        {entry.quantity} × {entry.ingredients.map(doseIngredientLabel).join(" · ")}
+        {entry.quantity} × {entry.ingredients.map(loggedIngredientLabel).join(" · ")}
       </p>
       {!modeled && <p className="muted small">{TIMELINE_DOSE_NOT_MODELED}</p>}
     </li>

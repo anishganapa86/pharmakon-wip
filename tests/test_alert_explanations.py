@@ -42,6 +42,18 @@ def test_undocumented_substance_is_null_not_invented():
     assert body["substance"]["threshold_explanation"] is None
 
 
+def test_documented_substance_carries_its_description():
+    registry = load_registry()
+    body = alert_json(_record("acetaminophen"), registry)
+    assert body["substance"]["description"] == "Pain reliever and fever reducer"
+
+
+def test_undescribed_substance_is_null_not_invented():
+    registry = load_registry()
+    body = alert_json(_record("lisinopril"), registry)
+    assert body["substance"]["description"] is None
+
+
 def test_product_level_incomplete_data_has_no_substance_to_explain():
     registry = load_registry()
     body = alert_json(_record(None), registry)

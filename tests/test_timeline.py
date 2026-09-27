@@ -95,6 +95,8 @@ def test_dose_entry_shape(client):
     (ing,) = entry["ingredients"]
     assert ing["name"] == "ACETAMINOPHEN"
     assert ing["substance_id"] == "acetaminophen"
+    assert ing["display_name"] == "Acetaminophen"
+    assert ing["description"] == "Pain reliever and fever reducer"
     assert ing["amount_mg"] == 1000
     assert ing["unmodeled_reason"] is None
 

@@ -271,7 +271,11 @@ def side_effect_profile(
 
         substances.append(
             {
-                "substance": {"id": entry["id"], "display_name": entry["name"]},
+                "substance": {
+                    "id": entry["id"],
+                    "display_name": entry["name"],
+                    "description": entry.get("description"),
+                },
                 "current_level_mg_l": level["current_level_mg_l"],
                 "total_24h_mg": level["total_24h_mg"],
                 "threshold_24h_mg": level["threshold_24h_mg"],
@@ -368,7 +372,11 @@ def _match(entry, symptom, source, level, recent, by_id) -> dict:
             }
         )
     return {
-        "substance": {"id": entry["id"], "display_name": entry["name"]},
+        "substance": {
+            "id": entry["id"],
+            "display_name": entry["name"],
+            "description": entry.get("description"),
+        },
         "symptom": symptom,
         "source": source,
         "source_label": SOURCE_LABELS[source],
