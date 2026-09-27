@@ -58,8 +58,6 @@ PRODUCTS: dict[str, Product] = {
         ),
         Product("prod_advil_200", "Advil", (LabelIngredient("IBUPROFEN", 200),)),
         Product("prod_nodoz_200", "NoDoz", (LabelIngredient("CAFFEINE", 200),)),
-        # Dextromethorphan is not in the registry, so it comes back `unmatched`
-        # — the manual-entry path, not a guess.
         Product(
             "prod_nyquil_liquicap",
             "NyQuil",

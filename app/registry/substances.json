@@ -228,6 +228,15 @@
      "threshold_explanation": null,
      "common_side_effects": ["headache", "dizziness", "constipation"],
      "source": "TODO — verify", "verified": false,
-     "notes": "OTC (Pepcid AC) label ceiling; prescription dosing is higher and not modelled here. Largely renally excreted, another Cockcroft-Gault candidate."}
+     "notes": "OTC (Pepcid AC) label ceiling; prescription dosing is higher and not modelled here. Largely renally excreted, another Cockcroft-Gault candidate."},
+
+    {"id": "dextromethorphan", "name": "Dextromethorphan", "aliases": ["dextromethorphan hbr", "dextromethorphan hydrobromide", "dxm"],
+     "half_life_hours": 3.5, "vd_l_per_kg": 5.0, "bioavailability": 0.11, "ka_per_hour": 1.5,
+     "clearance_route": "hepatic", "kinetics": "first_order",
+     "threshold_24h_mg": 120, "threshold_single_mg": 30, "threshold_concentration_mg_per_l": null,
+     "threshold_explanation": null,
+     "common_side_effects": ["dizziness", "drowsiness", "nausea"],
+     "source": "TODO — verify", "verified": false,
+     "notes": "CYP2D6 substrate; half-life is markedly longer in poor metabolizers, so a single population value understates exposure for that subgroup. Present in NyQuil, DayQuil, and Mucinex DM -- a third duplication case alongside acetaminophen and doxylamine."}
   ]
 }

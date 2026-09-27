@@ -460,10 +460,9 @@ def test_search_matches_brand_name_case_insensitively(client):
     assert by_name["ACETAMINOPHEN"]["unmodeled_reason"] is None
     assert by_name["DOXYLAMINE SUCCINATE"]["substance_id"] == "doxylamine"
     assert by_name["DOXYLAMINE SUCCINATE"]["unmodeled_reason"] is None
-    # Not in the registry: refused, not guessed, and the product says so.
-    assert by_name["DEXTROMETHORPHAN HBR"]["substance_id"] is None
-    assert by_name["DEXTROMETHORPHAN HBR"]["unmodeled_reason"] == "unmatched"
-    assert product["has_unmodeled_ingredients"] is True
+    assert by_name["DEXTROMETHORPHAN HBR"]["substance_id"] == "dextromethorphan"
+    assert by_name["DEXTROMETHORPHAN HBR"]["unmodeled_reason"] is None
+    assert product["has_unmodeled_ingredients"] is False
 
 
 def test_search_matches_ingredient_names(client):

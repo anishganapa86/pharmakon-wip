@@ -178,6 +178,18 @@ def test_salt_suffix_stripping():
     assert strip_salt_tokens(normalize("Sertraline Hydrochloride")) == "sertraline"
 
 
+def test_dextromethorphan_hbr_label_variants_resolve():
+    """Regression: openFDA/label text prints "HBr"/"HBR"; normalize() lowercases
+    both to the same key, so the fix is the registry alias, not normalization."""
+    reg = load_registry()
+    for variant in [
+        "DEXTROMETHORPHAN HBR",
+        "Dextromethorphan HBr",
+        "dextromethorphan hydrobromide",
+    ]:
+        assert reg.resolve(variant) == "dextromethorphan", variant
+
+
 def test_unknown_ingredient_returns_none_rather_than_guessing():
     """None routes to manual entry, which works. A wrong guess mis-attributes a dose."""
     assert load_registry().resolve("zzqx anti-inflammatory complex") is None
