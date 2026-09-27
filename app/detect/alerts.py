@@ -4,9 +4,12 @@ Built on app.pk.engine / app.pk.individualize. Times are float hours on the
 same origin the engine's grid uses; the API layer converts to and from ISO
 timestamps at the boundary and nowhere else.
 
-Structural rule: Alert requires contributing_dose_ids. An alert the user cannot
-trace back to specific doses is not actionable, so the dataclass makes it
-impossible to construct one without them.
+Traceability: an alert the user cannot trace back to specific doses is not
+actionable. The intended invariant is that an alert's counted doses
+(contributing_dose_ids) and uncounted doses are together non-empty. Today the
+dataclass only makes contributing_dose_ids a required argument; it does not
+reject an empty list, and uncounted doses are not modelled yet. The runtime
+check is a pending follow-up (see docs/api-contract.md).
 """
 
 from __future__ import annotations

@@ -32,8 +32,15 @@ CI runs lint, format check, and tests. All three must pass.
 
 - **Concentrations are mg/L, times are hours, everywhere.** Conversion to ISO
   timestamps happens at the API boundary and nowhere else.
-- **Every `Alert` carries `contributing_dose_ids`.** The dataclass enforces it.
-  An alert the user can't trace back to specific doses is not actionable.
+- **Every alert is traceable to specific doses.** An alert the user can't
+  trace back to specific doses is not actionable. The intended invariant (see
+  `docs/api-contract.md`) is that an alert's counted doses
+  (`contributing_dose_ids`) and uncounted doses (`uncounted_doses`) are
+  *together* non-empty. **This is not enforced at runtime yet.** The `Alert`
+  dataclass only requires `contributing_dose_ids` to be passed; an empty list is
+  accepted, and `uncounted_doses` doesn't exist yet. The runtime check is a
+  pending follow-up; until it lands, don't rely on the dataclass to catch an
+  untraceable alert.
 - **Registry entries stay `verified: false`** until a human has opened the cited
   source. Never flip that flag yourself. Unverified is not the same as wrong,
   but it is not the same as right either.

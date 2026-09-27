@@ -32,7 +32,9 @@ Full instructions, both OSes, in **docs/SETUP.md**. Short version:
 - Concentrations are **mg/L** everywhere. Times are **hours**. Never mix units
   across a boundary.
 - Timestamps are ISO 8601 with timezone, always.
-- Every alert carries `contributing_dose_ids`. This is enforced by the
-  dataclass, not by convention.
+- Every alert must be traceable to specific doses: its counted and uncounted
+  doses are together non-empty. This is not yet checked at runtime — the
+  `Alert` dataclass requires `contributing_dose_ids` to be passed but accepts
+  an empty list. The runtime check is a pending follow-up.
 - Registry entries stay `verified: false` until a human has opened the cited
   source. Unverified is not the same as wrong, but it is not the same as right.
