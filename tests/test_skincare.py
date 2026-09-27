@@ -116,6 +116,51 @@ def test_aliases_are_matched():
     assert len(result["incompatibilities"]) == 1
 
 
+def test_messy_openfda_ingredient_string_matches_alias_by_substring():
+    # Real openFDA label text: dosage form, purpose, and product wording
+    # bracketing the actual ingredient name.
+    products = [
+        skincare.Product("ZO Retinol", ("Retinol",)),
+        skincare.Product(
+            "ZO Exfoliating Cleanser",
+            ("Purpose Salicylic Acid 2.0% Acne Medication",),
+        ),
+    ]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["incompatibilities"]
+    assert {found["ingredient_a"], found["ingredient_b"]} == {
+        "Retinol",
+        "Purpose Salicylic Acid 2.0% Acne Medication",
+    }
+    assert found["source"] == "American Academy of Dermatology"
+
+
+def test_messy_ingredient_string_does_not_match_unrelated_rule():
+    # "Isostearyl Alcohol" is a fatty alcohol; the irritant rule is for
+    # "denatured alcohol" specifically (see its own effect text), and
+    # substring matching must not fire on the word "alcohol" alone.
+    products = [skincare.Product("Moisturizer", ("Isostearyl Alcohol",))]
+
+    result = skincare.check_ingredients(products)
+
+    assert result["irritants"] == []
+    clear_names = {c["ingredient"] for c in result["clear"]}
+    assert clear_names == {"Isostearyl Alcohol"}
+
+
+def test_filler_words_alone_do_not_match_a_rule():
+    # "Active", "Inactive", "Purpose", "Medication" are stripped as filler --
+    # they must not, on their own, satisfy a rule that expects real content.
+    products = [skincare.Product("Product", ("Active Ingredients", "Inactive"))]
+
+    result = skincare.check_ingredients(products)
+
+    assert result["incompatibilities"] == []
+    assert result["irritants"] == []
+
+
 def test_no_source_no_entry_every_rule_is_cited():
     rules = skincare.load_rules()
     assert all(r.source for r in rules.incompatibilities)

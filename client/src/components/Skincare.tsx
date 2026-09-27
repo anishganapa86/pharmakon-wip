@@ -20,10 +20,28 @@ function parseIngredients(text: string): string[] {
 
 const EMPTY_DRAFT: DraftProduct = { name: "", ingredientsText: "" };
 
+/** Clear ingredients, grouped by product, in first-seen product order. */
+function groupByProduct(
+  entries: { ingredient: string; product: string }[],
+): [string, string[]][] {
+  const order: string[] = [];
+  const byProduct = new Map<string, string[]>();
+  for (const { ingredient, product } of entries) {
+    if (!byProduct.has(product)) {
+      byProduct.set(product, []);
+      order.push(product);
+    }
+    byProduct.get(product)!.push(ingredient);
+  }
+  return order.map((product) => [product, byProduct.get(product)!]);
+}
+
 function SkincareResults({ result }: { result: SkincareCheckResponse }) {
+  const flagged = result.incompatibilities.length > 0 || result.irritants.length > 0;
+
   return (
     <>
-      {result.incompatibilities.length === 0 && result.irritants.length === 0 && (
+      {!flagged && result.clear.length === 0 && (
         <p className="muted">No documented interactions found.</p>
       )}
       {result.incompatibilities.map((f, i) => (
@@ -48,16 +66,26 @@ function SkincareResults({ result }: { result: SkincareCheckResponse }) {
         </div>
       ))}
       {result.clear.length > 0 && (
-        <div className="skincare-clear">
-          <div className="skincare-clear-label">Clear</div>
-          <ul className="effect-tags">
-            {result.clear.map((c, i) => (
-              <li key={i} className="effect-tag effect-tag-clear">
-                {c.ingredient} ({c.product})
-              </li>
+        <details className="collapsible skincare-clear">
+          <summary>
+            {result.clear.length} ingredient{result.clear.length === 1 ? "" : "s"}{" "}
+            checked — no issues found
+          </summary>
+          <div className="collapsible-body">
+            {groupByProduct(result.clear).map(([product, ingredients]) => (
+              <div key={product} className="skincare-clear-group">
+                <div className="skincare-clear-product">{product}</div>
+                <ul className="effect-tags">
+                  {ingredients.map((ingredient, i) => (
+                    <li key={i} className="effect-tag effect-tag-clear">
+                      {ingredient}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
-        </div>
+          </div>
+        </details>
       )}
     </>
   );

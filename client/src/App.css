@@ -588,7 +588,15 @@
   margin-top: 12px;
 }
 
-.skincare-clear-label {
+.skincare-clear-group {
+  margin-bottom: 12px;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+}
+
+.skincare-clear-product {
   font-weight: 500;
   color: var(--text-h);
   margin-bottom: 6px;

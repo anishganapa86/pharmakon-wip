@@ -30,11 +30,21 @@ DATA_PATH = (
 )
 
 
+_PERCENT_RE = re.compile(r"\d+(?:\.\d+)?\s*%")
+
+# openFDA ingredient strings routinely wrap the actual ingredient name in
+# dosage-form/label boilerplate (e.g. "Purpose Salicylic Acid 2.0% Acne
+# Medication"). These carry no ingredient information themselves, so they're
+# dropped before matching rather than left to (not) match as literal words.
+_FILLER_WORDS = frozenset({"purpose", "active", "inactive", "medication"})
+
+
 def normalize(s: str) -> str:
     s = s.lower().strip()
+    s = _PERCENT_RE.sub(" ", s)
     s = re.sub(r"[^a-z0-9\s]", " ", s)
-    s = re.sub(r"\s+", " ", s)
-    return s.strip()
+    words = [w for w in s.split() if w not in _FILLER_WORDS]
+    return " ".join(words)
 
 
 @dataclass(frozen=True)
@@ -66,9 +76,20 @@ class Irritant:
 
 
 def _matches(name: str, canonical: str, aliases: tuple[str, ...]) -> bool:
+    """True if the rule's ingredient name or an alias appears as a whole-word
+    phrase inside the (normalized) label string. Substring rather than exact
+    match, because openFDA ingredient strings carry extra words (dosage,
+    purpose, product form) around the actual ingredient name -- e.g. "Purpose
+    Salicylic Acid 2.0% Acne Medication" must still match "salicylic acid".
+    """
     key = normalize(name)
-    candidates = {normalize(canonical), *(normalize(a) for a in aliases)}
-    return key in candidates
+    if not key:
+        return False
+    for candidate in (canonical, *aliases):
+        needle = normalize(candidate)
+        if needle and re.search(rf"\b{re.escape(needle)}\b", key):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
