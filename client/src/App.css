@@ -520,6 +520,54 @@
   font-weight: 600;
 }
 
+/* --- Skincare tab -------------------------------------------------------------- */
+
+.skincare-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.skincare-draft {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+
+  @media (max-width: 640px) {
+    flex-wrap: wrap;
+  }
+}
+
+.skincare-flag {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 10px;
+
+  & > p {
+    margin: 0 0 4px;
+  }
+}
+
+.skincare-flag-caution {
+  border-left: 3px solid #d97706;
+}
+
+.skincare-clear {
+  margin-top: 12px;
+}
+
+.skincare-clear-label {
+  font-weight: 500;
+  color: var(--text-h);
+  margin-bottom: 6px;
+}
+
+.effect-tag-clear {
+  border-color: #16a34a;
+  color: #16a34a;
+}
+
 /* --- View tabs ---------------------------------------------------------------- */
 
 .view-tabs {

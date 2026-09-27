@@ -267,6 +267,53 @@ export interface SideEffectProfileResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Skincare ingredient interaction checker (see app/api/skincare.py)
+//
+// NOT pharmacokinetics: no curves, no concentrations, no risk scores. A
+// lookup against documented dermatological guidelines, every entry cited.
+// ---------------------------------------------------------------------------
+
+export interface SkincareProductRequest {
+  name: string;
+  ingredients: string[];
+}
+
+export interface SkincareCheckedProduct {
+  name: string;
+  ingredients: string[];
+}
+
+export interface SkincareIncompatibility {
+  ingredient_a: string;
+  product_a: string;
+  ingredient_b: string;
+  product_b: string;
+  effect: string;
+  recommendation: string;
+  source: string;
+}
+
+export interface SkincareIrritant {
+  ingredient: string;
+  product: string;
+  effect: string;
+  source: string;
+  note?: string; // added only when relevant to something else the user logged
+}
+
+export interface SkincareClearIngredient {
+  ingredient: string;
+  product: string;
+}
+
+export interface SkincareCheckResponse {
+  products: SkincareCheckedProduct[];
+  incompatibilities: SkincareIncompatibility[];
+  irritants: SkincareIrritant[];
+  clear: SkincareClearIngredient[];
+}
+
+// ---------------------------------------------------------------------------
 // Daily log: POST/GET/DELETE /users/{id}/log  (see app/api/logger.py)
 // ---------------------------------------------------------------------------
 

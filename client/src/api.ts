@@ -12,6 +12,8 @@ import type {
   LoggedDoseEvent,
   ProductSearchResponse,
   SideEffectProfileResponse,
+  SkincareCheckResponse,
+  SkincareProductRequest,
   SubstanceCurve,
   SymptomCheckResponse,
   TimelineEntry,
@@ -111,6 +113,16 @@ export function fetchSideEffectProfile(
   userId: string,
 ): Promise<SideEffectProfileResponse> {
   return request(`/users/${encodeURIComponent(userId)}/side-effect-profile`);
+}
+
+export function checkSkincare(
+  products: SkincareProductRequest[],
+): Promise<SkincareCheckResponse> {
+  return request("/skincare-check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ products }),
+  });
 }
 
 export function fetchTimeline(

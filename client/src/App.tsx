@@ -9,6 +9,7 @@ import {
 import { LogForm } from "./components/LogForm";
 import { ProductSearch } from "./components/ProductSearch";
 import { SideEffectProfile } from "./components/SideEffectProfile";
+import { Skincare } from "./components/Skincare";
 import { SymptomCheck } from "./components/SymptomCheck";
 import { Timeline } from "./components/Timeline";
 import { ingredientLabel, notModeledReason, productModelable } from "./labels";
@@ -21,7 +22,7 @@ import type {
   SubstanceCurve,
 } from "./types/contract";
 
-type View = "concentration" | "timeline";
+type View = "concentration" | "timeline" | "skincare";
 
 const USER_ID = "default";
 const MAX_RECENT_PRODUCTS = 5;
@@ -254,7 +255,17 @@ function App() {
         >
           Timeline
         </button>
+        <button
+          role="tab"
+          aria-selected={view === "skincare"}
+          className={view === "skincare" ? "view-tab active" : "view-tab"}
+          onClick={() => setView("skincare")}
+        >
+          Skincare
+        </button>
       </nav>
+
+      {view === "skincare" && <Skincare />}
 
       {view === "timeline" && (
         <>
