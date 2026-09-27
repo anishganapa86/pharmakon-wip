@@ -25,6 +25,18 @@ export function formatDateClock(ms: number): string {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${formatClock(ms)}`;
 }
 
+/** "Sep 26, 2026" -- for grouping entries by day on the timeline, where the
+ * span isn't bounded to one day the way the charts are. */
+export function formatDateHeader(ms: number): string {
+  const d = new Date(ms);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+/** Local-calendar-day grouping key. */
+export function dayKey(ms: number): string {
+  return new Date(ms).toDateString();
+}
+
 /** Tick label formatter for a window: adds the date once the span passes 12h. */
 export function tickFormatter(fromMs: number, toMs: number) {
   return toMs - fromMs > 12 * HOUR_MS ? formatDateClock : formatClock;

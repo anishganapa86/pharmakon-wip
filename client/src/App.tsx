@@ -6,8 +6,10 @@ import {
   ConcentrationChart,
   type TimeWindow,
 } from "./components/ConcentrationChart";
+import { LogForm } from "./components/LogForm";
 import { ProductSearch } from "./components/ProductSearch";
 import { SymptomCheck } from "./components/SymptomCheck";
+import { Timeline } from "./components/Timeline";
 import { ingredientLabel, notModeledReason, productModelable } from "./labels";
 import { formatDateClock, HOUR_MS } from "./time";
 import type {
@@ -17,6 +19,8 @@ import type {
   RecentProduct,
   SubstanceCurve,
 } from "./types/contract";
+
+type View = "concentration" | "timeline";
 
 const USER_ID = "default";
 const MAX_RECENT_PRODUCTS = 5;
@@ -124,6 +128,9 @@ function App() {
   const [logError, setLogError] = useState<string | null>(null);
   const [logged, setLogged] = useState<string | null>(null);
 
+  const [view, setView] = useState<View>("concentration");
+  const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
+
   // State is set only in promise callbacks, so this is safe to run from an
   // effect. Callers that re-load set `loading` themselves.
   const load = useCallback(
@@ -166,6 +173,7 @@ function App() {
       setProduct(null);
       setQuantity("1");
       setSearchKey((k) => k + 1);
+      setTimelineKey((k) => k + 1);
       setLoading(true);
       await load();
     } catch (err) {
@@ -226,81 +234,126 @@ function App() {
         {logError && <p className="error">Couldn't log dose: {logError}</p>}
       </section>
 
-      <section className="panel">
-        <h2>Concentration</h2>
-        {error ? (
-          <p className="error">
-            Couldn't reach the API: {error}{" "}
-            <button className="button-link" onClick={reload}>
-              Retry
-            </button>
-          </p>
-        ) : dashboard === null ? (
-          <p className="muted">{loading ? "Loading…" : null}</p>
-        ) : dashboard.doseCount === 0 ? (
-          <p className="muted">No doses logged yet.</p>
-        ) : dashboard.window === null ? (
-          <p className="muted">No doses in the last 24 hours.</p>
-        ) : dashboard.curves.length === 0 ? (
-          <p className="muted">
-            None of the recent doses have a modeled ingredient to chart.
-          </p>
-        ) : (
-          <div className="charts">
-            {dashboard.curves.map((curve) => (
-              <ConcentrationChart
-                key={curve.substance.id}
-                curve={curve}
-                window={dashboard.window as TimeWindow}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      <nav className="view-tabs" role="tablist">
+        <button
+          role="tab"
+          aria-selected={view === "concentration"}
+          className={view === "concentration" ? "view-tab active" : "view-tab"}
+          onClick={() => setView("concentration")}
+        >
+          Concentration
+        </button>
+        <button
+          role="tab"
+          aria-selected={view === "timeline"}
+          className={view === "timeline" ? "view-tab active" : "view-tab"}
+          onClick={() => setView("timeline")}
+        >
+          Timeline
+        </button>
+      </nav>
 
-      <section className="panel">
-        <h2>Dose history</h2>
-        {dashboard === null || dashboard.doses.length === 0 ? (
-          <p className="muted">No doses logged yet.</p>
-        ) : (
-          <ul className="history">
-            {[...dashboard.doses].reverse().map((d) => {
-              const modeled = d.ingredients.some(
-                (i) => i.substance_id !== null && i.unmodeled_reason === null,
-              );
-              return (
-                <li key={d.dose_event_id} className="history-item">
-                  <div className="history-head">
-                    <strong>{d.product_name}</strong>
-                    <span className="muted">
-                      {formatDateClock(new Date(d.taken_at).getTime())}
-                    </span>
-                  </div>
-                  {modeled ? (
-                    <span className="tag tag-modelable">Modeled</span>
-                  ) : (
-                    // Route isn't tracked on a logged dose, only at search
-                    // time, so history uses the generic honest phrasing.
-                    <span className="tag tag-logged-only">
-                      {notModeledReason(null)}
-                    </span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+      {view === "timeline" && (
+        <>
+          <section className="panel">
+            <p className="warning timeline-disclaimer">
+              This is your personal log. It does not diagnose conditions or
+              identify causes. Patterns you notice are worth discussing with
+              your doctor.
+            </p>
+            <h2>Add to your timeline</h2>
+            <LogForm
+              userId={USER_ID}
+              onLogged={() => setTimelineKey((k) => k + 1)}
+            />
+          </section>
 
-      <section className="panel">
-        <h2>How are you feeling?</h2>
-        <SymptomCheck />
-      </section>
+          <section className="panel">
+            <h2>Timeline</h2>
+            <Timeline key={timelineKey} userId={USER_ID} />
+          </section>
+        </>
+      )}
 
-      <section className="panel">
-        <h2>Alerts</h2>
-        {dashboard && !error && <AlertList alerts={dashboard.alerts} />}
-      </section>
+      {view === "concentration" && (
+        <>
+          <section className="panel">
+            <h2>Concentration</h2>
+            {error ? (
+              <p className="error">
+                Couldn't reach the API: {error}{" "}
+                <button className="button-link" onClick={reload}>
+                  Retry
+                </button>
+              </p>
+            ) : dashboard === null ? (
+              <p className="muted">{loading ? "Loading…" : null}</p>
+            ) : dashboard.doseCount === 0 ? (
+              <p className="muted">No doses logged yet.</p>
+            ) : dashboard.window === null ? (
+              <p className="muted">No doses in the last 24 hours.</p>
+            ) : dashboard.curves.length === 0 ? (
+              <p className="muted">
+                None of the recent doses have a modeled ingredient to chart.
+              </p>
+            ) : (
+              <div className="charts">
+                {dashboard.curves.map((curve) => (
+                  <ConcentrationChart
+                    key={curve.substance.id}
+                    curve={curve}
+                    window={dashboard.window as TimeWindow}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="panel">
+            <h2>Dose history</h2>
+            {dashboard === null || dashboard.doses.length === 0 ? (
+              <p className="muted">No doses logged yet.</p>
+            ) : (
+              <ul className="history">
+                {[...dashboard.doses].reverse().map((d) => {
+                  const modeled = d.ingredients.some(
+                    (i) => i.substance_id !== null && i.unmodeled_reason === null,
+                  );
+                  return (
+                    <li key={d.dose_event_id} className="history-item">
+                      <div className="history-head">
+                        <strong>{d.product_name}</strong>
+                        <span className="muted">
+                          {formatDateClock(new Date(d.taken_at).getTime())}
+                        </span>
+                      </div>
+                      {modeled ? (
+                        <span className="tag tag-modelable">Modeled</span>
+                      ) : (
+                        // Route isn't tracked on a logged dose, only at search
+                        // time, so history uses the generic honest phrasing.
+                        <span className="tag tag-logged-only">
+                          {notModeledReason(null)}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <section className="panel">
+            <h2>How are you feeling?</h2>
+            <SymptomCheck />
+          </section>
+
+          <section className="panel">
+            <h2>Alerts</h2>
+            {dashboard && !error && <AlertList alerts={dashboard.alerts} />}
+          </section>
+        </>
+      )}
 
       <footer className="page-footer">
         <small>

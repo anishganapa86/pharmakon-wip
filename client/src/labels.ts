@@ -31,3 +31,67 @@ export function notModeledReason(route: string | null | undefined): string {
 export function sourceLabel(p: Pick<ProductSearchResult, "source">): string | null {
   return p.source === "catalog" ? "Demo data — unverified" : null;
 }
+
+// --- Daily log / timeline ----------------------------------------------------
+
+/** Fixed colors for the suggested categories; freeform categories hash onto
+ * a small fixed palette so the same custom category always renders the same
+ * color (the point is visual consistency, not a meaning per color). */
+const CATEGORY_COLORS: Record<string, string> = {
+  skin: "#2563eb",
+  sleep: "#7c3aed",
+  energy: "#d97706",
+  headache: "#dc2626",
+  stomach: "#16a34a",
+  mood: "#db2777",
+  "side effect": "#ea580c",
+  pain: "#be123c",
+};
+
+const CATEGORY_COLOR_FALLBACK_PALETTE = [
+  "#0891b2",
+  "#4d7c0f",
+  "#9333ea",
+  "#0d9488",
+  "#b45309",
+  "#475569",
+];
+
+export function categoryColor(category: string): string {
+  const key = category.trim().toLowerCase();
+  const known = CATEGORY_COLORS[key];
+  if (known) return known;
+  let hash = 0;
+  for (let i = 0; i < key.length; i++) {
+    hash = (hash * 31 + key.charCodeAt(i)) >>> 0;
+  }
+  return CATEGORY_COLOR_FALLBACK_PALETTE[hash % CATEGORY_COLOR_FALLBACK_PALETTE.length];
+}
+
+const VALUE_PLACEHOLDERS: Record<string, string> = {
+  skin: "How does your skin look?",
+  sleep: "How did you sleep?",
+  energy: "How's your energy?",
+  headache: "Describe the headache",
+  stomach: "How's your stomach?",
+  mood: "How are you feeling?",
+  "side effect": "Describe what you noticed",
+  pain: "Describe the pain",
+};
+
+/** Placeholder text for the value input, tailored to the chosen category. */
+export function valuePlaceholder(category: string): string {
+  return VALUE_PLACEHOLDERS[category.trim().toLowerCase()] ?? "What did you notice?";
+}
+
+const BODY_LOCATION_CATEGORIES = new Set(["skin", "pain", "side effect"]);
+
+/** Body location only makes sense for a few categories; hidden otherwise so
+ * the form doesn't ask an irrelevant question for e.g. "sleep" or "mood". */
+export function showsBodyLocation(category: string): boolean {
+  return BODY_LOCATION_CATEGORIES.has(category.trim().toLowerCase());
+}
+
+/** A logged dose with no modelable ingredient, shown on the timeline. Same
+ * honest framing as notModeledReason, worded for the timeline card. */
+export const TIMELINE_DOSE_NOT_MODELED = "Logged — not modeled (topical/unmatched)";

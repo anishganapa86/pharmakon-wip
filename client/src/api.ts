@@ -5,12 +5,16 @@ import type {
   AlertsActiveFilter,
   ApiError,
   CurveQuery,
+  DailyLogEntry,
+  DailyLogRequest,
   DoseRequest,
   DoseResponse,
   LoggedDoseEvent,
   ProductSearchResponse,
   SubstanceCurve,
   SymptomCheckResponse,
+  TimelineEntry,
+  TimelineQuery,
 } from "./types/contract";
 
 const API_BASE = "http://localhost:8000";
@@ -27,6 +31,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(message);
   }
+  if (res.status === 204) return undefined as T; // no body, e.g. DELETE
   return (await res.json()) as T;
 }
 
@@ -81,4 +86,35 @@ export function checkSymptom(symptom: string): Promise<SymptomCheckResponse> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ symptom }),
   });
+}
+
+export function createLog(
+  userId: string,
+  entry: DailyLogRequest,
+): Promise<DailyLogEntry> {
+  return request(`/users/${encodeURIComponent(userId)}/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(entry),
+  });
+}
+
+export function deleteLog(userId: string, logId: string): Promise<void> {
+  return request(
+    `/users/${encodeURIComponent(userId)}/log/${encodeURIComponent(logId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function fetchTimeline(
+  userId: string,
+  query: TimelineQuery = {},
+): Promise<TimelineEntry[]> {
+  const params = new URLSearchParams();
+  if (query.from) params.set("from", query.from);
+  if (query.to) params.set("to", query.to);
+  const qs = params.toString();
+  return request(
+    `/users/${encodeURIComponent(userId)}/timeline${qs ? `?${qs}` : ""}`,
+  );
 }

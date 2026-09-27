@@ -455,3 +455,134 @@
   color: var(--text);
   padding-top: 8px;
 }
+
+/* --- View tabs ---------------------------------------------------------------- */
+
+.view-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.view-tab {
+  padding: 10px 16px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  margin-bottom: -1px;
+
+  &:hover {
+    color: var(--text-h);
+  }
+
+  &.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+}
+
+/* --- Log form ------------------------------------------------------------------ */
+
+.timeline-disclaimer {
+  margin-top: 0;
+}
+
+.log-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.log-form-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+
+  @media (max-width: 640px) {
+    flex-direction: column;
+  }
+}
+
+.log-form-notes {
+  resize: vertical;
+  min-height: 42px;
+  font: inherit;
+}
+
+/* --- Timeline ------------------------------------------------------------------ */
+
+.timeline-scroll {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeline-date-header {
+  position: sticky;
+  top: 0;
+  padding: 4px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.timeline-item {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 6px;
+}
+
+.timeline-item-dose {
+  border-left-color: var(--accent);
+}
+
+.timeline-item-log {
+  border-left-color: var(--border);
+}
+
+.timeline-item-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.timeline-time {
+  margin-left: auto;
+  font-size: 13px;
+}
+
+.timeline-detail {
+  margin: 4px 0 0;
+  color: var(--text-h);
+}
+
+.category-tag {
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #fff;
+  text-transform: capitalize;
+}
+
+.timeline-sentinel {
+  padding: 8px 0;
+  text-align: center;
+  list-style: none;
+}

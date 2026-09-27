@@ -235,6 +235,73 @@ export interface SymptomCheckResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Daily log: POST/GET/DELETE /users/{id}/log  (see app/api/logger.py)
+// ---------------------------------------------------------------------------
+
+/** UI hint only -- category is freeform text, not an enum the server
+ * enforces. A dropdown should offer these plus a "custom" option. */
+export const SUGGESTED_LOG_CATEGORIES = [
+  "skin",
+  "sleep",
+  "energy",
+  "headache",
+  "stomach",
+  "mood",
+  "side effect",
+  "pain",
+] as const;
+
+export interface DailyLogRequest {
+  category: string; // freeform, non-empty
+  value: string; // freeform, non-empty
+  body_location?: string;
+  notes?: string;
+  logged_at?: IsoTimestamp; // when it happened, not when logged; default now
+}
+
+export interface DailyLogEntry {
+  id: string;
+  category: string;
+  value: string;
+  body_location: string | null;
+  notes: string | null;
+  logged_at: IsoTimestamp;
+  created_at: IsoTimestamp;
+}
+
+// ---------------------------------------------------------------------------
+// GET /users/{id}/timeline  (doses + daily log entries, one merged axis)
+// ---------------------------------------------------------------------------
+
+export interface TimelineQuery {
+  from?: IsoTimestamp;
+  to?: IsoTimestamp;
+}
+
+export interface TimelineDoseEntry {
+  type: "dose";
+  timestamp: IsoTimestamp;
+  id: string; // same as dose_event_id
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  ingredients: LoggedIngredient[];
+}
+
+export interface TimelineLogEntry {
+  type: "log";
+  timestamp: IsoTimestamp;
+  id: string; // same as the daily log entry's id
+  category: string;
+  value: string;
+  body_location: string | null;
+  notes: string | null;
+}
+
+/** Chronological record only -- never a correlation or a causal claim. */
+export type TimelineEntry = TimelineDoseEntry | TimelineLogEntry;
+
+// ---------------------------------------------------------------------------
 // 5. PUT /users/{id}/profile  (full replacement)
 // ---------------------------------------------------------------------------
 

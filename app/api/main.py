@@ -414,3 +414,67 @@ def delete_log(log_id: str, user_id: UserId, session: Db) -> None:
     if not logger.delete_log(session, user_id, log_id):
         raise HTTPException(404, f"unknown log entry {log_id!r}")
     session.commit()
+
+
+# --- 6. Timeline -----------------------------------------------------------------
+
+
+@app.get("/users/{id}/timeline")
+def get_timeline(
+    user_id: UserId,
+    session: Db,
+    now: Now,
+    from_: Annotated[AwareDatetime | None, Query(alias="from")] = None,
+    to: AwareDatetime | None = None,
+) -> list[dict]:
+    """Doses and daily log entries merged onto one chronological axis, oldest
+    first (same convention as GET /doses; the client reverses for display).
+
+    This is a record, not an analysis: no correlation or causal claim is
+    computed or attached here. Each entry carries a `type` ("dose" | "log")
+    so the client can render them differently; nothing about the merge itself
+    implies one affected the other.
+    """
+    span = _log_range(from_, to, now)
+    if isinstance(span, JSONResponse):
+        return span
+    range_from, range_to = span
+
+    entries: list[dict] = []
+    for ev in service.load_doses(session, user_id):
+        taken_at = datetime.fromisoformat(ev.taken_at)
+        if not (range_from <= taken_at <= range_to):
+            continue
+        entries.append(
+            {
+                "type": "dose",
+                "timestamp": ev.taken_at,
+                "id": ev.id,
+                "product_id": ev.product_id,
+                "product_name": ev.product_name,
+                "quantity": ev.quantity,
+                "ingredients": [
+                    {
+                        "name": ing.ingredient_name,
+                        "substance_id": ing.substance_id,
+                        "amount_mg": ing.amount_mg,
+                        "unmodeled_reason": ing.unmodeled_reason,
+                    }
+                    for ing in ev.ingredients
+                ],
+            }
+        )
+    for record in logger.list_logs(session, user_id, range_from, range_to):
+        entries.append(
+            {
+                "type": "log",
+                "timestamp": record.logged_at,
+                "id": record.id,
+                "category": record.category,
+                "value": record.value,
+                "body_location": record.body_location,
+                "notes": record.notes,
+            }
+        )
+    entries.sort(key=lambda e: datetime.fromisoformat(e["timestamp"]))
+    return entries
