@@ -424,7 +424,14 @@ so omissions are listed, not footnoted.
 |---|---|---|---|
 | `q` | string | required | Brand, generic, or partial name. Empty `q` → `422`. **[filled in]** |
 
-### Response — `200 OK`
+### Response — `200 OK` **[shape changed]**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `results` | ProductSearchResult[] | required | Capped at 10. Empty if nothing matched. |
+| `total` | number | required | Full count before the 10-result cap, across every source (catalog + openFDA). The client shows "Showing `results.length` of `total` results" when `total > results.length`, and relies on continued typing to narrow the query rather than paginating. |
+
+ProductSearchResult:
 
 | Field | Type | Required | Description |
 |---|---|---|---|
@@ -461,39 +468,42 @@ Ingredient **[filled in shape]**:
 | `unmodeled_reason` | string enum | nullable | `unmatched` \| `unknown_strength`. `null` means the ingredient is modeled. If both apply, `unmatched` wins. **[filled in: precedence]** |
 
 ```json
-[
-  {
-    "id": "prod_tylenol_es_500",
-    "brand_name": "Tylenol Extra Strength",
-    "ingredients": [
-      { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": 500, "unmodeled_reason": null }
-    ],
-    "has_unmodeled_ingredients": false,
-    "source": "catalog",
-    "route": null
-  },
-  {
-    "id": "prod_example_cold_multi",
-    "brand_name": "Example Multi-Symptom Cold",
-    "ingredients": [
-      { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": null, "unmodeled_reason": "unknown_strength" },
-      { "substance_id": null, "name": "PHENYLEPHRINE HCL", "strength_mg": 5, "unmodeled_reason": "unmatched" }
-    ],
-    "has_unmodeled_ingredients": true,
-    "source": "catalog",
-    "route": null
-  },
-  {
-    "id": "openfda_a1b2c3d4e5f6",
-    "brand_name": "Cortizone-10",
-    "ingredients": [
-      { "substance_id": null, "name": "HYDROCORTISONE", "strength_mg": null, "unmodeled_reason": "unmatched" }
-    ],
-    "has_unmodeled_ingredients": true,
-    "source": "openfda",
-    "route": "TOPICAL"
-  }
-]
+{
+  "results": [
+    {
+      "id": "prod_tylenol_es_500",
+      "brand_name": "Tylenol Extra Strength",
+      "ingredients": [
+        { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": 500, "unmodeled_reason": null }
+      ],
+      "has_unmodeled_ingredients": false,
+      "source": "catalog",
+      "route": null
+    },
+    {
+      "id": "prod_example_cold_multi",
+      "brand_name": "Example Multi-Symptom Cold",
+      "ingredients": [
+        { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": null, "unmodeled_reason": "unknown_strength" },
+        { "substance_id": null, "name": "PHENYLEPHRINE HCL", "strength_mg": 5, "unmodeled_reason": "unmatched" }
+      ],
+      "has_unmodeled_ingredients": true,
+      "source": "catalog",
+      "route": null
+    },
+    {
+      "id": "openfda_a1b2c3d4e5f6",
+      "brand_name": "Cortizone-10",
+      "ingredients": [
+        { "substance_id": null, "name": "HYDROCORTISONE", "strength_mg": null, "unmodeled_reason": "unmatched" }
+      ],
+      "has_unmodeled_ingredients": true,
+      "source": "openfda",
+      "route": "TOPICAL"
+    }
+  ],
+  "total": 3
+}
 ```
 
 ---

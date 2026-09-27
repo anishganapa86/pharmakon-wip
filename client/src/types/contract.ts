@@ -165,6 +165,14 @@ export interface ProductSearchResult {
   route: string | null;
 }
 
+/** `results` is capped at 10; `total` is the full count before that cap, so
+ * the client can show "Showing X of Y results" and rely on continued typing
+ * to narrow the query rather than paginating. */
+export interface ProductSearchResponse {
+  results: ProductSearchResult[];
+  total: number;
+}
+
 // ---------------------------------------------------------------------------
 // GET /users/{id}/doses  (read-only list; see docs/api-contract.md)
 // ---------------------------------------------------------------------------

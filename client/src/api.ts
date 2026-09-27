@@ -8,7 +8,7 @@ import type {
   DoseRequest,
   DoseResponse,
   LoggedDoseEvent,
-  ProductSearchResult,
+  ProductSearchResponse,
   SubstanceCurve,
   SymptomCheckResponse,
 } from "./types/contract";
@@ -70,7 +70,7 @@ export function fetchDoses(userId: string): Promise<LoggedDoseEvent[]> {
 export function searchProducts(
   q: string,
   signal?: AbortSignal,
-): Promise<ProductSearchResult[]> {
+): Promise<ProductSearchResponse> {
   const params = new URLSearchParams({ q });
   return request(`/products/search?${params}`, { signal });
 }

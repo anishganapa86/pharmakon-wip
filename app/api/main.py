@@ -267,7 +267,7 @@ def get_alerts(
 
 
 @app.get("/products/search")
-def search_products(q: str, registry: Reg) -> list[dict]:
+def search_products(q: str, registry: Reg) -> dict:
     """Synthetic catalog first, then openFDA by name, then by what it treats.
 
     People search for what they HAVE ("eczema"), not just what they TAKE
@@ -279,6 +279,10 @@ def search_products(q: str, registry: Reg) -> list[dict]:
     catalog's unverified strengths as distinct from real label data, and every
     ingredient's `unmodeled_reason` already says whether it can be modeled or
     is only logged (see docs/api-contract.md).
+
+    The response is capped at `openfda.RESULT_LIMIT` (10) results, with
+    `total` carrying the full pre-cap count so the client can show "Showing X
+    of Y results" and let continued typing narrow the query instead.
     """
     if not q.strip():
         return _error(422, "validation_error", "q: must not be empty")
@@ -328,7 +332,7 @@ def search_products(q: str, registry: Reg) -> list[dict]:
         # synthetic catalog already found rather than failing the search.
         pass
 
-    return results
+    return {"results": results[: openfda.RESULT_LIMIT], "total": len(results)}
 
 
 # --- POST /symptom-check ------------------------------------------------------------

@@ -124,6 +124,66 @@ def test_search_by_name_down_raises(fake_openfda):
         openfda.search_by_name("anything")
 
 
+def test_search_by_name_falls_back_to_substance_and_manufacturer(fake_openfda):
+    # Nothing on brand_name/generic_name; a hit on substance_name/manufacturer.
+    fake_openfda.routes["substance_name"] = [label("Amoxil", ["AMOXICILLIN"])]
+
+    (product,) = openfda.search_by_name("amoxicillin")
+
+    assert product.brand_name == "Amoxil"
+    assert [c for c in fake_openfda.calls if "brand_name" in c]
+    assert [c for c in fake_openfda.calls if "substance_name" in c]
+
+
+def test_search_by_name_falls_back_to_drugsfda(fake_openfda, monkeypatch):
+    drugsfda_calls: list[str] = []
+
+    def fake_drugsfda(request: httpx.Request) -> httpx.Response:
+        drugsfda_calls.append(request.url.params["search"])
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "products": [
+                            {
+                                "brand_name": "Old Rx Drug",
+                                "active_ingredients": [{"name": "SOME SUBSTANCE"}],
+                            }
+                        ]
+                    }
+                ]
+            },
+        )
+
+    # brand/generic and substance/manufacturer both come back empty; only
+    # drugsfda.json (a separate mock transport) has anything.
+    combined_client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda req: (
+                fake_drugsfda(req)
+                if "drugsfda" in str(req.url)
+                else httpx.Response(404, json={})
+            )
+        )
+    )
+    monkeypatch.setattr(openfda, "_http", combined_client)
+
+    (product,) = openfda.search_by_name("old rx drug")
+
+    assert product.brand_name == "Old Rx Drug"
+    assert [i.name for i in product.ingredients] == ["SOME SUBSTANCE"]
+    assert drugsfda_calls  # the drugsfda endpoint was actually queried
+
+
+def test_result_limit_is_ten(fake_openfda):
+    fake_openfda.routes["brand_name"] = [
+        label(f"Brand {i}", ["SOMETHING"]) for i in range(15)
+    ]
+
+    assert len(openfda.search_by_name("something")) == 10
+
+
 # --- app.api.openfda: condition search ---------------------------------------
 
 
@@ -160,7 +220,7 @@ def test_condition_search_augments_thin_catalog_results(client, fake_openfda):
     r = client.get("/products/search", params={"q": "eczema"})
 
     assert r.status_code == 200
-    body = r.json()
+    body = r.json()["results"]
     (product,) = [p for p in body if p["brand_name"] == "Cortizone-10"]
     assert product["source"] == "openfda"
     assert product["route"] == "TOPICAL"
@@ -190,7 +250,7 @@ def test_openfda_down_degrades_to_catalog_only(client, fake_openfda):
     r = client.get("/products/search", params={"q": "nyquil"})
 
     assert r.status_code == 200
-    (product,) = r.json()
+    (product,) = r.json()["results"]
     assert product["brand_name"] == "NyQuil"
     assert product["source"] == "catalog"
 
@@ -202,7 +262,7 @@ def test_openfda_and_catalog_results_are_deduped_by_brand_name(client, fake_open
 
     r = client.get("/products/search", params={"q": "nyquil"})
 
-    matches = [p for p in r.json() if p["brand_name"] == "NyQuil"]
+    matches = [p for p in r.json()["results"] if p["brand_name"] == "NyQuil"]
     assert len(matches) == 1
     assert matches[0]["source"] == "catalog"
 
@@ -211,7 +271,7 @@ def test_openfda_discovered_product_is_loggable(client, fake_openfda):
     fake_openfda.routes["indications_and_usage"] = [
         label("Cortizone-10", ["HYDROCORTISONE"], "TOPICAL")
     ]
-    found = client.get("/products/search", params={"q": "eczema"}).json()
+    found = client.get("/products/search", params={"q": "eczema"}).json()["results"]
     (product,) = [p for p in found if p["brand_name"] == "Cortizone-10"]
 
     r = client.post(

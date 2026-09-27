@@ -436,7 +436,9 @@ def test_cors_does_not_allow_other_origins(client):
 def test_search_matches_brand_name_case_insensitively(client):
     r = client.get("/products/search", params={"q": "nyquil"})
     assert r.status_code == 200
-    (product,) = r.json()
+    body = r.json()
+    assert body["total"] == len(body["results"])
+    (product,) = body["results"]
     assert product["brand_name"] == "NyQuil"
     assert set(product) == {
         "id",
@@ -458,7 +460,8 @@ def test_search_matches_brand_name_case_insensitively(client):
 
 
 def test_search_matches_ingredient_names(client):
-    ids = {p["id"] for p in client.get("/products/search?q=acetaminophen").json()}
+    body = client.get("/products/search?q=acetaminophen").json()
+    ids = {p["id"] for p in body["results"]}
     assert {
         "prod_tylenol_es_500",
         "prod_dayquil_liquicap",
@@ -470,7 +473,13 @@ def test_search_matches_ingredient_names(client):
 def test_search_with_no_hits_is_an_empty_list(client):
     r = client.get("/products/search", params={"q": "zzzz"})
     assert r.status_code == 200
-    assert r.json() == []
+    assert r.json() == {"results": [], "total": 0}
+
+
+def test_search_results_are_capped_with_total_reported(client):
+    body = client.get("/products/search", params={"q": "a"}).json()
+    assert len(body["results"]) <= 10
+    assert body["total"] >= len(body["results"])
 
 
 @pytest.mark.parametrize("q", ["", "   "])

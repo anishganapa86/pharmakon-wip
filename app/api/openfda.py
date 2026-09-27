@@ -17,6 +17,12 @@ isn't: the same two honest outcomes `app/api/products.py` already produces
 for the synthetic catalog. Only the curated synthetic catalog carries a
 strength number, and even that is unverified (see products.py's docstring).
 
+Name search (`search_by_name`) tries brand/generic name first, then
+substance/manufacturer name, then `drug/drugsfda.json` as a last resort for
+names the label API's `openfda.*` fields don't carry. Every search caps at
+`RESULT_LIMIT` (10); `app/api/main.py` reports how many more matched so the
+client can show "Showing X of Y results".
+
 Every network call here can raise `OpenFDAUnavailable`; callers decide how to
 degrade. `app/api/main.py` falls back to whatever results it already has
 (the synthetic catalog) rather than failing the search.
@@ -30,6 +36,9 @@ from dataclasses import dataclass
 import httpx
 
 OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
+OPENFDA_DRUGSFDA_URL = "https://api.fda.gov/drug/drugsfda.json"
+
+RESULT_LIMIT = 10
 
 # Below this many combined (catalog + openFDA name) hits, also search the
 # label fields that describe what a product treats.
@@ -71,9 +80,9 @@ def clear_discovered() -> None:
     _discovered.clear()
 
 
-def _get(search: str, limit: int) -> list[dict]:
+def _get(url: str, search: str, limit: int) -> list[dict]:
     try:
-        r = _http.get(OPENFDA_LABEL_URL, params={"search": search, "limit": limit})
+        r = _http.get(url, params={"search": search, "limit": limit})
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
@@ -127,17 +136,67 @@ def _dedupe(products: list[OpenFDAProduct]) -> list[OpenFDAProduct]:
     return out
 
 
-def search_by_name(q: str, limit: int = 5) -> list[OpenFDAProduct]:
-    """Brand and generic name, as a user would type either."""
+def _drugsfda_to_products(results: list[dict]) -> list[OpenFDAProduct]:
+    """drug/drugsfda.json: applications, each with one or more products.
+
+    A last-resort fallback for names the label API's `openfda.*` fields don't
+    carry (some older or Rx-only entries lack them). Structured the same way
+    as a label result: no strength, since drugsfda doesn't carry per-unit
+    dose strength either.
+    """
+    out = []
+    for application in results:
+        for prod in application.get("products", []):
+            brand_name = prod.get("brand_name")
+            substances = [
+                ai.get("name")
+                for ai in prod.get("active_ingredients", [])
+                if ai.get("name")
+            ]
+            if not brand_name or not substances:
+                continue
+            pid = _product_id(brand_name, substances)
+            product = OpenFDAProduct(
+                id=pid,
+                brand_name=brand_name,
+                ingredients=tuple(OpenFDAIngredient(name=s) for s in substances),
+                route=None,
+                matched_via="name",
+            )
+            _discovered[pid] = product
+            out.append(product)
+    return out
+
+
+def search_by_name(q: str, limit: int = RESULT_LIMIT) -> list[OpenFDAProduct]:
+    """Brand/generic name first; substance/manufacturer if that's empty;
+    drug/drugsfda.json as a last resort for names the label API misses."""
     q = q.strip()
     if not q:
         return []
-    results = _get(f'(openfda.brand_name:"{q}") OR (openfda.generic_name:"{q}")', limit)
+    results = _get(
+        OPENFDA_LABEL_URL,
+        f'(openfda.brand_name:"{q}") OR (openfda.generic_name:"{q}")',
+        limit,
+    )
+    if not results:
+        results = _get(
+            OPENFDA_LABEL_URL,
+            f'(openfda.substance_name:"{q}") OR (openfda.manufacturer_name:"{q}")',
+            limit,
+        )
     products = [p for r in results if (p := _to_product(r, "name")) is not None]
+    if not products:
+        drugsfda_results = _get(
+            OPENFDA_DRUGSFDA_URL, f'products.brand_name:"{q}"', limit
+        )
+        products = _drugsfda_to_products(drugsfda_results)
     return _dedupe(products)[:limit]
 
 
-def search_by_condition_fields(q: str, limit: int = 5) -> list[OpenFDAProduct]:
+def search_by_condition_fields(
+    q: str, limit: int = RESULT_LIMIT
+) -> list[OpenFDAProduct]:
     """What a product treats: `indications_and_usage` and OTC `purpose`.
 
     Catches "eczema cream" -> a hydrocortisone label whose indications say
@@ -152,7 +211,7 @@ def search_by_condition_fields(q: str, limit: int = 5) -> list[OpenFDAProduct]:
         ("indications_and_usage", "indications_and_usage"),
         ("purpose", "purpose"),
     ):
-        for r in _get(f'{field}:"{q}"', limit):
+        for r in _get(OPENFDA_LABEL_URL, f'{field}:"{q}"', limit):
             p = _to_product(r, matched_via)
             if p is not None:
                 products.append(p)

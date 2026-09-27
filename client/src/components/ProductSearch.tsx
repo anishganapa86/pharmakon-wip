@@ -14,6 +14,7 @@ interface Props {
 export function ProductSearch({ selected, onSelect, recent }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProductSearchResult[]>([]);
+  const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,13 +32,15 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
       setSearching(true);
       searchProducts(q, controller.signal)
         .then((r) => {
-          setResults(r);
+          setResults(r.results);
+          setTotal(r.total);
           setActive(0);
           setError(null);
         })
         .catch((e: unknown) => {
           if (controller.signal.aborted) return;
           setResults([]);
+          setTotal(0);
           setError(e instanceof Error ? e.message : String(e));
         })
         .finally(() => {
@@ -80,7 +83,7 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
   async function chooseRecent(r: RecentProduct) {
     setRecentLoadingId(r.product_id);
     try {
-      const found = await searchProducts(r.product_name);
+      const found = (await searchProducts(r.product_name)).results;
       const match = found.find((p) => p.id === r.product_id) ?? found[0];
       if (match) choose(match);
     } catch {
@@ -94,6 +97,7 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
     onSelect(null);
     setQuery("");
     setResults([]);
+    setTotal(0);
     setError(null);
     setOpen(false);
   }
@@ -184,6 +188,12 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
                 </span>
               </li>
             ))
+          )}
+          {total > results.length && (
+            <li className="search-status muted">
+              Showing {results.length} of {total} results. Keep typing to
+              narrow it down.
+            </li>
           )}
         </ul>
       )}
