@@ -137,7 +137,8 @@ export function Skincare({ userId }: Props) {
           <p className="error">Couldn't check: {autoError}</p>
         ) : !autoResult || autoResult.products.length === 0 ? (
           <p className="muted">
-            No topical products logged in the last 24 hours.
+            Log a skincare product or enter ingredients manually to check for
+            interactions.
           </p>
         ) : (
           <>

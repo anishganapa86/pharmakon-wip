@@ -39,6 +39,29 @@ self.addEventListener("fetch", (event) => {
   ) {
     return;
   }
+
+  // The navigation request (index.html) names the hashed JS/CSS bundle for
+  // the current build. Serving it cache-first pins a browser to whatever
+  // bundle was cached on its first visit -- CACHE_NAME never changes between
+  // deploys, so `activate` never evicts it and new features (e.g. the
+  // Skincare tab) silently stop reaching returning users. Network-first here
+  // means a new deploy is picked up on the next load; cache is only a
+  // fallback for when the network is unavailable.
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request)),
+    );
+    return;
+  }
+
+  // Hashed static assets are safe to serve cache-first: a new build gets a
+  // new filename, so a stale cache entry is simply never requested again.
   event.respondWith(
     caches.match(request).then(
       (cached) =>
