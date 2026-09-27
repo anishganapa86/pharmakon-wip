@@ -317,7 +317,7 @@ misses are guaranteed, so this is the common case, not the edge.
 | `id` | string | required | Alert id. |
 | `kind` | string enum | required | `duplication` \| `threshold` \| `accumulation` \| `unmodelable` \| `incomplete_data`. See [Alert kinds](#alert-kinds). |
 | `severity` | string enum | required | `info` \| `caution` \| `urgent`. |
-| `substance` | `{ id: string, display_name: string }` | nullable **only for product-level `incomplete_data`**; required for every other kind | Same shape as on the curve. **[filled in shape]** |
+| `substance` | `{ id: string, display_name: string, threshold_explanation: string \| null }` | nullable **only for product-level `incomplete_data`**; required for every other kind | `id`/`display_name` as on the curve. `threshold_explanation` **[added, alert-only]**: why `threshold_24h_mg` matters, from the registry field of the same name. `null` unless the registry documents one -- never derived or invented. Shown as "Why this matters" next to the alert. |
 | `message` | string | required | User-facing text. Must keep the "estimate, not medical advice" framing. **If `uncounted_doses` is non-empty, the message must say the total is incomplete.** |
 | `computed_at` | string (ISO 8601 + tz) | required | When the detector produced this alert. |
 | `contributing_doses` | ContributingDose[] | required, may be empty | Doses counted in the alert's figure. Never omitted. **Together with `uncounted_doses`, non-empty** (see [Traceability](#traceability)). |
@@ -361,7 +361,7 @@ so omissions are listed, not footnoted.
     "id": "alert_7Q2",
     "kind": "duplication",
     "severity": "urgent",
-    "substance": { "id": "acetaminophen", "display_name": "Acetaminophen" },
+    "substance": { "id": "acetaminophen", "display_name": "Acetaminophen", "threshold_explanation": "The 4000 mg daily limit is set by the FDA to prevent liver damage. Exceeding it repeatedly can cause acute liver failure. Risk increases with alcohol use or liver impairment." },
     "message": "Acetaminophen is in 2 of the products you logged (DayQuil, Tylenol Extra Strength). Your 24-hour total is 4300 mg, which exceeds the 4000 mg limit. Talk to a pharmacist or your prescriber.",
     "computed_at": "2026-09-13T18:02:11-07:00",
     "contributing_doses": [
@@ -380,7 +380,7 @@ so omissions are listed, not footnoted.
     "id": "alert_9K4",
     "kind": "incomplete_data",
     "severity": "caution",
-    "substance": { "id": "acetaminophen", "display_name": "Acetaminophen" },
+    "substance": { "id": "acetaminophen", "display_name": "Acetaminophen", "threshold_explanation": "The 4000 mg daily limit is set by the FDA to prevent liver damage. Exceeding it repeatedly can cause acute liver failure. Risk increases with alcohol use or liver impairment." },
     "message": "We can't total your acetaminophen because we don't know the strength of Example Multi-Symptom Cold. Your counted total is 2000 mg of a 4000 mg limit, and this figure is incomplete. Check the label or enter the amount.",
     "computed_at": "2026-09-13T18:02:11-07:00",
     "contributing_doses": [
@@ -654,6 +654,7 @@ with `modelable: false`.
 | 15 | Product-level alert count | One alert per (product, unmatched ingredient), listing every dose of that product in the 24h window. Three doses → one alert, three `uncounted_doses`. Two unmatched ingredients → two alerts. |
 | 16 | Product-level severity | `caution`. Escalates to `urgent` when the same product also contributes a counted dose of a substance whose counted 24h total is at or past the approach fraction. |
 | 17 | Escalation traceability | Escalating doses are listed in `contributing_doses` on the product-level alert, and `notes` still names the substance and total. A null `substance` may therefore come with non-empty `contributing_doses`. |
+| 18 | Alert explanations | Alert `substance` gains `threshold_explanation` (nullable, registry-sourced, alert-only -- not on `/curve`'s `substance`). "What to do" guidance is derived client-side from `severity` alone, not sent by the server. |
 
 ## Implementation follow-ups
 

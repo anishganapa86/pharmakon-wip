@@ -1,5 +1,14 @@
 import { formatDateClock } from "../time";
-import type { Alert } from "../types/contract";
+import type { Alert, AlertSeverity } from "../types/contract";
+
+/** Presentational only -- not sent by the server. Conservative and generic
+ * by design: this is guidance about the alert mechanism, not medical advice
+ * about the substance, so it doesn't need a registry citation. */
+const WHAT_TO_DO: Record<AlertSeverity, string> = {
+  urgent: "Stop taking this and contact a pharmacist or prescriber now.",
+  caution: "Don't take more until the level drops. Ask a pharmacist if unsure.",
+  info: "No action needed — for your awareness.",
+};
 
 function AlertItem({ alert }: { alert: Alert }) {
   return (
@@ -12,6 +21,14 @@ function AlertItem({ alert }: { alert: Alert }) {
         <span className="alert-kind">{alert.kind.replace("_", " ")}</span>
       </div>
       <p>{alert.message}</p>
+      {alert.substance?.threshold_explanation && (
+        <p className="alert-why muted">
+          <strong>Why this matters:</strong> {alert.substance.threshold_explanation}
+        </p>
+      )}
+      <p className="alert-action muted">
+        <strong>What to do:</strong> {WHAT_TO_DO[alert.severity]}
+      </p>
       {alert.notes.length > 0 && (
         <ul className="notes">
           {alert.notes.map((n) => (

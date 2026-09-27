@@ -169,6 +169,11 @@ def test_hidden_acetaminophen_across_products_triggers_duplication(client):
     assert alert["substance"] == {
         "id": "acetaminophen",
         "display_name": "Acetaminophen",
+        "threshold_explanation": (
+            "The 4000 mg daily limit is set by the FDA to prevent liver "
+            "damage. Exceeding it repeatedly can cause acute liver failure. "
+            "Risk increases with alcohol use or liver impairment."
+        ),
     }
     assert alert["uncounted_doses"] == []
 

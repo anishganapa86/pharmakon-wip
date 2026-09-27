@@ -179,9 +179,15 @@ def list_alerts(session: Session, user_id: str, active: str) -> list[AlertRecord
 def alert_json(record: AlertRecord, registry: Registry) -> dict:
     substance = None
     if record.substance_id is not None:
+        entry = registry.get(record.substance_id)
         substance = {
             "id": record.substance_id,
-            "display_name": registry.get(record.substance_id)["name"],
+            "display_name": entry["name"],
+            # Why the threshold matters, shown as "Why this matters" next to
+            # the alert. Null unless the registry documents one; never
+            # invented here (CLAUDE.md: never a plausible-looking coefficient
+            # or claim without a source).
+            "threshold_explanation": entry.get("threshold_explanation"),
         }
     return {
         "id": record.id,

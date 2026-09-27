@@ -122,13 +122,22 @@ export interface UncountedDose {
  * Active iff dismissed_at and resolved_at are both null. dismissed_at is
  * always null in v1 (no dismissal endpoint).
  */
+/** Substance as carried on an Alert -- adds threshold_explanation, which
+ * /curve's SubstanceRef does not have. */
+export interface AlertSubstanceRef extends SubstanceRef {
+  // Why threshold_24h_mg matters, from the registry field of the same name.
+  // null unless the registry documents one -- never derived or invented.
+  // Shown as "Why this matters" next to the alert.
+  threshold_explanation: string | null;
+}
+
 export interface Alert {
   id: string;
   kind: AlertKind;
   severity: AlertSeverity;
   // null ONLY for product-level incomplete_data. A null substance does NOT
   // imply contributing_doses is empty (escalated product-level alerts).
-  substance: SubstanceRef | null;
+  substance: AlertSubstanceRef | null;
   message: string;
   notes: string[]; // causes behind the alert; may be empty, never omitted
   computed_at: IsoTimestamp;
