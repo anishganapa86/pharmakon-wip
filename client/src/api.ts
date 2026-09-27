@@ -11,6 +11,7 @@ import type {
   DoseResponse,
   LoggedDoseEvent,
   ProductSearchResponse,
+  ProductSearchResult,
   SideEffectProfileResponse,
   SkincareCheckResponse,
   SkincareProductRequest,
@@ -122,6 +123,21 @@ export function checkSkincare(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ products }),
+  });
+}
+
+export function fetchSkincareCheck(userId: string): Promise<SkincareCheckResponse> {
+  return request(`/users/${encodeURIComponent(userId)}/skincare-check`);
+}
+
+export function createUserEnteredProduct(
+  name: string,
+  ingredients: string[],
+): Promise<ProductSearchResult> {
+  return request("/products/user-entered", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, ingredients }),
   });
 }
 

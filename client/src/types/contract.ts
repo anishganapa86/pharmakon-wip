@@ -161,7 +161,9 @@ export interface Ingredient {
 /** "catalog" is the synthetic seed catalog (unverified strengths); "openfda"
  * is a real openFDA drug label. The UI must mark "catalog" results distinctly
  * so a fabricated-looking strength is never mistaken for verified data. */
-export type ProductSource = "catalog" | "openfda";
+/** "user_entered" is a product the user pasted an ingredient list for
+ * (POST /products/user-entered) -- for cosmetics openFDA has no label for. */
+export type ProductSource = "catalog" | "openfda" | "user_entered";
 
 export interface ProductSearchResult {
   id: string; // use as product_id when logging

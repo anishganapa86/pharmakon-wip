@@ -240,6 +240,22 @@
   font-size: 14px;
 }
 
+.manual-entry {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.manual-entry-textarea {
+  width: 100%;
+  height: auto;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+
 .recent {
   margin-top: 10px;
 }

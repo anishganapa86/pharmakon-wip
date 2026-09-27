@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { checkSkincare } from "../api";
+import { useEffect, useState } from "react";
+import { checkSkincare, fetchSkincareCheck } from "../api";
 import type { SkincareCheckResponse } from "../types/contract";
 
 function errorMessage(e: unknown): string {
@@ -20,11 +20,75 @@ function parseIngredients(text: string): string[] {
 
 const EMPTY_DRAFT: DraftProduct = { name: "", ingredientsText: "" };
 
-export function Skincare() {
+function SkincareResults({ result }: { result: SkincareCheckResponse }) {
+  return (
+    <>
+      {result.incompatibilities.length === 0 && result.irritants.length === 0 && (
+        <p className="muted">No documented interactions found.</p>
+      )}
+      {result.incompatibilities.map((f, i) => (
+        <div key={`incompat-${i}`} className="skincare-flag skincare-flag-caution">
+          <p>
+            <strong>{f.ingredient_a}</strong> ({f.product_a}) +{" "}
+            <strong>{f.ingredient_b}</strong> ({f.product_b})
+          </p>
+          <p>{f.effect}</p>
+          <p className="muted small">{f.recommendation}</p>
+          <p className="muted small">Source: {f.source}</p>
+        </div>
+      ))}
+      {result.irritants.map((f, i) => (
+        <div key={`irritant-${i}`} className="skincare-flag skincare-flag-caution">
+          <p>
+            <strong>{f.ingredient}</strong> ({f.product})
+          </p>
+          <p>{f.effect}</p>
+          {f.note && <p className="muted small">{f.note}</p>}
+          <p className="muted small">Source: {f.source}</p>
+        </div>
+      ))}
+      {result.clear.length > 0 && (
+        <div className="skincare-clear">
+          <div className="skincare-clear-label">Clear</div>
+          <ul className="effect-tags">
+            {result.clear.map((c, i) => (
+              <li key={i} className="effect-tag effect-tag-clear">
+                {c.ingredient} ({c.product})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface Props {
+  userId: string;
+}
+
+export function Skincare({ userId }: Props) {
+  const [autoResult, setAutoResult] = useState<SkincareCheckResponse | null>(null);
+  const [autoLoading, setAutoLoading] = useState(true);
+  const [autoError, setAutoError] = useState<string | null>(null);
+
   const [drafts, setDrafts] = useState<DraftProduct[]>([{ ...EMPTY_DRAFT }]);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<SkincareCheckResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Mounts once per tab visit -- App.tsx only renders this component while
+  // the Skincare tab is active, so switching to it always gets a fresh check.
+  useEffect(() => {
+    let cancelled = false;
+    fetchSkincareCheck(userId)
+      .then((r) => !cancelled && setAutoResult(r))
+      .catch((e: unknown) => !cancelled && setAutoError(errorMessage(e)))
+      .finally(() => !cancelled && setAutoLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   function updateDraft(i: number, patch: Partial<DraftProduct>) {
     setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
@@ -64,6 +128,37 @@ export function Skincare() {
         literature. They are not diagnoses. Discuss changes to your skincare
         routine with a dermatologist.
       </p>
+
+      <section className="panel">
+        <h2>Products logged today</h2>
+        {autoLoading ? (
+          <p className="muted">Loading…</p>
+        ) : autoError ? (
+          <p className="error">Couldn't check: {autoError}</p>
+        ) : !autoResult || autoResult.products.length === 0 ? (
+          <p className="muted">
+            No topical products logged in the last 24 hours.
+          </p>
+        ) : (
+          <>
+            <ul className="history">
+              {autoResult.products.map((p, i) => (
+                <li key={i} className="history-item">
+                  <div className="history-head">
+                    <strong>{p.name}</strong>
+                    <span className="muted small">
+                      {p.ingredients.join(", ")}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="skincare-auto-results">
+              <SkincareResults result={autoResult} />
+            </div>
+          </>
+        )}
+      </section>
 
       <section className="panel">
         <h2>Check your products</h2>
@@ -119,43 +214,7 @@ export function Skincare() {
       {result && (
         <section className="panel">
           <h2>Results</h2>
-          {result.incompatibilities.length === 0 &&
-            result.irritants.length === 0 && (
-              <p className="muted">No documented interactions found.</p>
-            )}
-          {result.incompatibilities.map((f, i) => (
-            <div key={`incompat-${i}`} className="skincare-flag skincare-flag-caution">
-              <p>
-                <strong>{f.ingredient_a}</strong> ({f.product_a}) +{" "}
-                <strong>{f.ingredient_b}</strong> ({f.product_b})
-              </p>
-              <p>{f.effect}</p>
-              <p className="muted small">{f.recommendation}</p>
-              <p className="muted small">Source: {f.source}</p>
-            </div>
-          ))}
-          {result.irritants.map((f, i) => (
-            <div key={`irritant-${i}`} className="skincare-flag skincare-flag-caution">
-              <p>
-                <strong>{f.ingredient}</strong> ({f.product})
-              </p>
-              <p>{f.effect}</p>
-              {f.note && <p className="muted small">{f.note}</p>}
-              <p className="muted small">Source: {f.source}</p>
-            </div>
-          ))}
-          {result.clear.length > 0 && (
-            <div className="skincare-clear">
-              <div className="skincare-clear-label">Clear</div>
-              <ul className="effect-tags">
-                {result.clear.map((c, i) => (
-                  <li key={i} className="effect-tag effect-tag-clear">
-                    {c.ingredient} ({c.product})
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <SkincareResults result={result} />
         </section>
       )}
     </>

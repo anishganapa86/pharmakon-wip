@@ -1,7 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { searchProducts } from "../api";
+import { createUserEnteredProduct, searchProducts } from "../api";
 import { ingredientLabel, productModelable, sourceLabel } from "../labels";
 import type { ProductSearchResult, RecentProduct } from "../types/contract";
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
 
 const DEBOUNCE_MS = 200;
 
@@ -20,6 +24,10 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const [recentLoadingId, setRecentLoadingId] = useState<string | null>(null);
+  const [manualEntry, setManualEntry] = useState(false);
+  const [manualIngredients, setManualIngredients] = useState("");
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
@@ -100,6 +108,30 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
     setTotal(0);
     setError(null);
     setOpen(false);
+    setManualEntry(false);
+    setManualIngredients("");
+    setManualError(null);
+  }
+
+  async function saveManualProduct(e: React.FormEvent) {
+    e.preventDefault();
+    const ingredients = manualIngredients
+      .split(",")
+      .map((i) => i.trim())
+      .filter((i) => i.length > 0);
+    if (!query.trim() || ingredients.length === 0) return;
+    setManualSaving(true);
+    setManualError(null);
+    try {
+      const product = await createUserEnteredProduct(query.trim(), ingredients);
+      choose(product);
+      setManualEntry(false);
+      setManualIngredients("");
+    } catch (err) {
+      setManualError(errorMessage(err));
+    } finally {
+      setManualSaving(false);
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -153,10 +185,51 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
             <li className="search-status">Search failed: {error}</li>
           ) : results.length === 0 ? (
             <li className="search-status">
-              {searching
-                ? "Searching…"
-                : `No products found for "${query.trim()}". Try searching by ` +
-                  "brand name (e.g. Tylenol) or generic name (e.g. acetaminophen)."}
+              {searching ? (
+                "Searching…"
+              ) : (
+                <>
+                  {`No products found for "${query.trim()}". Try searching by ` +
+                    "brand name (e.g. Tylenol) or generic name (e.g. acetaminophen)."}
+                  {!manualEntry ? (
+                    <div>
+                      <button
+                        type="button"
+                        className="button-link"
+                        onClick={() => setManualEntry(true)}
+                      >
+                        Enter ingredients manually
+                      </button>
+                    </div>
+                  ) : (
+                    <form className="manual-entry" onSubmit={saveManualProduct}>
+                      <p className="muted small">
+                        Most cosmetics aren't FDA-regulated drugs, so we don't
+                        have a label for "{query.trim()}". Paste its
+                        ingredient list from the packaging.
+                      </p>
+                      <textarea
+                        className="control manual-entry-textarea"
+                        placeholder="Ingredients, comma-separated (e.g. Water, Glycerin, Fragrance)"
+                        value={manualIngredients}
+                        onChange={(e) => setManualIngredients(e.target.value)}
+                        aria-label="Ingredients"
+                        rows={3}
+                      />
+                      {manualError && (
+                        <p className="error small">Couldn't save: {manualError}</p>
+                      )}
+                      <button
+                        className="control button"
+                        type="submit"
+                        disabled={!manualIngredients.trim() || manualSaving}
+                      >
+                        {manualSaving ? "Saving…" : "Save and use this product"}
+                      </button>
+                    </form>
+                  )}
+                </>
+              )}
             </li>
           ) : (
             results.map((p, i) => (

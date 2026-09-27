@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useState } from "react";
 import "./App.css";
-import { fetchAlerts, fetchCurve, fetchDoses, logDose } from "./api";
+import {
+  fetchAlerts,
+  fetchCurve,
+  fetchDoses,
+  fetchSkincareCheck,
+  logDose,
+} from "./api";
 import { AlertList } from "./components/AlertList";
 import {
   ConcentrationChart,
@@ -133,6 +139,7 @@ function App() {
   const [view, setView] = useState<View>("concentration");
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
+  const [skincareNotice, setSkincareNotice] = useState(false);
 
   // State is set only in promise callbacks, so this is safe to run from an
   // effect. Callers that re-load set `loading` themselves.
@@ -180,6 +187,16 @@ function App() {
       setSideEffectKey((k) => k + 1);
       setLoading(true);
       await load();
+      // Best-effort: a failed skincare check shouldn't block the dose log
+      // that already succeeded above.
+      try {
+        const check = await fetchSkincareCheck(USER_ID);
+        setSkincareNotice(
+          check.incompatibilities.length > 0 || check.irritants.length > 0,
+        );
+      } catch {
+        // Leave the existing notice state as-is.
+      }
     } catch (err) {
       setLogError(errorMessage(err));
     } finally {
@@ -265,7 +282,7 @@ function App() {
         </button>
       </nav>
 
-      {view === "skincare" && <Skincare />}
+      {view === "skincare" && <Skincare userId={USER_ID} />}
 
       {view === "timeline" && (
         <>
@@ -291,6 +308,19 @@ function App() {
 
       {view === "concentration" && (
         <>
+          {skincareNotice && (
+            <p className="warning">
+              We found potential interactions in your skincare routine.
+              Check the{" "}
+              <button
+                className="button-link"
+                onClick={() => setView("skincare")}
+              >
+                Skincare tab
+              </button>
+              .
+            </p>
+          )}
           <section className="panel">
             <h2>Concentration</h2>
             {error ? (
