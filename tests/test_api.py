@@ -443,8 +443,8 @@ def test_search_matches_brand_name_case_insensitively(client):
     assert r.status_code == 200
     body = r.json()
     assert body["total"] == len(body["results"])
-    (product,) = body["results"]
-    assert product["brand_name"] == "NyQuil"
+    # "nyquil" also matches the catalog's "NyQuil Severe" entry.
+    (product,) = [p for p in body["results"] if p["brand_name"] == "NyQuil"]
     assert set(product) == {
         "id",
         "brand_name",
@@ -458,9 +458,11 @@ def test_search_matches_brand_name_case_insensitively(client):
     by_name = {i["name"]: i for i in product["ingredients"]}
     assert by_name["ACETAMINOPHEN"]["substance_id"] == "acetaminophen"
     assert by_name["ACETAMINOPHEN"]["unmodeled_reason"] is None
+    assert by_name["DOXYLAMINE SUCCINATE"]["substance_id"] == "doxylamine"
+    assert by_name["DOXYLAMINE SUCCINATE"]["unmodeled_reason"] is None
     # Not in the registry: refused, not guessed, and the product says so.
-    assert by_name["DOXYLAMINE SUCCINATE"]["substance_id"] is None
-    assert by_name["DOXYLAMINE SUCCINATE"]["unmodeled_reason"] == "unmatched"
+    assert by_name["DEXTROMETHORPHAN HBR"]["substance_id"] is None
+    assert by_name["DEXTROMETHORPHAN HBR"]["unmodeled_reason"] == "unmatched"
     assert product["has_unmodeled_ingredients"] is True
 
 

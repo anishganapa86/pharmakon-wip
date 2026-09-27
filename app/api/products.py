@@ -58,8 +58,8 @@ PRODUCTS: dict[str, Product] = {
         ),
         Product("prod_advil_200", "Advil", (LabelIngredient("IBUPROFEN", 200),)),
         Product("prod_nodoz_200", "NoDoz", (LabelIngredient("CAFFEINE", 200),)),
-        # Doxylamine and dextromethorphan are not in the registry, so they come
-        # back `unmatched` — the manual-entry path, not a guess.
+        # Dextromethorphan is not in the registry, so it comes back `unmatched`
+        # — the manual-entry path, not a guess.
         Product(
             "prod_nyquil_liquicap",
             "NyQuil",
@@ -82,6 +82,92 @@ PRODUCTS: dict[str, Product] = {
             "prod_example_beer",
             "Example Beer (12 oz)",
             (LabelIngredient("ALCOHOL", 14000),),
+        ),
+        # Strengths below are per-unit (per tablet/caplet/LiquiCap) values as
+        # printed on each product's FDA Drug Facts panel, not derived by regex
+        # from label free text. Still unverified in the sense the module
+        # docstring describes: nobody has cross-checked these against a current
+        # label image, so treat them like registry entries with verified=false.
+        Product(
+            "prod_tylenol_rs_325",
+            "Tylenol Regular Strength",
+            # Drug Facts: acetaminophen 325 mg per caplet.
+            (LabelIngredient("ACETAMINOPHEN", 325),),
+        ),
+        Product(
+            "prod_aleve_220",
+            "Aleve",
+            # Drug Facts: naproxen sodium 220 mg per caplet.
+            (LabelIngredient("NAPROXEN SODIUM", 220),),
+        ),
+        Product(
+            "prod_benadryl_25",
+            "Benadryl",
+            # Drug Facts: diphenhydramine HCl 25 mg per capsule.
+            (LabelIngredient("DIPHENHYDRAMINE HCL", 25),),
+        ),
+        Product(
+            "prod_nyquil_severe",
+            "NyQuil Severe",
+            # Drug Facts, per LiquiCap: acetaminophen 325 mg,
+            # dextromethorphan HBr 10 mg, doxylamine succinate 6.25 mg.
+            (
+                LabelIngredient("ACETAMINOPHEN", 325),
+                LabelIngredient("DEXTROMETHORPHAN HBR", 10),
+                LabelIngredient("DOXYLAMINE SUCCINATE", 6.25),
+            ),
+        ),
+        Product(
+            "prod_excedrin_es",
+            "Excedrin Extra Strength",
+            # Drug Facts, per caplet: acetaminophen 250 mg, aspirin 250 mg,
+            # caffeine 65 mg.
+            (
+                LabelIngredient("ACETAMINOPHEN", 250),
+                LabelIngredient("ASPIRIN", 250),
+                LabelIngredient("CAFFEINE", 65),
+            ),
+        ),
+        Product(
+            "prod_mucinex_dm",
+            "Mucinex DM",
+            # Drug Facts, per tablet: dextromethorphan HBr 20 mg,
+            # guaifenesin 400 mg.
+            (
+                LabelIngredient("DEXTROMETHORPHAN HBR", 20),
+                LabelIngredient("GUAIFENESIN", 400),
+            ),
+        ),
+        Product(
+            "prod_prilosec_otc_20",
+            "Prilosec OTC",
+            # Drug Facts: omeprazole magnesium, 20.6 mg delivering 20 mg
+            # omeprazole per tablet; labelled strength is 20 mg.
+            (LabelIngredient("OMEPRAZOLE MAGNESIUM", 20),),
+        ),
+        Product(
+            "prod_claritin_10",
+            "Claritin",
+            # Drug Facts: loratadine 10 mg per tablet.
+            (LabelIngredient("LORATADINE", 10),),
+        ),
+        Product(
+            "prod_zyrtec_10",
+            "Zyrtec",
+            # Drug Facts: cetirizine HCl 10 mg per tablet.
+            (LabelIngredient("CETIRIZINE HCL", 10),),
+        ),
+        Product(
+            "prod_pepcid_20",
+            "Pepcid",
+            # Drug Facts: famotidine 20 mg per tablet.
+            (LabelIngredient("FAMOTIDINE", 20),),
+        ),
+        Product(
+            "prod_unisom_sleeptabs_25",
+            "Unisom SleepTabs",
+            # Drug Facts: doxylamine succinate 25 mg per tablet.
+            (LabelIngredient("DOXYLAMINE SUCCINATE", 25),),
         ),
     ]
 }

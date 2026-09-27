@@ -192,6 +192,42 @@
      "threshold_24h_mg": 5, "threshold_single_mg": 5, "threshold_concentration_mg_per_l": null,
      "threshold_explanation": null,
      "common_side_effects": [],
-     "source": "PLACEHOLDER", "verified": false}
+     "source": "PLACEHOLDER", "verified": false},
+
+    {"id": "doxylamine", "name": "Doxylamine", "aliases": ["doxylamine succinate"],
+     "half_life_hours": 10.0, "vd_l_per_kg": 2.5, "bioavailability": 0.7, "ka_per_hour": 1.5,
+     "clearance_route": "hepatic", "kinetics": "first_order",
+     "threshold_24h_mg": 25, "threshold_single_mg": 25, "threshold_concentration_mg_per_l": null,
+     "threshold_explanation": null,
+     "common_side_effects": ["drowsiness", "dry mouth", "dizziness"],
+     "source": "TODO — verify", "verified": false,
+     "notes": "Sleep-aid label max is 25 mg/24h; also present at low dose in NyQuil-type combination products, another duplication case alongside diphenhydramine."},
+
+    {"id": "phenylephrine", "name": "Phenylephrine", "aliases": ["phenylephrine hcl"],
+     "half_life_hours": 2.5, "vd_l_per_kg": 4.2, "bioavailability": 0.38, "ka_per_hour": 2.0,
+     "clearance_route": "hepatic", "kinetics": "first_order",
+     "threshold_24h_mg": 60, "threshold_single_mg": 10, "threshold_concentration_mg_per_l": null,
+     "threshold_explanation": null,
+     "common_side_effects": ["nervousness", "headache", "elevated blood pressure"],
+     "source": "TODO — verify", "verified": false,
+     "notes": "Oral bioavailability is low and disputed (extensive first-pass metabolism); the FDA's 2023 advisory review questioned its OTC efficacy at labelled doses. Population value here is a rough placeholder, not a settled number."},
+
+    {"id": "guaifenesin", "name": "Guaifenesin", "aliases": [],
+     "half_life_hours": 1.0, "vd_l_per_kg": 1.0, "bioavailability": 0.9, "ka_per_hour": 2.0,
+     "clearance_route": "hepatic", "kinetics": "first_order",
+     "threshold_24h_mg": 2400, "threshold_single_mg": 400, "threshold_concentration_mg_per_l": null,
+     "threshold_explanation": null,
+     "common_side_effects": ["nausea", "headache", "dizziness"],
+     "source": "TODO — verify", "verified": false,
+     "notes": "Immediate-release OTC ceiling; extended-release products dose differently (up to 1200 mg per dose) and aren't distinguished here yet."},
+
+    {"id": "famotidine", "name": "Famotidine", "aliases": [],
+     "half_life_hours": 3.0, "vd_l_per_kg": 1.3, "bioavailability": 0.43, "ka_per_hour": 1.5,
+     "clearance_route": "renal", "kinetics": "first_order",
+     "threshold_24h_mg": 40, "threshold_single_mg": 20, "threshold_concentration_mg_per_l": null,
+     "threshold_explanation": null,
+     "common_side_effects": ["headache", "dizziness", "constipation"],
+     "source": "TODO — verify", "verified": false,
+     "notes": "OTC (Pepcid AC) label ceiling; prescription dosing is higher and not modelled here. Largely renally excreted, another Cockcroft-Gault candidate."}
   ]
 }

@@ -250,8 +250,8 @@ def test_openfda_down_degrades_to_catalog_only(client, fake_openfda):
     r = client.get("/products/search", params={"q": "nyquil"})
 
     assert r.status_code == 200
-    (product,) = r.json()["results"]
-    assert product["brand_name"] == "NyQuil"
+    # "nyquil" also matches the catalog's "NyQuil Severe" entry.
+    (product,) = [p for p in r.json()["results"] if p["brand_name"] == "NyQuil"]
     assert product["source"] == "catalog"
 
 
