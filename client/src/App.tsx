@@ -11,7 +11,7 @@ function App() {
         <p>No substances logged yet.</p>
       ) : (
         curves.map((curve) => (
-          <ConcentrationChart key={curve.substance} curve={curve} />
+          <ConcentrationChart key={curve.substance.id} curve={curve} />
         ))
       )}
     </div>
