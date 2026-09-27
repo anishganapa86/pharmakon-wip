@@ -12,7 +12,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
-from . import openfda, service, side_effects
+from . import logger, openfda, service, side_effects
 from .db import Base, DoseEvent, DoseIngredient, make_engine
 from .products import PRODUCTS, decompose, search
 
@@ -352,3 +352,65 @@ def symptom_check(
     return side_effects.check_symptom(
         session, DEFAULT_USER, registry, now, body.symptom
     )
+
+
+# --- 5. Daily log --------------------------------------------------------------
+
+
+class DailyLogRequest(BaseModel):
+    category: str = Field(min_length=1)  # freeform; see app/api/logger.py
+    value: str = Field(min_length=1)  # freeform
+    body_location: str | None = None
+    notes: str | None = None
+    # When taken, not when logged; defaults to now. Same convention as
+    # DoseRequest.taken_at.
+    logged_at: AwareDatetime | None = None
+
+
+def _log_range(
+    from_: datetime | None, to: datetime | None, now: datetime
+) -> tuple[datetime, datetime] | JSONResponse:
+    range_from = from_ or (now - timedelta(days=logger.DEFAULT_RANGE_DAYS))
+    range_to = to or now
+    if range_to <= range_from:
+        return _error(422, "validation_error", "`to` must be after `from`")
+    return range_from, range_to
+
+
+@app.post("/users/{id}/log", status_code=201)
+def create_log(body: DailyLogRequest, user_id: UserId, session: Db, now: Now) -> dict:
+    record = logger.create_log(
+        session,
+        user_id,
+        category=body.category,
+        value=body.value,
+        logged_at=body.logged_at or now,
+        created_at=now,
+        body_location=body.body_location,
+        notes=body.notes,
+    )
+    session.commit()
+    return logger.log_json(record)
+
+
+@app.get("/users/{id}/log")
+def list_log(
+    user_id: UserId,
+    session: Db,
+    now: Now,
+    from_: Annotated[AwareDatetime | None, Query(alias="from")] = None,
+    to: AwareDatetime | None = None,
+    category: str | None = None,
+) -> list[dict]:
+    span = _log_range(from_, to, now)
+    if isinstance(span, JSONResponse):
+        return span
+    records = logger.list_logs(session, user_id, span[0], span[1], category)
+    return [logger.log_json(r) for r in records]
+
+
+@app.delete("/users/{id}/log/{log_id}", status_code=204)
+def delete_log(log_id: str, user_id: UserId, session: Db) -> None:
+    if not logger.delete_log(session, user_id, log_id):
+        raise HTTPException(404, f"unknown log entry {log_id!r}")
+    session.commit()

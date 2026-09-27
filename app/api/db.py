@@ -53,6 +53,24 @@ class DoseIngredient(Base):
     dose_event: Mapped[DoseEvent] = relationship(back_populates="ingredients")
 
 
+class DailyLog(Base):
+    """A freeform self-reported entry: skin, sleep, mood, a side effect,
+    anything a person wants to track. Not tied to a dose or a substance --
+    that's what lets it cover things the PK model has no opinion on.
+    """
+
+    __tablename__ = "daily_logs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    logged_at: Mapped[str] = mapped_column(String)  # ISO 8601 + offset
+    category: Mapped[str] = mapped_column(String)
+    value: Mapped[str] = mapped_column(String)
+    body_location: Mapped[str | None] = mapped_column(String, nullable=True)
+    notes: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[str] = mapped_column(String)  # ISO 8601 + offset
+
+
 class AlertRecord(Base):
     """A persisted alert. Active iff dismissed_at and resolved_at are null.
 
