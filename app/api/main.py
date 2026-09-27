@@ -354,6 +354,18 @@ def symptom_check(
     )
 
 
+# --- GET /users/{id}/side-effect-profile --------------------------------------
+
+
+@app.get("/users/{id}/side-effect-profile")
+def get_side_effect_profile(
+    user_id: UserId, session: Db, registry: Reg, now: Now
+) -> dict:
+    """Every documented side effect of every substance logged in the last 24
+    hours, grouped by substance (see app/api/side_effects.py)."""
+    return side_effects.side_effect_profile(session, user_id, registry, now)
+
+
 # --- 5. Daily log --------------------------------------------------------------
 
 

@@ -192,8 +192,108 @@ def check_symptom(
     }
 
 
-def _level(entry, registry, all_doses, recent, patient) -> dict | None:
-    """The substance's level against its limits, or None if not elevated."""
+def known_side_effect_vocabulary(registry: Registry) -> list[str]:
+    """Every side effect documented for any substance in the registry, deduped.
+
+    This is the reverse of check_symptom's search: instead of one typed
+    symptom checked against every substance, every substance's documented
+    `common_side_effects` (across the whole registry, not just what's logged)
+    is checked against each logged substance's own label. This is what lets a
+    label mention that isn't in one substance's own curated local list (e.g.
+    caffeine's FDA label naming nausea) still surface with its true source,
+    without ever parsing free-text label prose into ad hoc symptom words.
+    """
+    seen: set[str] = set()
+    out = []
+    for e in registry.all():
+        for effect in e.get("common_side_effects", []):
+            key = normalize_symptom(effect)
+            if key not in seen:
+                seen.add(key)
+                out.append(effect)
+    return out
+
+
+def side_effect_profile(
+    session: Session,
+    user_id: str,
+    registry: Registry,
+    now: datetime,
+    patient: Patient = DEFAULT_PATIENT,
+) -> dict:
+    """Every documented side effect of every substance logged in the last 24
+    hours, grouped by substance, with which products contributed each one and
+    the substance's current level. Side effects that are documented for more
+    than one logged substance are called out in `shared_effects` so the
+    client can highlight where they compound.
+    """
+    events = load_doses(session, user_id)
+    by_id = {ev.id: ev for ev in events}
+    doses = logged_doses(events, origin=now)
+
+    recent: dict[str, list] = defaultdict(list)
+    for d in doses:
+        if -24.0 <= d.t_hours <= 0.0:
+            recent[d.substance_id].append(d)
+
+    if not recent:
+        return {"substances": [], "shared_effects": []}
+
+    vocabulary = known_side_effect_vocabulary(registry)
+    substances = []
+    effect_names: dict[str, str] = {}
+    effect_counts: dict[str, int] = defaultdict(int)
+
+    for sid in sorted(recent):
+        entry = registry.get(sid)
+        level = _compute_level(entry, registry, doses, recent[sid], patient)
+
+        side_effects_found = []
+        for effect in vocabulary:
+            source = association_source(entry, effect)
+            if source is None:
+                continue
+            side_effects_found.append(
+                {
+                    "effect": effect,
+                    "source": source,
+                    "source_label": SOURCE_LABELS[source],
+                }
+            )
+            key = normalize_symptom(effect)
+            effect_names.setdefault(key, effect)
+            effect_counts[key] += 1
+
+        products: dict[str, str] = {}
+        for d in recent[sid]:
+            ev = by_id[d.dose_id]
+            products[ev.product_id] = ev.product_name
+
+        substances.append(
+            {
+                "substance": {"id": entry["id"], "display_name": entry["name"]},
+                "current_level_mg_l": level["current_level_mg_l"],
+                "total_24h_mg": level["total_24h_mg"],
+                "threshold_24h_mg": level["threshold_24h_mg"],
+                "side_effects": side_effects_found,
+                "contributing_products": [
+                    {"product_id": pid, "product_name": name}
+                    for pid, name in products.items()
+                ],
+            }
+        )
+
+    shared_effects = sorted(
+        effect_names[key] for key, count in effect_counts.items() if count > 1
+    )
+    return {"substances": substances, "shared_effects": shared_effects}
+
+
+def _compute_level(entry, registry, all_doses, recent, patient) -> dict:
+    """The substance's level against its limits. `threshold_status` is None
+    when there's nothing to compare against or the level is below the
+    approach fraction -- unlike `_level`, this never hides the level itself.
+    """
     sid = entry["id"]
     total = sum(d.amount_mg for d in recent)
 
@@ -221,16 +321,24 @@ def _level(entry, registry, all_doses, recent, patient) -> dict | None:
         ratios.append(total / limit)
     if conc_limit and current is not None:
         ratios.append(current / conc_limit)
-    if not ratios or max(ratios) < APPROACH_FRACTION:
-        return None
+
+    status = None
+    if ratios and max(ratios) >= APPROACH_FRACTION:
+        status = "above" if max(ratios) >= 1.0 else "approaching"
 
     return {
         "total_24h_mg": total,
         "threshold_24h_mg": limit,
         "current_level_mg_l": current,
         "threshold_concentration_mg_per_l": conc_limit,
-        "threshold_status": "above" if max(ratios) >= 1.0 else "approaching",
+        "threshold_status": status,
     }
+
+
+def _level(entry, registry, all_doses, recent, patient) -> dict | None:
+    """The substance's level against its limits, or None if not elevated."""
+    level = _compute_level(entry, registry, all_doses, recent, patient)
+    return level if level["threshold_status"] is not None else None
 
 
 def _match(entry, symptom, source, level, recent, by_id) -> dict:
