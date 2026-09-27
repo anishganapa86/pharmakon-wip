@@ -11,6 +11,7 @@ import type {
   DoseResponse,
   LoggedDoseEvent,
   ProductSearchResponse,
+  SideEffectProfileResponse,
   SubstanceCurve,
   SymptomCheckResponse,
   TimelineEntry,
@@ -104,6 +105,12 @@ export function deleteLog(userId: string, logId: string): Promise<void> {
     `/users/${encodeURIComponent(userId)}/log/${encodeURIComponent(logId)}`,
     { method: "DELETE" },
   );
+}
+
+export function fetchSideEffectProfile(
+  userId: string,
+): Promise<SideEffectProfileResponse> {
+  return request(`/users/${encodeURIComponent(userId)}/side-effect-profile`);
 }
 
 export function fetchTimeline(

@@ -8,6 +8,7 @@ import {
 } from "./components/ConcentrationChart";
 import { LogForm } from "./components/LogForm";
 import { ProductSearch } from "./components/ProductSearch";
+import { SideEffectProfile } from "./components/SideEffectProfile";
 import { SymptomCheck } from "./components/SymptomCheck";
 import { Timeline } from "./components/Timeline";
 import { ingredientLabel, notModeledReason, productModelable } from "./labels";
@@ -130,6 +131,7 @@ function App() {
 
   const [view, setView] = useState<View>("concentration");
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
+  const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
 
   // State is set only in promise callbacks, so this is safe to run from an
   // effect. Callers that re-load set `loading` themselves.
@@ -174,6 +176,7 @@ function App() {
       setQuantity("1");
       setSearchKey((k) => k + 1);
       setTimelineKey((k) => k + 1);
+      setSideEffectKey((k) => k + 1);
       setLoading(true);
       await load();
     } catch (err) {
@@ -307,6 +310,7 @@ function App() {
                 ))}
               </div>
             )}
+            <SideEffectProfile key={sideEffectKey} userId={USER_ID} />
           </section>
 
           <section className="panel">

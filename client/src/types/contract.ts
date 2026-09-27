@@ -235,6 +235,38 @@ export interface SymptomCheckResponse {
 }
 
 // ---------------------------------------------------------------------------
+// GET /users/{id}/side-effect-profile  (see app/api/side_effects.py)
+// ---------------------------------------------------------------------------
+
+export interface ContributingProduct {
+  product_id: string;
+  product_name: string;
+}
+
+export interface SideEffectEntry {
+  effect: string;
+  source: AssociationSource;
+  source_label: string;
+}
+
+export interface SubstanceSideEffectProfile {
+  substance: SubstanceRef;
+  current_level_mg_l: number | null; // null when the substance can't be modeled
+  total_24h_mg: number;
+  threshold_24h_mg: number | null;
+  side_effects: SideEffectEntry[];
+  contributing_products: ContributingProduct[];
+}
+
+/** Every documented side effect of every substance logged in the last 24
+ * hours, grouped by substance. `shared_effects` names effects documented for
+ * more than one logged substance -- these compound and are worth calling out. */
+export interface SideEffectProfileResponse {
+  substances: SubstanceSideEffectProfile[];
+  shared_effects: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Daily log: POST/GET/DELETE /users/{id}/log  (see app/api/logger.py)
 // ---------------------------------------------------------------------------
 
