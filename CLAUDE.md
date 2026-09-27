@@ -61,8 +61,11 @@ CI runs lint, format check, and tests. All three must pass.
 ## Out of scope — decided, do not reopen
 
 The Overview doc describes four systems. We build one. Cut and staying cut:
-the pattern/correlation engine, plain-English symptom parsing, and the
-caregiver dashboard. Also out of scope: topical-only substances (retinoids,
+the pattern/correlation engine and the caregiver dashboard. Plain-English
+symptom parsing is replaced by a simpler feature, now implemented: symptom
+lookup against FDA adverse reaction labels (`app/api/side_effects.py`,
+`POST /symptom-check`). It reports an association, never a cause. Also out
+of scope: topical-only substances (retinoids,
 AHAs, cleansers) — those are barrier-irritation problems, not pharmacokinetic
 ones. And no diagnosis, no medication recommendation, no efficacy prediction.
 
