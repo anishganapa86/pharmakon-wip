@@ -249,3 +249,9 @@ export interface EngineResponse {
   curves: SubstanceCurve[];
   alerts: Alert[];
 }
+
+/** A product the user has logged before, for the search's Recent list. */
+export interface RecentProduct {
+  product_id: string;
+  product_name: string;
+}

@@ -43,6 +43,11 @@
   margin-top: 8px;
 }
 
+.warning {
+  color: #d97706;
+  margin-top: 8px;
+}
+
 .notes {
   margin: 8px 0 0;
   padding-left: 1.2em;
@@ -208,6 +213,46 @@
 .search-status {
   padding: 8px 10px;
   font-size: 14px;
+}
+
+.recent {
+  margin-top: 10px;
+}
+
+.recent-label {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.recent-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent-item {
+  padding: 4px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text-h);
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--accent);
+    border-color: var(--accent-border);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: wait;
+  }
 }
 
 /* --- Charts ------------------------------------------------------------------ */

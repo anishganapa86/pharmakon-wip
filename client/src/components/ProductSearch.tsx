@@ -1,22 +1,24 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { searchProducts } from "../api";
 import { ingredientLabel } from "../labels";
-import type { ProductSearchResult } from "../types/contract";
+import type { ProductSearchResult, RecentProduct } from "../types/contract";
 
 const DEBOUNCE_MS = 200;
 
 interface Props {
   selected: ProductSearchResult | null;
   onSelect: (product: ProductSearchResult | null) => void;
+  recent: RecentProduct[];
 }
 
-export function ProductSearch({ selected, onSelect }: Props) {
+export function ProductSearch({ selected, onSelect, recent }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProductSearchResult[]>([]);
   const [open, setOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(0);
+  const [recentLoadingId, setRecentLoadingId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
@@ -71,6 +73,21 @@ export function ProductSearch({ selected, onSelect }: Props) {
     onSelect(product);
     setQuery(product.brand_name);
     setOpen(false);
+  }
+
+  // Recent entries only carry an id and a name (from the dose log), so
+  // re-run the search to get current ingredients/strengths before selecting.
+  async function chooseRecent(r: RecentProduct) {
+    setRecentLoadingId(r.product_id);
+    try {
+      const found = await searchProducts(r.product_name);
+      const match = found.find((p) => p.id === r.product_id) ?? found[0];
+      if (match) choose(match);
+    } catch {
+      // Best effort; leave the search box as-is on failure.
+    } finally {
+      setRecentLoadingId(null);
+    }
   }
 
   function clear() {
@@ -132,7 +149,10 @@ export function ProductSearch({ selected, onSelect }: Props) {
             <li className="search-status">Search failed: {error}</li>
           ) : results.length === 0 ? (
             <li className="search-status">
-              {searching ? "Searching…" : "No matching products."}
+              {searching
+                ? "Searching…"
+                : `No products found for "${query.trim()}". Try searching by ` +
+                  "brand name (e.g. Tylenol) or generic name (e.g. acetaminophen)."}
             </li>
           ) : (
             results.map((p, i) => (
@@ -154,6 +174,27 @@ export function ProductSearch({ selected, onSelect }: Props) {
             ))
           )}
         </ul>
+      )}
+      {!showDropdown && !selected && recent.length > 0 && (
+        <div className="recent">
+          <div className="recent-label">Recent</div>
+          <ul className="recent-list">
+            {recent.map((r) => (
+              <li key={r.product_id}>
+                <button
+                  type="button"
+                  className="recent-item"
+                  disabled={recentLoadingId === r.product_id}
+                  onClick={() => void chooseRecent(r)}
+                >
+                  {recentLoadingId === r.product_id
+                    ? "Loading…"
+                    : r.product_name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </div>
   );

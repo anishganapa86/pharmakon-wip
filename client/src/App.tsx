@@ -14,13 +14,31 @@ import type {
   Alert,
   LoggedDoseEvent,
   ProductSearchResult,
+  RecentProduct,
   SubstanceCurve,
 } from "./types/contract";
 
 const USER_ID = "default";
+const MAX_RECENT_PRODUCTS = 5;
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/** Last 5 distinct products logged, most recently taken first. */
+function recentProducts(doses: LoggedDoseEvent[]): RecentProduct[] {
+  const seen = new Set<string>();
+  const out: RecentProduct[] = [];
+  const byRecency = [...doses].sort(
+    (a, b) => new Date(b.taken_at).getTime() - new Date(a.taken_at).getTime(),
+  );
+  for (const d of byRecency) {
+    if (seen.has(d.product_id)) continue;
+    seen.add(d.product_id);
+    out.push({ product_id: d.product_id, product_name: d.product_name });
+    if (out.length === MAX_RECENT_PRODUCTS) break;
+  }
+  return out;
 }
 
 interface Dashboard {
@@ -28,6 +46,7 @@ interface Dashboard {
   window: TimeWindow | null; // null when nothing was taken in the last 24h
   curves: SubstanceCurve[];
   alerts: Alert[];
+  recent: RecentProduct[];
 }
 
 /**
@@ -40,12 +59,19 @@ async function fetchDashboard(): Promise<Dashboard> {
     fetchDoses(USER_ID),
     fetchAlerts(USER_ID),
   ]);
+  const recentLogged = recentProducts(doses);
 
   const recent = doses.filter(
     (d: LoggedDoseEvent) => new Date(d.taken_at).getTime() >= nowMs - 24 * HOUR_MS,
   );
   if (recent.length === 0) {
-    return { doseCount: doses.length, window: null, curves: [], alerts };
+    return {
+      doseCount: doses.length,
+      window: null,
+      curves: [],
+      alerts,
+      recent: recentLogged,
+    };
   }
 
   const earliest = Math.min(...recent.map((d) => new Date(d.taken_at).getTime()));
@@ -74,7 +100,7 @@ async function fetchDashboard(): Promise<Dashboard> {
       }),
     ),
   );
-  return { doseCount: doses.length, window, curves, alerts };
+  return { doseCount: doses.length, window, curves, alerts, recent: recentLogged };
 }
 
 function App() {
@@ -156,6 +182,7 @@ function App() {
               setProduct(p);
               setLogged(null);
             }}
+            recent={dashboard?.recent ?? []}
           />
           <input
             className="control qty-input"
@@ -180,6 +207,14 @@ function App() {
             {product.ingredients.map(ingredientLabel).join(" · ")}
           </p>
         )}
+        {product &&
+          product.has_unmodeled_ingredients &&
+          product.ingredients.every((i) => i.substance_id === null) && (
+            <p className="warning">
+              This product's ingredients are not in our database. It will
+              appear in your log but concentration won't be modeled.
+            </p>
+          )}
         {logged && <p className="muted">{logged}</p>}
         {logError && <p className="error">Couldn't log dose: {logError}</p>}
       </section>
