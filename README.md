@@ -15,6 +15,8 @@ Full instructions, both OSes, in **docs/SETUP.md**. Short version:
     pip install -r requirements.txt
     pytest
 
+To run the API (:8000) and client (:5173) together: `./run.sh` (`.\run.ps1` on Windows); Ctrl-C stops both.
+
 ## Layout
 
     app/pk/           Bateman, superposition, Cockcroft-Gault
