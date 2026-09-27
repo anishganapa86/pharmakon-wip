@@ -11,7 +11,7 @@ copy you write.
 ## Commands
 
     source .venv/bin/activate       # .venv\Scripts\Activate.ps1 on Windows
-    pytest                          # 38 tests, must be green
+    pytest                          # 105 tests (1 xfail), must be green
     ruff check app tests --fix
     ruff format app tests
 
@@ -23,8 +23,14 @@ CI runs lint, format check, and tests. All three must pass.
     app/pk/individualize.py  Cockcroft-Gault, ke adjustment, notes
     app/detect/alerts.py     duplication + accumulation detectors
     app/registry/            registry JSON + openFDA name normalization
-    app/api/                 FastAPI (not written yet)
-    client/                  React + TypeScript (Punya's, not written yet)
+    app/api/main.py          FastAPI routes: doses, curve, alerts, product search,
+                             symptom check
+    app/api/service.py       ISO <-> hours boundary; calls pk and detect
+    app/api/db.py            SQLite via SQLAlchemy: doses, ingredients, alerts
+    app/api/products.py      synthetic seed product catalog + search
+    app/api/side_effects.py  symptom lookup against openFDA adverse reactions
+    client/                  React + TypeScript + Recharts (Vite): product search
+                             and dose logging, curves, symptom check, alerts
     tests/                   pytest
     notebooks/               walkthrough — documentation, not a workspace
 
