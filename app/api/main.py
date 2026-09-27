@@ -26,7 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..registry.loader import Registry, load_registry
 from . import service
 from .db import Base, DoseEvent, DoseIngredient, make_engine
-from .products import PRODUCTS, decompose
+from .products import PRODUCTS, decompose, search
 
 DEFAULT_USER = "default"
 
@@ -45,7 +45,7 @@ app = FastAPI(title="Pharmakon", lifespan=lifespan)
 # Vite's dev server. No credentials: v1 has no auth.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
 )
@@ -161,6 +161,34 @@ def log_dose(
     }
 
 
+@app.get("/users/{id}/doses")
+def list_doses(user_id: UserId, session: Db) -> list[dict]:
+    """Every logged dose, oldest first, as decomposed at logging time."""
+    events = sorted(
+        service.load_doses(session, user_id),
+        key=lambda ev: datetime.fromisoformat(ev.taken_at),
+    )
+    return [
+        {
+            "dose_event_id": ev.id,
+            "product_id": ev.product_id,
+            "product_name": ev.product_name,
+            "taken_at": ev.taken_at,
+            "quantity": ev.quantity,
+            "ingredients": [
+                {
+                    "name": ing.ingredient_name,
+                    "substance_id": ing.substance_id,
+                    "amount_mg": ing.amount_mg,
+                    "unmodeled_reason": ing.unmodeled_reason,
+                }
+                for ing in ev.ingredients
+            ],
+        }
+        for ev in events
+    ]
+
+
 # --- 2. GET /users/{id}/curve ----------------------------------------------------
 
 
@@ -225,3 +253,34 @@ def get_alerts(
         service.alert_json(r, registry)
         for r in service.list_alerts(session, user_id, active)
     ]
+
+
+# --- 4. GET /products/search -------------------------------------------------------
+
+
+@app.get("/products/search")
+def search_products(q: str, registry: Reg) -> list[dict]:
+    if not q.strip():
+        return _error(422, "validation_error", "q: must not be empty")
+    out = []
+    for product in search(q, registry):
+        ingredients = [
+            {
+                "substance_id": ing.substance_id,
+                "name": ing.name,
+                "strength_mg": ing.strength_mg,
+                "unmodeled_reason": ing.unmodeled_reason,
+            }
+            for ing in decompose(product, registry)
+        ]
+        out.append(
+            {
+                "id": product.id,
+                "brand_name": product.brand_name,
+                "ingredients": ingredients,
+                "has_unmodeled_ingredients": any(
+                    i["unmodeled_reason"] is not None for i in ingredients
+                ),
+            }
+        )
+    return out

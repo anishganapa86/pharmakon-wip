@@ -157,6 +157,26 @@ export interface ProductSearchResult {
 }
 
 // ---------------------------------------------------------------------------
+// GET /users/{id}/doses  (read-only list; see docs/api-contract.md)
+// ---------------------------------------------------------------------------
+
+export interface LoggedIngredient {
+  name: string; // as labelled
+  substance_id: string | null;
+  amount_mg: number | null; // null when unmodeled
+  unmodeled_reason: UnmodeledReason | null;
+}
+
+export interface LoggedDoseEvent {
+  dose_event_id: string;
+  product_id: string;
+  product_name: string;
+  taken_at: IsoTimestamp;
+  quantity: number;
+  ingredients: LoggedIngredient[];
+}
+
+// ---------------------------------------------------------------------------
 // 5. PUT /users/{id}/profile  (full replacement)
 // ---------------------------------------------------------------------------
 

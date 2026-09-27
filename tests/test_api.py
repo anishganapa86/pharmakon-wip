@@ -428,3 +428,76 @@ def test_cors_allows_the_vite_dev_server(client):
 def test_cors_does_not_allow_other_origins(client):
     r = client.get("/users/default/alerts", headers={"Origin": "http://evil.test"})
     assert "access-control-allow-origin" not in r.headers
+
+
+# --- GET /products/search ------------------------------------------------------
+
+
+def test_search_matches_brand_name_case_insensitively(client):
+    r = client.get("/products/search", params={"q": "nyquil"})
+    assert r.status_code == 200
+    (product,) = r.json()
+    assert product["brand_name"] == "NyQuil"
+    assert set(product) == {
+        "id",
+        "brand_name",
+        "ingredients",
+        "has_unmodeled_ingredients",
+    }
+    by_name = {i["name"]: i for i in product["ingredients"]}
+    assert by_name["ACETAMINOPHEN"]["substance_id"] == "acetaminophen"
+    assert by_name["ACETAMINOPHEN"]["unmodeled_reason"] is None
+    # Not in the registry: refused, not guessed, and the product says so.
+    assert by_name["DOXYLAMINE SUCCINATE"]["substance_id"] is None
+    assert by_name["DOXYLAMINE SUCCINATE"]["unmodeled_reason"] == "unmatched"
+    assert product["has_unmodeled_ingredients"] is True
+
+
+def test_search_matches_ingredient_names(client):
+    ids = {p["id"] for p in client.get("/products/search?q=acetaminophen").json()}
+    assert {
+        "prod_tylenol_es_500",
+        "prod_dayquil_liquicap",
+        "prod_nyquil_liquicap",
+    } <= ids
+    assert "prod_advil_200" not in ids
+
+
+def test_search_with_no_hits_is_an_empty_list(client):
+    r = client.get("/products/search", params={"q": "zzzz"})
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+@pytest.mark.parametrize("q", ["", "   "])
+def test_blank_search_is_422(client, q):
+    r = client.get("/products/search", params={"q": q})
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "validation_error"
+
+
+# --- GET /users/{id}/doses -------------------------------------------------------
+
+
+def test_dose_list_is_empty_with_no_doses(client):
+    r = client.get("/users/default/doses")
+    assert r.status_code == 200
+    assert r.json() == []
+
+
+def test_dose_list_returns_doses_oldest_first_with_ingredients(client):
+    later = log(client, "prod_tylenol_es_500", 1, quantity=2)["dose_event_id"]
+    earlier = log(client, "prod_nyquil_liquicap", 3)["dose_event_id"]
+    doses = client.get("/users/default/doses").json()
+    assert [d["dose_event_id"] for d in doses] == [earlier, later]
+    tylenol = doses[1]
+    assert tylenol["taken_at"] == iso(1)
+    assert tylenol["quantity"] == 2
+    assert tylenol["ingredients"] == [
+        {
+            "name": "ACETAMINOPHEN",
+            "substance_id": "acetaminophen",
+            "amount_mg": 1000,
+            "unmodeled_reason": None,
+        }
+    ]

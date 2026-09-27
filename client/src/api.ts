@@ -7,6 +7,8 @@ import type {
   CurveQuery,
   DoseRequest,
   DoseResponse,
+  LoggedDoseEvent,
+  ProductSearchResult,
   SubstanceCurve,
 } from "./types/contract";
 
@@ -58,4 +60,16 @@ export function fetchAlerts(
 ): Promise<Alert[]> {
   const params = new URLSearchParams({ active });
   return request(`/users/${encodeURIComponent(userId)}/alerts?${params}`);
+}
+
+export function fetchDoses(userId: string): Promise<LoggedDoseEvent[]> {
+  return request(`/users/${encodeURIComponent(userId)}/doses`);
+}
+
+export function searchProducts(
+  q: string,
+  signal?: AbortSignal,
+): Promise<ProductSearchResult[]> {
+  const params = new URLSearchParams({ q });
+  return request(`/products/search?${params}`, { signal });
 }

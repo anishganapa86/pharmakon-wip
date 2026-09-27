@@ -504,6 +504,33 @@ Full replacement (PUT semantics): omitting an optional field clears it.
 
 ---
 
+## 6. List doses **[added after freeze]**
+
+`GET /users/{id}/doses`
+
+Read-only. Added so the Curves screen can pick its time window (earliest
+recent dose minus one hour) and its substances without the client keeping
+its own copy of what was logged.
+
+### Response — `200 OK`
+
+Array, oldest `taken_at` first. Empty array if nothing is logged.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `dose_event_id` | string | required | |
+| `product_id` | string | required | |
+| `product_name` | string | required | |
+| `taken_at` | string (ISO 8601 + tz) | required | As sent when logged, offset included. |
+| `quantity` | number | required | |
+| `ingredients` | LoggedIngredient[] | required | As decomposed at logging time. |
+
+LoggedIngredient: `name` (string, as labelled), `substance_id` (nullable),
+`amount_mg` (nullable; `null` when unmodeled), `unmodeled_reason` (nullable,
+same enum as [Ingredient](#4-product-search)).
+
+---
+
 ## Errors **[filled in]**
 
 The spec does not define errors. Proposed shape for every non-2xx response:

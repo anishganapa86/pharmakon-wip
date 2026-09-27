@@ -58,6 +58,17 @@ PRODUCTS: dict[str, Product] = {
         ),
         Product("prod_advil_200", "Advil", (LabelIngredient("IBUPROFEN", 200),)),
         Product("prod_nodoz_200", "NoDoz", (LabelIngredient("CAFFEINE", 200),)),
+        # Doxylamine and dextromethorphan are not in the registry, so they come
+        # back `unmatched` — the manual-entry path, not a guess.
+        Product(
+            "prod_nyquil_liquicap",
+            "NyQuil",
+            (
+                LabelIngredient("ACETAMINOPHEN", 325),
+                LabelIngredient("DEXTROMETHORPHAN HBR", 15),
+                LabelIngredient("DOXYLAMINE SUCCINATE", 6.25),
+            ),
+        ),
         Product(
             "prod_example_cold_multi",
             "Example Multi-Symptom Cold",
@@ -74,6 +85,31 @@ PRODUCTS: dict[str, Product] = {
         ),
     ]
 }
+
+
+def search(q: str, registry: Registry) -> list[Product]:
+    """Case-insensitive substring match on brand name or labelled ingredient.
+
+    A resolved ingredient also matches on its registry display name, so a search
+    for "paracetamol" or "APAP" finds acetaminophen products.
+    """
+    needle = q.strip().lower()
+    queried_substance = registry.resolve(q)
+    hits = []
+    for product in PRODUCTS.values():
+        haystack = [product.brand_name]
+        substances = set()
+        for ing in product.ingredients:
+            haystack.append(ing.name)
+            substance_id = registry.resolve(ing.name)
+            if substance_id is not None:
+                substances.add(substance_id)
+                haystack.append(registry.get(substance_id)["name"])
+        if any(needle in s.lower() for s in haystack) or (
+            queried_substance is not None and queried_substance in substances
+        ):
+            hits.append(product)
+    return hits
 
 
 def decompose(product: Product, registry: Registry) -> list[DecomposedIngredient]:
