@@ -203,6 +203,31 @@
 .search-brand {
   color: var(--text-h);
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.tag-modelable {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.tag-logged-only {
+  color: var(--text);
+}
+
+.tag-source {
+  font-style: italic;
 }
 
 .search-ingredients {
@@ -354,6 +379,33 @@
 .dose-list-label {
   font-weight: 500;
   color: var(--text-h);
+}
+
+/* --- Dose history ------------------------------------------------------------- */
+
+.history {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.history-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 /* --- Symptom check ---------------------------------------------------------- */

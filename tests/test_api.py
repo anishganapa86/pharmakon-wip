@@ -443,7 +443,11 @@ def test_search_matches_brand_name_case_insensitively(client):
         "brand_name",
         "ingredients",
         "has_unmodeled_ingredients",
+        "source",
+        "route",
     }
+    assert product["source"] == "catalog"
+    assert product["route"] is None
     by_name = {i["name"]: i for i in product["ingredients"]}
     assert by_name["ACETAMINOPHEN"]["substance_id"] == "acetaminophen"
     assert by_name["ACETAMINOPHEN"]["unmodeled_reason"] is None

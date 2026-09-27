@@ -8,8 +8,8 @@ import {
 } from "./components/ConcentrationChart";
 import { ProductSearch } from "./components/ProductSearch";
 import { SymptomCheck } from "./components/SymptomCheck";
-import { ingredientLabel } from "./labels";
-import { HOUR_MS } from "./time";
+import { ingredientLabel, notModeledReason, productModelable } from "./labels";
+import { formatDateClock, HOUR_MS } from "./time";
 import type {
   Alert,
   LoggedDoseEvent,
@@ -47,6 +47,7 @@ interface Dashboard {
   curves: SubstanceCurve[];
   alerts: Alert[];
   recent: RecentProduct[];
+  doses: LoggedDoseEvent[]; // oldest first; for the dose history/timeline
 }
 
 /**
@@ -71,6 +72,7 @@ async function fetchDashboard(): Promise<Dashboard> {
       curves: [],
       alerts,
       recent: recentLogged,
+      doses,
     };
   }
 
@@ -100,7 +102,14 @@ async function fetchDashboard(): Promise<Dashboard> {
       }),
     ),
   );
-  return { doseCount: doses.length, window, curves, alerts, recent: recentLogged };
+  return {
+    doseCount: doses.length,
+    window,
+    curves,
+    alerts,
+    recent: recentLogged,
+    doses,
+  };
 }
 
 function App() {
@@ -207,14 +216,12 @@ function App() {
             {product.ingredients.map(ingredientLabel).join(" · ")}
           </p>
         )}
-        {product &&
-          product.has_unmodeled_ingredients &&
-          product.ingredients.every((i) => i.substance_id === null) && (
-            <p className="warning">
-              This product's ingredients are not in our database. It will
-              appear in your log but concentration won't be modeled.
-            </p>
-          )}
+        {product && !productModelable(product) && (
+          <p className="warning">
+            {notModeledReason(product.route)}. It will appear in your log and
+            timeline, but no concentration curve is drawn.
+          </p>
+        )}
         {logged && <p className="muted">{logged}</p>}
         {logError && <p className="error">Couldn't log dose: {logError}</p>}
       </section>
@@ -248,6 +255,40 @@ function App() {
               />
             ))}
           </div>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>Dose history</h2>
+        {dashboard === null || dashboard.doses.length === 0 ? (
+          <p className="muted">No doses logged yet.</p>
+        ) : (
+          <ul className="history">
+            {[...dashboard.doses].reverse().map((d) => {
+              const modeled = d.ingredients.some(
+                (i) => i.substance_id !== null && i.unmodeled_reason === null,
+              );
+              return (
+                <li key={d.dose_event_id} className="history-item">
+                  <div className="history-head">
+                    <strong>{d.product_name}</strong>
+                    <span className="muted">
+                      {formatDateClock(new Date(d.taken_at).getTime())}
+                    </span>
+                  </div>
+                  {modeled ? (
+                    <span className="tag tag-modelable">Modeled</span>
+                  ) : (
+                    // Route isn't tracked on a logged dose, only at search
+                    // time, so history uses the generic honest phrasing.
+                    <span className="tag tag-logged-only">
+                      {notModeledReason(null)}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         )}
       </section>
 

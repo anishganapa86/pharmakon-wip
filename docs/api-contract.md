@@ -432,6 +432,24 @@ so omissions are listed, not footnoted.
 | `brand_name` | string | required | |
 | `ingredients` | Ingredient[] | required | Active ingredients. **[filled in: may be empty only if label decomposition failed entirely]** |
 | `has_unmodeled_ingredients` | boolean | required | `true` if any ingredient has a non-null `unmodeled_reason`. The product is still loggable; those ingredients are excluded from PK and duplication, and the UI must name them. |
+| `source` | string enum | required **[added]** | `catalog` \| `openfda`. `catalog` is the synthetic seed catalog (`app/api/products.py`) -- ingredient strengths there are unverified against real labels. `openfda` is a real openFDA drug label. The UI must mark `catalog` results distinctly so a fabricated-looking strength is never mistaken for verified label data. |
+| `route` | string | nullable **[added]** | As labelled by openFDA (e.g. `"TOPICAL"`, `"ORAL"`). `null` for catalog products (route isn't tracked there) or when openFDA didn't report one. Real label data, never inferred -- used so an unmodelable topical product (e.g. a hydrocortisone cream found via condition search) can say "not modeled (topical product)" instead of a generic gap. |
+
+**Search sources.** The synthetic catalog is searched first (by brand name
+or a resolved ingredient name), then openFDA by `brand_name`/`generic_name`.
+If the combined result count is still below
+`openfda.MIN_RESULTS_BEFORE_CONDITION_FALLBACK` (3), openFDA's
+`indications_and_usage` and `purpose` label fields are also searched, so a
+condition ("eczema", "heartburn", "pain relief") finds products whose label
+says what they treat, not just products whose name matches. Results are
+deduplicated by brand name across all four queries. **Every ingredient
+sourced from openFDA has `strength_mg: null` and `unmodeled_reason:
+"unknown_strength"` (or `"unmatched"` if the substance doesn't resolve) --
+openFDA label text is unstructured, so a parsed milligram value would be a
+guess, not a lookup (CLAUDE.md: "refuse rather than guess"). Only the
+synthetic catalog carries a strength number.** A product found via openFDA is
+loggable exactly like a catalog product; the server remembers it by `id` for
+the lifetime of the process so a subsequent `POST /doses` can find it.
 
 Ingredient **[filled in shape]**:
 
@@ -450,7 +468,9 @@ Ingredient **[filled in shape]**:
     "ingredients": [
       { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": 500, "unmodeled_reason": null }
     ],
-    "has_unmodeled_ingredients": false
+    "has_unmodeled_ingredients": false,
+    "source": "catalog",
+    "route": null
   },
   {
     "id": "prod_example_cold_multi",
@@ -459,7 +479,19 @@ Ingredient **[filled in shape]**:
       { "substance_id": "acetaminophen", "name": "ACETAMINOPHEN", "strength_mg": null, "unmodeled_reason": "unknown_strength" },
       { "substance_id": null, "name": "PHENYLEPHRINE HCL", "strength_mg": 5, "unmodeled_reason": "unmatched" }
     ],
-    "has_unmodeled_ingredients": true
+    "has_unmodeled_ingredients": true,
+    "source": "catalog",
+    "route": null
+  },
+  {
+    "id": "openfda_a1b2c3d4e5f6",
+    "brand_name": "Cortizone-10",
+    "ingredients": [
+      { "substance_id": null, "name": "HYDROCORTISONE", "strength_mg": null, "unmodeled_reason": "unmatched" }
+    ],
+    "has_unmodeled_ingredients": true,
+    "source": "openfda",
+    "route": "TOPICAL"
   }
 ]
 ```

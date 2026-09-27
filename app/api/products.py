@@ -112,8 +112,13 @@ def search(q: str, registry: Registry) -> list[Product]:
     return hits
 
 
-def decompose(product: Product, registry: Registry) -> list[DecomposedIngredient]:
-    """Resolve each labelled ingredient. `unmatched` wins over `unknown_strength`."""
+def decompose(product, registry: Registry) -> list[DecomposedIngredient]:
+    """Resolve each labelled ingredient. `unmatched` wins over `unknown_strength`.
+
+    Accepts anything shaped like `Product` -- brand_name plus an `ingredients`
+    sequence of name/strength_mg pairs. `openfda.OpenFDAProduct` has that same
+    shape, so this also decomposes openFDA-discovered products.
+    """
     out = []
     for ing in product.ingredients:
         substance_id = registry.resolve(ing.name)

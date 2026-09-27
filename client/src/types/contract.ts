@@ -149,11 +149,20 @@ export interface Ingredient {
   unmodeled_reason: UnmodeledReason | null; // null = modeled
 }
 
+/** "catalog" is the synthetic seed catalog (unverified strengths); "openfda"
+ * is a real openFDA drug label. The UI must mark "catalog" results distinctly
+ * so a fabricated-looking strength is never mistaken for verified data. */
+export type ProductSource = "catalog" | "openfda";
+
 export interface ProductSearchResult {
   id: string; // use as product_id when logging
   brand_name: string;
   ingredients: Ingredient[];
   has_unmodeled_ingredients: boolean;
+  source: ProductSource;
+  // As labelled by openFDA (e.g. "TOPICAL", "ORAL"); null for catalog
+  // products (route isn't tracked there) or when openFDA didn't report one.
+  route: string | null;
 }
 
 // ---------------------------------------------------------------------------

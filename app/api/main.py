@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
-from . import service, side_effects
+from . import openfda, service, side_effects
 from .db import Base, DoseEvent, DoseIngredient, make_engine
 from .products import PRODUCTS, decompose, search
 
@@ -117,6 +117,14 @@ class DoseRequest(BaseModel):
     quantity: float = Field(gt=0)
 
 
+def _find_product(product_id: str):
+    """The synthetic catalog, or a product discovered via openFDA search."""
+    product = PRODUCTS.get(product_id)
+    if product is not None:
+        return product
+    return openfda.get_discovered(product_id)
+
+
 @app.post("/users/{id}/doses", status_code=201)
 def log_dose(
     body: DoseRequest,
@@ -125,7 +133,7 @@ def log_dose(
     registry: Reg,
     now: Now,
 ) -> dict:
-    product = PRODUCTS.get(body.product_id)
+    product = _find_product(body.product_id)
     if product is None:
         raise HTTPException(404, f"unknown product {body.product_id!r}")
 
@@ -260,10 +268,29 @@ def get_alerts(
 
 @app.get("/products/search")
 def search_products(q: str, registry: Reg) -> list[dict]:
+    """Synthetic catalog first, then openFDA by name, then by what it treats.
+
+    People search for what they HAVE ("eczema"), not just what they TAKE
+    ("hydrocortisone"), so a name-only search misses them. When the catalog
+    and name search together return fewer than
+    `openfda.MIN_RESULTS_BEFORE_CONDITION_FALLBACK` hits, this also searches
+    the label's `indications_and_usage` and `purpose` fields. Every result
+    carries `source` ("catalog" | "openfda") so the UI can mark the synthetic
+    catalog's unverified strengths as distinct from real label data, and every
+    ingredient's `unmodeled_reason` already says whether it can be modeled or
+    is only logged (see docs/api-contract.md).
+    """
     if not q.strip():
         return _error(422, "validation_error", "q: must not be empty")
-    out = []
-    for product in search(q, registry):
+
+    results: list[dict] = []
+    seen: set[str] = set()
+
+    def add(product, source: str) -> None:
+        key = product.brand_name.strip().lower()
+        if key in seen:
+            return
+        seen.add(key)
         ingredients = [
             {
                 "substance_id": ing.substance_id,
@@ -273,7 +300,7 @@ def search_products(q: str, registry: Reg) -> list[dict]:
             }
             for ing in decompose(product, registry)
         ]
-        out.append(
+        results.append(
             {
                 "id": product.id,
                 "brand_name": product.brand_name,
@@ -281,9 +308,27 @@ def search_products(q: str, registry: Reg) -> list[dict]:
                 "has_unmodeled_ingredients": any(
                     i["unmodeled_reason"] is not None for i in ingredients
                 ),
+                "source": source,
+                # The synthetic catalog doesn't track route.
+                "route": getattr(product, "route", None),
             }
         )
-    return out
+
+    for product in search(q, registry):
+        add(product, "catalog")
+
+    try:
+        for product in openfda.search_by_name(q):
+            add(product, "openfda")
+        if len(results) < openfda.MIN_RESULTS_BEFORE_CONDITION_FALLBACK:
+            for product in openfda.search_by_condition_fields(q):
+                add(product, "openfda")
+    except openfda.OpenFDAUnavailable:
+        # openFDA being down is not a client error; degrade to whatever the
+        # synthetic catalog already found rather than failing the search.
+        pass
+
+    return results
 
 
 # --- POST /symptom-check ------------------------------------------------------------

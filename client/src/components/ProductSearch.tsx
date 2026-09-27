@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { searchProducts } from "../api";
-import { ingredientLabel } from "../labels";
+import { ingredientLabel, productModelable, sourceLabel } from "../labels";
 import type { ProductSearchResult, RecentProduct } from "../types/contract";
 
 const DEBOUNCE_MS = 200;
@@ -164,7 +164,19 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
                 onPointerEnter={() => setActive(i)}
                 onClick={() => choose(p)}
               >
-                <span className="search-brand">{p.brand_name}</span>
+                <span className="search-brand">
+                  {p.brand_name}
+                  <span
+                    className={
+                      productModelable(p)
+                        ? "tag tag-modelable"
+                        : "tag tag-logged-only"
+                    }
+                  >
+                    {productModelable(p) ? "Modeled" : "Logged only"}
+                  </span>
+                  {sourceLabel(p) && <span className="tag tag-source">{sourceLabel(p)}</span>}
+                </span>
                 <span className="search-ingredients">
                   {p.ingredients.length > 0
                     ? p.ingredients.map(ingredientLabel).join(" · ")
