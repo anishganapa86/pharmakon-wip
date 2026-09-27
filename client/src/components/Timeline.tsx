@@ -7,6 +7,7 @@ import {
 } from "../labels";
 import { dayKey, formatClock, formatDateHeader } from "../time";
 import type { TimelineDoseEntry, TimelineEntry } from "../types/contract";
+import { ProductName } from "./ProductName";
 
 const PAGE_MS = 30 * 24 * 60 * 60 * 1000; // matches the API's default range
 
@@ -24,7 +25,9 @@ function DoseCard({ entry }: { entry: TimelineDoseEntry }) {
     <li className="timeline-item timeline-item-dose">
       <div className="timeline-item-head">
         <span className="tag tag-source">Dose</span>
-        <strong>{entry.product_name}</strong>
+        <strong>
+          <ProductName name={entry.product_name} />
+        </strong>
         <span className="muted timeline-time">{formatClock(entryMs(entry))}</span>
       </div>
       <p className="timeline-detail">

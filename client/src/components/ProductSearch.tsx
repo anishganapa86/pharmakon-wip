@@ -1,6 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { createUserEnteredProduct, searchProducts } from "../api";
-import { ingredientLabel, productModelable, sourceLabel } from "../labels";
+import {
+  ingredientLabel,
+  productModelable,
+  sourceLabel,
+  truncateProductName,
+} from "../labels";
 import type { ProductSearchResult, RecentProduct } from "../types/contract";
 
 function errorMessage(e: unknown): string {
@@ -279,12 +284,13 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
                 <button
                   type="button"
                   className="recent-item"
+                  title={r.product_name}
                   disabled={recentLoadingId === r.product_id}
                   onClick={() => void chooseRecent(r)}
                 >
                   {recentLoadingId === r.product_id
                     ? "Loading…"
-                    : r.product_name}
+                    : truncateProductName(r.product_name)}
                 </button>
               </li>
             ))}

@@ -116,6 +116,17 @@
   text-decoration: underline;
 }
 
+.product-name-toggle {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
 .selected-product {
   margin-top: 10px;
   font-size: 15px;

@@ -13,6 +13,7 @@ import {
   type TimeWindow,
 } from "./components/ConcentrationChart";
 import { LogForm } from "./components/LogForm";
+import { ProductName } from "./components/ProductName";
 import { ProductSearch } from "./components/ProductSearch";
 import { SideEffectProfile } from "./components/SideEffectProfile";
 import { Skincare } from "./components/Skincare";
@@ -372,7 +373,9 @@ function App() {
                   return (
                     <li key={d.dose_event_id} className="history-item">
                       <div className="history-head">
-                        <strong>{d.product_name}</strong>
+                        <strong>
+                          <ProductName name={d.product_name} />
+                        </strong>
                         <span className="muted">
                           {formatDateClock(new Date(d.taken_at).getTime())}
                         </span>

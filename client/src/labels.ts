@@ -4,6 +4,18 @@ import type {
   ProductSearchResult,
 } from "./types/contract";
 
+const PRODUCT_NAME_MAX = 60;
+
+/** Product names from openFDA labels can run to 100+ characters (brand +
+ * indication + form + strength + count, all concatenated). Truncate for
+ * display; callers show the full name via `title` (hover) or a tap-to-expand
+ * control. */
+export function truncateProductName(name: string): string {
+  return name.length <= PRODUCT_NAME_MAX
+    ? name
+    : `${name.slice(0, PRODUCT_NAME_MAX - 1).trimEnd()}…`;
+}
+
 /** One ingredient as a user should read it, naming why it isn't counted. */
 export function ingredientLabel(i: Ingredient): string {
   if (i.unmodeled_reason === "unmatched") {

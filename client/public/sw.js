@@ -1,7 +1,15 @@
 // Minimal app-shell service worker. Precaches the shell on install, then
 // serves same-origin GETs cache-first, populating the cache as requests come
 // in (so the hashed JS/CSS bundles from each build get cached on first use).
-const CACHE_NAME = "pharmakon-shell-v1";
+//
+// __PHARMAKON_BUILD_ID__ is replaced with a per-build id by vite.config.ts
+// (build only; a dev server serves this literal placeholder). Baking the id
+// into the cache name means a new build produces a byte-different sw.js, so
+// the browser installs it as an update and `activate` evicts the previous
+// build's cache -- without this, CACHE_NAME staying constant across deploys
+// meant `activate` never had anything to evict, so a client's first-ever
+// install could keep serving that stale snapshot indefinitely.
+const CACHE_NAME = "pharmakon-shell-__PHARMAKON_BUILD_ID__";
 const APP_SHELL = [
   "/",
   "/manifest.json",
