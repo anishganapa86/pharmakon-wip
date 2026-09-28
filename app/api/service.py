@@ -27,6 +27,7 @@ from ..pk.engine import (
 from ..pk.individualize import Patient, adjusted_ke
 from ..registry.loader import Registry
 from .db import AlertRecord, DoseEvent, DoseIngredient
+from .products import DecomposedIngredient
 
 # Population reference subject, used until PUT /profile exists. No serum
 # creatinine, so renally cleared substances get the population-clearance note.
@@ -83,6 +84,52 @@ def logged_doses(events: list[DoseEvent], origin: datetime) -> list[LoggedDose]:
         for sid, mg in per_substance.items():
             out.append(LoggedDose(ev.id, sid, t, mg, ev.product_name))
     return out
+
+
+def record_dose(
+    session: Session,
+    registry: Registry,
+    user_id: str,
+    *,
+    product_id: str,
+    product_name: str,
+    taken_at: datetime,
+    quantity: float,
+    ingredients: list[DecomposedIngredient],
+    topical_ingredients: list[str] | None,
+    now: datetime,
+) -> tuple[DoseEvent, list[AlertRecord]]:
+    """Persist one dose and recompute alerts. The only way a DoseEvent is made.
+
+    Manual logging (POST /doses) and "Take now" from a schedule both come
+    through here, so a scheduled dose is alerted on and charted exactly like a
+    hand-logged one. `ingredients` carry per-unit strengths; the logged amount
+    is strength * quantity, and unmodeled ingredients are stored with none.
+    """
+    event = DoseEvent(
+        id=f"dose_{uuid.uuid4().hex[:12]}",
+        user_id=user_id,
+        product_id=product_id,
+        product_name=product_name,
+        taken_at=taken_at.isoformat(),
+        quantity=quantity,
+        topical_ingredients=topical_ingredients,
+    )
+    for ing in ingredients:
+        event.ingredients.append(
+            DoseIngredient(
+                ingredient_name=ing.name,
+                substance_id=ing.substance_id,
+                amount_mg=(
+                    ing.strength_mg * quantity if ing.unmodeled_reason is None else None
+                ),
+                unmodeled_reason=ing.unmodeled_reason,
+            )
+        )
+    session.add(event)
+    session.flush()
+    triggered = recompute_alerts(session, user_id, registry, now)
+    return event, triggered
 
 
 # ---------------------------------------------------------------------------
@@ -243,6 +290,9 @@ class CurveResult:
     peak: dict | None
     current: dict | None
     notes: list[str]  # causes behind the curve, from adjusted_ke
+    # The same curve with future scheduled doses added, from `now` on; empty
+    # when no schedule contributes. A projection, never merged into `points`.
+    projected_points: list[dict] | None = None
 
 
 def _point(origin: datetime, t_hours: float, conc: float) -> dict:
@@ -261,11 +311,16 @@ def compute_curve(
     resolution: str,
     now: datetime,
     patient: Patient = DEFAULT_PATIENT,
+    scheduled: list[tuple[datetime, float]] | None = None,
 ) -> CurveResult:
     """Concentration on the fixed 15-minute grid from `start`, in mg/L.
 
     Timestamps come back in `start`'s offset. Peak is taken over the full
     15-minute grid so a coarser resolution can't hide it.
+
+    `scheduled` is (instant, mg) for doses planned but not yet taken. They are
+    kept out of `points`, `peak` and `current`, which describe what was
+    actually logged; `projected_points` adds them on top from `now` onward.
     """
     params = registry.pk_params(substance_id)
     try:
@@ -301,4 +356,15 @@ def compute_curve(
         c_now = superpose(doses, params, patient.weight_kg, np.array([now_h]), ke=ke)
         current = _point(start, now_h, c_now[0])
 
-    return CurveResult(True, None, points, peak, current, notes)
+    projected = None
+    if scheduled:
+        planned = [Dose(hours_since(t, start), mg) for t, mg in scheduled]
+        both = superpose([*doses, *planned], params, patient.weight_kg, grid, ke=ke)
+        now_h = hours_since(now, start)
+        projected = [
+            _point(start, t, c)
+            for t, c in zip(grid[::step], both[::step], strict=True)
+            if t >= now_h
+        ]
+
+    return CurveResult(True, None, points, peak, current, notes, projected)

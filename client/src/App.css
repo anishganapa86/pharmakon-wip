@@ -737,3 +737,168 @@
   text-align: center;
   list-style: none;
 }
+
+/* --- Medication schedule ---------------------------------------------------------- */
+
+.med-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 16px;
+
+  & > h2 {
+    margin: 0;
+  }
+}
+
+.med-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.med-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 8px;
+
+  & p,
+  & ul {
+    margin: 0;
+  }
+}
+
+/* Left edge color follows status; the status label carries the same meaning
+   in text so color is never the only signal. */
+.med-card-taken_today {
+  border-left-color: #16a34a;
+}
+
+.med-card-due {
+  border-left-color: #d97706;
+}
+
+.med-card-overdue {
+  border-left-color: #dc2626;
+}
+
+.med-card-upcoming,
+.med-card-as_needed {
+  border-left-color: var(--border);
+}
+
+.med-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.med-name {
+  color: var(--text-h);
+  min-width: 0;
+}
+
+.med-status {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.med-status-taken_today {
+  color: #16a34a;
+}
+
+.med-status-due {
+  color: #d97706;
+}
+
+.med-status-overdue {
+  color: #dc2626;
+}
+
+.med-next {
+  color: var(--text-h);
+}
+
+.med-slots,
+.med-levels {
+  list-style: none;
+  padding: 0;
+}
+
+.med-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 13px;
+}
+
+.med-slot-taken {
+  color: #16a34a;
+}
+
+.med-slot-due {
+  color: #d97706;
+}
+
+.med-slot-overdue,
+.med-slot-missed {
+  color: #dc2626;
+}
+
+.med-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.med-add {
+  align-self: flex-start;
+}
+
+.med-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.med-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.med-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.med-day {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 15px;
+}
+
+.timeline-item-scheduled-taken {
+  border-left-color: #16a34a;
+}
+
+.timeline-item-scheduled-missed {
+  border-left-color: #dc2626;
+}

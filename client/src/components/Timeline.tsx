@@ -38,6 +38,29 @@ function DoseCard({ entry }: { entry: TimelineDoseEntry }) {
   );
 }
 
+/** A settled slot from the medication schedule. Not a dose: a "taken" one
+ * sits beside the dose card that satisfied it. */
+function ScheduledCard({
+  entry,
+}: {
+  entry: Extract<TimelineEntry, { type: "scheduled" }>;
+}) {
+  return (
+    <li className={`timeline-item timeline-item-scheduled-${entry.status}`}>
+      <div className="timeline-item-head">
+        <span className="tag tag-source">Scheduled</span>
+        <strong>
+          <ProductName name={entry.product_name} />
+        </strong>
+        <span className="muted timeline-time">{formatClock(entryMs(entry))}</span>
+      </div>
+      <p className="timeline-detail">
+        {entry.status === "taken" ? "Taken" : "Missed"}
+      </p>
+    </li>
+  );
+}
+
 function LogCard({ entry }: { entry: Extract<TimelineEntry, { type: "log" }> }) {
   const color = categoryColor(entry.category);
   return (
@@ -164,6 +187,8 @@ export function Timeline({ userId }: Props) {
     rows.push(
       entry.type === "dose" ? (
         <DoseCard key={`dose-${entry.id}`} entry={entry} />
+      ) : entry.type === "scheduled" ? (
+        <ScheduledCard key={`scheduled-${entry.id}`} entry={entry} />
       ) : (
         <LogCard key={`log-${entry.id}`} entry={entry} />
       ),

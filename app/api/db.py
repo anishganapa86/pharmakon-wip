@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 
-from sqlalchemy import JSON, Float, ForeignKey, String, create_engine
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, String, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 DATABASE_URL = os.environ.get("PHARMAKON_DB_URL", "sqlite:///./pharmakon.db")
@@ -75,6 +75,43 @@ class DailyLog(Base):
     body_location: Mapped[str | None] = mapped_column(String, nullable=True)
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[str] = mapped_column(String)  # ISO 8601 + offset
+
+
+class ScheduledDose(Base):
+    """A recurring medication the user plans to take (app/api/schedule.py).
+
+    A schedule is a plan, not a record: nothing here is a dose. Only a
+    DoseEvent (logged by hand or via POST .../schedule/{id}/take) is one, and
+    only DoseEvents feed alerts.
+
+    `substance_entries` snapshots the product's decomposition at creation, one
+    entry per label ingredient, unmodeled ones included: {name, substance_id,
+    amount_mg (per unit), display_name, unmodeled_reason}. Products found via
+    openFDA or pasted by the user live in process memory only, so "Take now"
+    could not re-resolve them after a restart. Soft-deleted rows are kept so
+    the timeline can still say which past slots were taken or missed.
+    """
+
+    __tablename__ = "scheduled_doses"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    product_id: Mapped[str] = mapped_column(String)
+    product_name: Mapped[str] = mapped_column(String)
+    substance_entries: Mapped[list] = mapped_column(JSON)
+    frequency: Mapped[str] = mapped_column(String)
+    time_of_day: Mapped[list] = mapped_column(JSON)  # ["HH:MM", ...] local
+    days_of_week: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    notes: Mapped[str | None] = mapped_column(String, nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[str] = mapped_column(String)  # ISO 8601 + offset
+    # IANA name the HH:MM times are read in. Null means "the offset of the
+    # request clock", which is only right for a client that never sent one.
+    timezone: Mapped[str | None] = mapped_column(String, nullable=True)
+    deactivated_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Same as DoseEvent.topical_ingredients, carried so a dose taken from the
+    # schedule reaches the skincare checker exactly like a manually logged one.
+    topical_ingredients: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class AlertRecord(Base):

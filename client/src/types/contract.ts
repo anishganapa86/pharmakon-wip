@@ -75,6 +75,9 @@ export interface SubstanceCurve {
   threshold_concentration_mg_per_l: number | null;
   peak: ConcentrationPoint | null;
   current: ConcentrationPoint | null;
+  // The same curve with future scheduled doses added, from now on. null when
+  // no schedule contributes. A projection, never part of `points`.
+  projected_points: ConcentrationPoint[] | null;
   // Causes behind the curve (e.g. population clearance used because no serum
   // creatinine is on file). May be empty, never omitted.
   notes: string[];
@@ -386,8 +389,96 @@ export interface TimelineLogEntry {
   notes: string | null;
 }
 
+/** A slot from the medication schedule whose outcome is settled. Not a dose:
+ * a "taken" slot points at the dose that satisfied it. */
+export interface TimelineScheduledEntry {
+  type: "scheduled";
+  timestamp: IsoTimestamp; // when the dose was scheduled for
+  id: string;
+  schedule_id: string;
+  product_id: string;
+  product_name: string;
+  status: "taken" | "missed";
+  dose_event_id: string | null;
+}
+
 /** Chronological record only -- never a correlation or a causal claim. */
-export type TimelineEntry = TimelineDoseEntry | TimelineLogEntry;
+export type TimelineEntry =
+  | TimelineDoseEntry
+  | TimelineLogEntry
+  | TimelineScheduledEntry;
+
+// ---------------------------------------------------------------------------
+// Medication schedule: /users/{id}/schedule  (see app/api/schedule.py)
+// ---------------------------------------------------------------------------
+
+export type ScheduleFrequency =
+  | "daily"
+  | "twice_daily"
+  | "three_times_daily"
+  | "every_other_day"
+  | "weekly"
+  | "as_needed";
+
+/** as_needed is never due, so it has a status of its own. */
+export type ScheduleStatus =
+  | "due"
+  | "upcoming"
+  | "overdue"
+  | "taken_today"
+  | "as_needed";
+
+export type SlotStatus = "upcoming" | "due" | "overdue" | "taken" | "missed";
+
+export interface ScheduleRequest {
+  product_id: string;
+  frequency: ScheduleFrequency;
+  times: string[]; // "HH:MM", local to `timezone`
+  days_of_week?: string[]; // lowercase English names
+  notes?: string;
+  timezone?: string; // IANA name
+}
+
+export interface ScheduledSubstance {
+  substance_id: string | null;
+  display_name: string | null;
+  name: string; // as labelled
+  amount_mg: number | null; // per unit
+  unmodeled_reason: UnmodeledReason | null;
+  current_concentration: number | null; // mg/L; null when not modeled
+  unit: ConcentrationUnit;
+}
+
+export interface ScheduledSlot {
+  scheduled_at: IsoTimestamp;
+  status: SlotStatus;
+  taken_at: IsoTimestamp | null;
+  dose_event_id: string | null;
+}
+
+export interface ScheduledMedication {
+  id: string;
+  product_id: string;
+  product_name: string;
+  frequency: ScheduleFrequency;
+  times: string[];
+  days_of_week: string[] | null;
+  timezone: string | null;
+  notes: string | null;
+  active: boolean;
+  created_at: IsoTimestamp;
+  status: ScheduleStatus;
+  next_due: IsoTimestamp | null; // may be in the past when overdue
+  last_taken: IsoTimestamp | null; // from logged doses, however they were logged
+  today: ScheduledSlot[];
+  substances: ScheduledSubstance[];
+}
+
+export interface TakeScheduledResponse {
+  dose_event_id: string;
+  schedule_id: string;
+  triggered_alerts: Alert[];
+}
 
 // ---------------------------------------------------------------------------
 // 5. PUT /users/{id}/profile  (full replacement)

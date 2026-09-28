@@ -12,11 +12,14 @@ import type {
   LoggedDoseEvent,
   ProductSearchResponse,
   ProductSearchResult,
+  ScheduledMedication,
+  ScheduleRequest,
   SideEffectProfileResponse,
   SkincareCheckResponse,
   SkincareProductRequest,
   SubstanceCurve,
   SymptomCheckResponse,
+  TakeScheduledResponse,
   TimelineEntry,
   TimelineQuery,
 } from "./types/contract";
@@ -152,4 +155,40 @@ export function fetchTimeline(
   return request(
     `/users/${encodeURIComponent(userId)}/timeline${qs ? `?${qs}` : ""}`,
   );
+}
+
+// --- Medication schedule -------------------------------------------------------
+
+const scheduleBase = (userId: string) =>
+  `/users/${encodeURIComponent(userId)}/schedule`;
+
+export function fetchSchedule(userId: string): Promise<ScheduledMedication[]> {
+  return request(scheduleBase(userId));
+}
+
+export function createSchedule(
+  userId: string,
+  body: ScheduleRequest,
+): Promise<ScheduledMedication> {
+  return request(scheduleBase(userId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function deleteSchedule(userId: string, scheduleId: string): Promise<void> {
+  return request(`${scheduleBase(userId)}/${encodeURIComponent(scheduleId)}`, {
+    method: "DELETE",
+  });
+}
+
+/** Logs one unit of the scheduled product as a real dose. */
+export function takeScheduled(
+  userId: string,
+  scheduleId: string,
+): Promise<TakeScheduledResponse> {
+  return request(`${scheduleBase(userId)}/${encodeURIComponent(scheduleId)}/take`, {
+    method: "POST",
+  });
 }

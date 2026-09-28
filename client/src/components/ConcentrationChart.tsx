@@ -71,14 +71,23 @@ export function ConcentrationChart({ curve, window }: Props) {
   }
 
   // Numeric time so the axis is linear in time and shared across charts.
-  const data = curve.points.map((p) => ({
-    t: new Date(p.t).getTime(),
-    concentration: p.concentration,
-  }));
+  // `projected` (future scheduled doses added) shares the actual curve's grid,
+  // so it is joined by timestamp and exists only from "now" on.
+  const projectedAt = new Map(
+    (curve.projected_points ?? []).map((p) => [
+      new Date(p.t).getTime(),
+      p.concentration,
+    ]),
+  );
+  const data = curve.points.map((p) => {
+    const t = new Date(p.t).getTime();
+    return { t, concentration: p.concentration, projected: projectedAt.get(t) };
+  });
 
   const { fromMs, toMs, nowMs } = window;
   const threshold = curve.threshold_concentration_mg_per_l;
   const seriesName = `${name} (${curve.unit})`;
+  const projectedName = "Expected if taken as scheduled";
 
   return (
     <div className="chart">
@@ -111,9 +120,9 @@ export function ConcentrationChart({ curve, window }: Props) {
             />
             <Tooltip
               labelFormatter={(t) => formatDateClock(Number(t))}
-              formatter={(v) => [
+              formatter={(v, n) => [
                 typeof v === "number" ? `${v.toFixed(3)} mg/L` : String(v),
-                name,
+                n === projectedName ? `${name} (expected)` : name,
               ]}
               contentStyle={{
                 background: "var(--bg)",
@@ -137,6 +146,19 @@ export function ConcentrationChart({ curve, window }: Props) {
               isAnimationActive={false}
               name={seriesName}
             />
+            {projectedAt.size > 0 && (
+              <Line
+                type="monotone"
+                dataKey="projected"
+                stroke="var(--accent)"
+                strokeWidth={2}
+                strokeDasharray="6 4"
+                strokeOpacity={0.7}
+                dot={false}
+                isAnimationActive={false}
+                name={projectedName}
+              />
+            )}
             {/* null for every substance at launch; the chart must work without it */}
             {threshold !== null && (
               <ReferenceLine

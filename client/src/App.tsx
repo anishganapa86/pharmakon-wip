@@ -4,6 +4,7 @@ import {
   fetchAlerts,
   fetchCurve,
   fetchDoses,
+  fetchSchedule,
   fetchSkincareCheck,
   logDose,
 } from "./api";
@@ -15,6 +16,7 @@ import {
 import { LogForm } from "./components/LogForm";
 import { ProductName } from "./components/ProductName";
 import { ProductSearch } from "./components/ProductSearch";
+import { Schedule } from "./components/Schedule";
 import { SideEffectProfile } from "./components/SideEffectProfile";
 import { Skincare } from "./components/Skincare";
 import { SymptomCheck } from "./components/SymptomCheck";
@@ -31,6 +33,7 @@ import type {
   LoggedDoseEvent,
   ProductSearchResult,
   RecentProduct,
+  ScheduledMedication,
   SubstanceCurve,
 } from "./types/contract";
 
@@ -66,24 +69,43 @@ interface Dashboard {
   alerts: Alert[];
   recent: RecentProduct[];
   doses: LoggedDoseEvent[]; // oldest first; for the dose history/timeline
+  schedule: ScheduledMedication[];
 }
 
 /**
- * Curves for every substance with a modeled dose in the last 24 hours, from
- * one hour before the earliest of those doses to six hours past now.
+ * Curves for every substance with a modeled dose in the last 24 hours or in a
+ * scheduled medication, from one hour before the earliest recent dose (six
+ * hours back if there is none) to six hours past now, or 24 when anything is
+ * scheduled, so the next scheduled dose shows up in the projection.
  */
 async function fetchDashboard(): Promise<Dashboard> {
   const nowMs = Date.now();
-  const [doses, alerts] = await Promise.all([
+  const [doses, alerts, schedule] = await Promise.all([
     fetchDoses(USER_ID),
     fetchAlerts(USER_ID),
+    fetchSchedule(USER_ID),
   ]);
   const recentLogged = recentProducts(doses);
 
   const recent = doses.filter(
     (d: LoggedDoseEvent) => new Date(d.taken_at).getTime() >= nowMs - 24 * HOUR_MS,
   );
-  if (recent.length === 0) {
+  // Unmodeled ingredients have no curve; they're named in the alerts instead.
+  const substances = [
+    ...new Set([
+      ...recent.flatMap((d) =>
+        d.ingredients
+          .filter((i) => i.substance_id !== null && i.unmodeled_reason === null)
+          .map((i) => i.substance_id as string),
+      ),
+      ...schedule.flatMap((m) =>
+        m.substances
+          .filter((s) => s.substance_id !== null && s.unmodeled_reason === null)
+          .map((s) => s.substance_id as string),
+      ),
+    ]),
+  ];
+  if (recent.length === 0 && substances.length === 0) {
     return {
       doseCount: doses.length,
       window: null,
@@ -91,25 +113,19 @@ async function fetchDashboard(): Promise<Dashboard> {
       alerts,
       recent: recentLogged,
       doses,
+      schedule,
     };
   }
 
-  const earliest = Math.min(...recent.map((d) => new Date(d.taken_at).getTime()));
+  const earliest =
+    recent.length > 0
+      ? Math.min(...recent.map((d) => new Date(d.taken_at).getTime())) - HOUR_MS
+      : nowMs - 6 * HOUR_MS;
   const window = {
-    fromMs: earliest - HOUR_MS,
-    toMs: nowMs + 6 * HOUR_MS,
+    fromMs: earliest,
+    toMs: nowMs + (schedule.length > 0 ? 24 : 6) * HOUR_MS,
     nowMs,
   };
-  // Unmodeled ingredients have no curve; they're named in the alerts instead.
-  const substances = [
-    ...new Set(
-      recent.flatMap((d) =>
-        d.ingredients
-          .filter((i) => i.substance_id !== null && i.unmodeled_reason === null)
-          .map((i) => i.substance_id as string),
-      ),
-    ),
-  ];
   const curves = await Promise.all(
     substances.map((substance_id) =>
       fetchCurve(USER_ID, {
@@ -127,6 +143,7 @@ async function fetchDashboard(): Promise<Dashboard> {
     alerts,
     recent: recentLogged,
     doses,
+    schedule,
   };
 }
 
@@ -170,6 +187,29 @@ function App() {
     void load();
   }
 
+  // Best-effort: a failed skincare check must never block a dose that was
+  // already recorded.
+  async function refreshSkincareNotice() {
+    try {
+      const check = await fetchSkincareCheck(USER_ID);
+      setSkincareNotice(
+        check.incompatibilities.length > 0 || check.irritants.length > 0,
+      );
+    } catch {
+      // Leave the existing notice state as-is.
+    }
+  }
+
+  // After a schedule change or a dose taken from it: same refresh as manual
+  // logging, since "Take now" records a real dose.
+  async function handleScheduleChanged() {
+    setTimelineKey((k) => k + 1);
+    setSideEffectKey((k) => k + 1);
+    setLoading(true);
+    await load();
+    await refreshSkincareNotice();
+  }
+
   const qty = Number(quantity);
   const qtyValid = quantity.trim() !== "" && Number.isFinite(qty) && qty > 0;
 
@@ -193,16 +233,7 @@ function App() {
       setSideEffectKey((k) => k + 1);
       setLoading(true);
       await load();
-      // Best-effort: a failed skincare check shouldn't block the dose log
-      // that already succeeded above.
-      try {
-        const check = await fetchSkincareCheck(USER_ID);
-        setSkincareNotice(
-          check.incompatibilities.length > 0 || check.irritants.length > 0,
-        );
-      } catch {
-        // Leave the existing notice state as-is.
-      }
+      await refreshSkincareNotice();
     } catch (err) {
       setLogError(errorMessage(err));
     } finally {
@@ -215,6 +246,13 @@ function App() {
       <header className="page-header">
         <h1>Pharmakon</h1>
       </header>
+
+      <Schedule
+        userId={USER_ID}
+        medications={dashboard?.schedule ?? null}
+        recent={dashboard?.recent ?? []}
+        onChanged={() => void handleScheduleChanged()}
+      />
 
       <section className="panel">
         <h2>Log a dose</h2>
@@ -338,13 +376,13 @@ function App() {
               </p>
             ) : dashboard === null ? (
               <p className="muted">{loading ? "Loading…" : null}</p>
-            ) : dashboard.doseCount === 0 ? (
-              <p className="muted">No doses logged yet.</p>
-            ) : dashboard.window === null ? (
-              <p className="muted">No doses in the last 24 hours.</p>
             ) : dashboard.curves.length === 0 ? (
               <p className="muted">
-                None of the recent doses have a modeled ingredient to chart.
+                {dashboard.doseCount === 0
+                  ? "No doses logged yet."
+                  : dashboard.window === null
+                    ? "No doses in the last 24 hours."
+                    : "None of the recent doses have a modeled ingredient to chart."}
               </p>
             ) : (
               <div className="charts">

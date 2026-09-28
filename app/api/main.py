@@ -1,4 +1,5 @@
-"""FastAPI app: POST /doses, GET /curve, GET /alerts (docs/api-contract.md).
+"""FastAPI app: POST /doses, GET /curve, GET /alerts (docs/api-contract.md), plus
+the medication schedule (app/api/schedule.py).
 
 v1 constraints, from the contract: a single hardcoded user ("default"), no
 authentication, and the deployment runs on seeded synthetic data only.
@@ -9,7 +10,6 @@ one-compartment, population-average model, for educational use only.
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
@@ -24,8 +24,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
-from . import logger, openfda, service, side_effects, skincare
-from .db import Base, DoseEvent, DoseIngredient, make_engine
+from . import logger, openfda, schedule, service, side_effects, skincare
+from .db import Base, make_engine
 from .products import PRODUCTS, decompose, search
 
 DEFAULT_USER = "default"
@@ -46,7 +46,7 @@ app = FastAPI(title="Pharmakon", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
 )
 
@@ -153,32 +153,18 @@ def log_dose(
     if product is None:
         raise HTTPException(404, f"unknown product {body.product_id!r}")
 
-    event = DoseEvent(
-        id=f"dose_{uuid.uuid4().hex[:12]}",
-        user_id=user_id,
+    event, triggered = service.record_dose(
+        session,
+        registry,
+        user_id,
         product_id=product.id,
         product_name=product.brand_name,
-        taken_at=body.taken_at.isoformat(),
+        taken_at=body.taken_at,
         quantity=body.quantity,
+        ingredients=decompose(product, registry),
         topical_ingredients=_topical_ingredients(product),
+        now=now,
     )
-    for ing in decompose(product, registry):
-        event.ingredients.append(
-            DoseIngredient(
-                ingredient_name=ing.name,
-                substance_id=ing.substance_id,
-                amount_mg=(
-                    ing.strength_mg * body.quantity
-                    if ing.unmodeled_reason is None
-                    else None
-                ),
-                unmodeled_reason=ing.unmodeled_reason,
-            )
-        )
-    session.add(event)
-    session.flush()
-
-    triggered = service.recompute_alerts(session, user_id, registry, now)
     session.commit()
     return {
         "dose_event_id": event.id,
@@ -208,6 +194,159 @@ def list_doses(user_id: UserId, session: Db, registry: Reg) -> list[dict]:
     ]
 
 
+# --- Medication schedule ---------------------------------------------------------
+#
+# A plan, not a record: see app/api/schedule.py. Nothing here is a dose until
+# it goes through .../take, which uses the same path as POST /doses.
+
+
+class ScheduleRequest(BaseModel):
+    product_id: str
+    frequency: str
+    times: list[str] = []
+    days_of_week: list[str] | None = None
+    notes: str | None = None
+    # IANA name the times are read in, e.g. "America/Los_Angeles".
+    timezone: str | None = None
+
+
+class ScheduleUpdate(BaseModel):
+    frequency: str | None = None
+    times: list[str] | None = None
+    days_of_week: list[str] | None = None
+    notes: str | None = None
+    active: Literal[False] | None = None  # deactivate only; no reactivation
+
+
+class TakeRequest(BaseModel):
+    taken_at: AwareDatetime | None = None  # default: now
+
+
+def _get_schedule(session: Session, user_id: str, schedule_id: str):
+    s = schedule.get(session, user_id, schedule_id)
+    if s is None or not s.active:
+        raise HTTPException(404, f"unknown schedule {schedule_id!r}")
+    return s
+
+
+@app.post("/users/{id}/schedule", status_code=201)
+def create_schedule(
+    body: ScheduleRequest, user_id: UserId, session: Db, registry: Reg, now: Now
+) -> dict:
+    product = _find_product(body.product_id)
+    if product is None:
+        raise HTTPException(404, f"unknown product {body.product_id!r}")
+    ingredients = decompose(product, registry)
+    try:
+        record = schedule.create(
+            session,
+            user_id,
+            product_id=product.id,
+            product_name=product.brand_name,
+            entries=schedule.snapshot(ingredients, registry),
+            topical_ingredients=_topical_ingredients(product),
+            frequency=body.frequency,
+            times=body.times,
+            days_of_week=body.days_of_week,
+            notes=body.notes,
+            timezone=body.timezone,
+            now=now,
+        )
+    except schedule.InvalidSchedule as exc:
+        return _error(422, "validation_error", str(exc))
+    session.commit()
+    return schedule.schedule_json(
+        record, service.load_doses(session, user_id), registry, now
+    )
+
+
+@app.get("/users/{id}/schedule")
+def list_schedule(user_id: UserId, session: Db, registry: Reg, now: Now) -> list[dict]:
+    """Active scheduled medications, each with its status, next due time, when
+    it was last logged (by any route) and the current concentration of each
+    modeled substance in it."""
+    events = service.load_doses(session, user_id)
+    return [
+        schedule.schedule_json(s, events, registry, now)
+        for s in schedule.list_for_user(session, user_id)
+    ]
+
+
+@app.put("/users/{id}/schedule/{schedule_id}")
+def update_schedule(
+    schedule_id: str,
+    body: ScheduleUpdate,
+    user_id: UserId,
+    session: Db,
+    registry: Reg,
+    now: Now,
+) -> dict:
+    s = _get_schedule(session, user_id, schedule_id)
+    sent = body.model_fields_set
+    try:
+        schedule.update(
+            s,
+            frequency=body.frequency,
+            times=body.times,
+            days_of_week=body.days_of_week,
+            days_given="days_of_week" in sent,
+            notes=body.notes,
+            notes_given="notes" in sent,
+        )
+    except schedule.InvalidSchedule as exc:
+        session.rollback()
+        return _error(422, "validation_error", str(exc))
+    if body.active is False:
+        schedule.deactivate(s, now)
+    session.commit()
+    return schedule.schedule_json(
+        s, service.load_doses(session, user_id), registry, now
+    )
+
+
+@app.delete("/users/{id}/schedule/{schedule_id}", status_code=204)
+def delete_schedule(schedule_id: str, user_id: UserId, session: Db, now: Now) -> None:
+    """Soft delete: the schedule stops being active but its history stays."""
+    s = schedule.get(session, user_id, schedule_id)
+    if s is None:
+        raise HTTPException(404, f"unknown schedule {schedule_id!r}")
+    schedule.deactivate(s, now)
+    session.commit()
+
+
+@app.post("/users/{id}/schedule/{schedule_id}/take", status_code=201)
+def take_scheduled(
+    schedule_id: str,
+    user_id: UserId,
+    session: Db,
+    registry: Reg,
+    now: Now,
+    body: TakeRequest | None = None,
+) -> dict:
+    """Log one unit of the scheduled product without searching. A real
+    dose_event, made by the same code as POST /doses, so it is alerted on and
+    charted like any other."""
+    s = _get_schedule(session, user_id, schedule_id)
+    event, triggered = service.record_dose(
+        session,
+        registry,
+        user_id,
+        product_id=s.product_id,
+        product_name=s.product_name,
+        taken_at=(body.taken_at if body and body.taken_at else now),
+        quantity=1.0,
+        ingredients=schedule.ingredients_of(s),
+        topical_ingredients=s.topical_ingredients,
+        now=now,
+    )
+    session.commit()
+    return {
+        "dose_event_id": event.id,
+        "schedule_id": s.id,
+        "triggered_alerts": [service.alert_json(r, registry) for r in triggered],
+    }
+
+
 # --- 2. GET /users/{id}/curve ----------------------------------------------------
 
 
@@ -229,14 +368,18 @@ def get_curve(
     if to <= from_:
         return _error(422, "validation_error", "`to` must be after `from`")
 
+    events = service.load_doses(session, user_id)
     result = service.compute_curve(
-        service.load_doses(session, user_id),
+        events,
         substance_id,
         registry,
         from_,
         to,
         resolution,
         now,
+        scheduled=schedule.projected_doses(
+            session, user_id, events, substance_id, now, to
+        ),
     )
     return {
         "substance": {
@@ -253,6 +396,9 @@ def get_curve(
         ),
         "peak": result.peak,
         "current": result.current,
+        # Same curve plus future scheduled doses, from now on; null when no
+        # schedule contributes. Never counted in `points`, `peak` or alerts.
+        "projected_points": result.projected_points,
         "notes": result.notes,
     }
 
@@ -498,6 +644,14 @@ def get_timeline(
                 "notes": record.notes,
             }
         )
+    entries += schedule.timeline_entries(
+        session,
+        user_id,
+        service.load_doses(session, user_id),
+        now,
+        range_from,
+        range_to,
+    )
     entries.sort(key=lambda e: datetime.fromisoformat(e["timestamp"]))
     return entries
 

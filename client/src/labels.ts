@@ -2,6 +2,8 @@ import type {
   Ingredient,
   LoggedIngredient,
   ProductSearchResult,
+  ScheduleFrequency,
+  ScheduleStatus,
 } from "./types/contract";
 
 const PRODUCT_NAME_MAX = 60;
@@ -143,4 +145,57 @@ export function loggedIngredientLabel(i: LoggedIngredient): string {
     return `${withDescription} (strength unknown, not counted)`;
   }
   return `${withDescription} ${i.amount_mg} mg`;
+}
+
+// --- Medication schedule -------------------------------------------------------
+
+export const FREQUENCY_LABELS: Record<ScheduleFrequency, string> = {
+  daily: "Daily",
+  twice_daily: "Twice daily",
+  three_times_daily: "Three times daily",
+  every_other_day: "Every other day",
+  weekly: "Weekly",
+  as_needed: "As needed",
+};
+
+/** Default clock times offered when a frequency is picked. Only a starting
+ * point for the time pickers; the user sets the real ones. */
+export const DEFAULT_TIMES: Record<ScheduleFrequency, string[]> = {
+  daily: ["08:00"],
+  twice_daily: ["08:00", "20:00"],
+  three_times_daily: ["08:00", "14:00", "20:00"],
+  every_other_day: ["08:00"],
+  weekly: ["08:00"],
+  as_needed: [],
+};
+
+export const WEEKDAYS = [
+  "monday",
+  "tuesday",
+  "wednesday",
+  "thursday",
+  "friday",
+  "saturday",
+  "sunday",
+] as const;
+
+export const STATUS_LABELS: Record<ScheduleStatus, string> = {
+  taken_today: "Taken",
+  due: "Due now",
+  overdue: "Overdue",
+  upcoming: "Upcoming",
+  as_needed: "As needed",
+};
+
+/** "Mon, Wed" for a weekly schedule; null when no days were restricted. */
+export function daysLabel(days: string[] | null): string | null {
+  return days && days.length > 0
+    ? days.map((d) => d[0].toUpperCase() + d.slice(1, 3)).join(", ")
+    : null;
+}
+
+/** "8:00 AM" from "08:00". */
+export function timeOfDayLabel(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 }

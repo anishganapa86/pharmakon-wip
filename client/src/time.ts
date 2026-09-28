@@ -62,3 +62,15 @@ export function timeTicks(fromMs: number, toMs: number, maxTicks = 8): number[] 
 }
 
 export { HOUR_MS };
+
+/** "Today, 8:00 AM" / "Tomorrow, 8:00 AM" / "Sep 26, 8:00 AM" (local time). */
+export function formatWhen(ms: number, nowMs: number = Date.now()): string {
+  const days = Math.round(
+    (new Date(ms).setHours(0, 0, 0, 0) - new Date(nowMs).setHours(0, 0, 0, 0)) /
+      (24 * HOUR_MS),
+  );
+  if (days === 0) return `Today, ${formatClock(ms)}`;
+  if (days === 1) return `Tomorrow, ${formatClock(ms)}`;
+  if (days === -1) return `Yesterday, ${formatClock(ms)}`;
+  return formatDateClock(ms);
+}
