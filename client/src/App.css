@@ -902,3 +902,7 @@
 .timeline-item-scheduled-missed {
   border-left-color: #dc2626;
 }
+
+.chart-approximate {
+  margin: 0 0 8px;
+}

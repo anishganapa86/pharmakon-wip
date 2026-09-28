@@ -13,10 +13,26 @@ import json
 import re
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from ..pk.engine import PKParams
 
 REGISTRY_PATH = Path(__file__).with_name("substances.json")
+# Written by app/registry/import_drugbank.py. Optional: absent until someone
+# has run the import against a DrugBank download. Loaded after the curated file,
+# which always takes precedence.
+IMPORTED_PATHS = (Path(__file__).with_name("substances_drugbank.json"),)
+
+# How much of a substance the engine can honestly draw, from the parameters the
+# registry actually has (never from a flag; a flag can disagree with the values).
+#   full         all four PK parameters: a concentration curve in mg/L
+#   approximate  half-life and bioavailability only: a decay curve of the amount
+#                remaining in mg, with no volume of distribution or absorption
+#   none         anything less: logged, never charted
+#   unsupported  not first-order (e.g. alcohol): the engine refuses, with a reason
+Modelability = Literal["full", "approximate", "none", "unsupported"]
+
+PK_PARAMETERS = ("half_life_hours", "vd_l_per_kg", "bioavailability", "ka_per_hour")
 
 # Salt and form suffixes stripped before matching. Extend this list from real
 # openFDA responses rather than from imagination.
@@ -58,11 +74,16 @@ class Registry:
                     f"registry entry {e.get('id')!r} is missing "
                     "threshold_concentration_mg_per_l (use null if none)"
                 )
-        self._by_id = {e["id"]: e for e in entries}
-        self._alias_index: dict[str, str] = {}
+        # First wins, for ids and for every name and alias: entries are ordered
+        # curated-first, so an imported entry can never take over a curated
+        # id or a curated alias.
+        self._by_id: dict[str, dict] = {}
         for e in entries:
+            self._by_id.setdefault(e["id"], e)
+        self._alias_index: dict[str, str] = {}
+        for e in self._by_id.values():
             for name in [e["name"], e["id"], *e.get("aliases", [])]:
-                self._alias_index[normalize(name)] = e["id"]
+                self._alias_index.setdefault(normalize(name), e["id"])
 
     def get(self, substance_id: str) -> dict:
         return self._by_id[substance_id]
@@ -98,9 +119,22 @@ class Registry:
 
         return None
 
-    def pk_params(self, substance_id: str) -> PKParams:
+    def modelability(self, substance_id: str) -> Modelability:
         e = self._by_id[substance_id]
-        if e["half_life_hours"] is None:
+        if e.get("kinetics", "first_order") != "first_order":
+            return "unsupported"
+        have = {k for k in PK_PARAMETERS if e.get(k) is not None}
+        if len(have) == len(PK_PARAMETERS):
+            return "full"
+        if {"half_life_hours", "bioavailability"} <= have:
+            return "approximate"
+        return "none"
+
+    def pk_params(self, substance_id: str) -> PKParams:
+        """Parameters as stored. Vd and ka may be None unless `modelability` is
+        "full", so callers must gate on it before handing these to the engine."""
+        e = self._by_id[substance_id]
+        if e.get("half_life_hours") is None:
             # e.g. ethanol. Give the engine something to refuse on rather than
             # crashing on a None.
             half_life = 1.0
@@ -109,10 +143,10 @@ class Registry:
         return PKParams(
             substance_id=e["id"],
             half_life_hours=half_life,
-            vd_l_per_kg=e["vd_l_per_kg"],
-            bioavailability=e["bioavailability"],
-            ka_per_hour=e["ka_per_hour"],
-            clearance_route=e["clearance_route"],
+            vd_l_per_kg=e.get("vd_l_per_kg"),
+            bioavailability=e.get("bioavailability"),
+            ka_per_hour=e.get("ka_per_hour"),
+            clearance_route=e.get("clearance_route", "unknown"),
             kinetics=e.get("kinetics", "first_order"),
         )
 
@@ -131,5 +165,12 @@ def strip_salt_tokens(normalized: str) -> str:
 
 @lru_cache(maxsize=1)
 def load_registry(path: Path | None = None) -> Registry:
-    data = json.loads((path or REGISTRY_PATH).read_text())
-    return Registry(data["substances"])
+    """The curated registry, then any imported one. An explicit `path` loads
+    that file alone (tests)."""
+    paths = (
+        [path] if path else [REGISTRY_PATH, *(p for p in IMPORTED_PATHS if p.exists())]
+    )
+    entries: list[dict] = []
+    for p in paths:
+        entries += json.loads(p.read_text())["substances"]
+    return Registry(entries)

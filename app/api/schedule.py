@@ -388,12 +388,13 @@ def _current_concentration(
 ) -> float | None:
     """mg/L from every logged dose of the substance (scheduled product or not).
 
-    None for anything the engine can't model; never an estimate of our own.
+    None for anything the engine can't model, an approximate curve included
+    (that is an amount in mg, not a concentration); never an estimate of our own.
     """
     result = service.compute_curve(
         events, substance_id, registry, now, now + timedelta(minutes=15), "15m", now
     )
-    if not result.modelable or result.current is None:
+    if not result.modelable or result.unit != "mg/L" or result.current is None:
         return None
     return result.current["concentration"]
 

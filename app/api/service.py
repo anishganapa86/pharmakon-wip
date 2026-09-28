@@ -20,6 +20,7 @@ from ..detect.alerts import Alert, LoggedDose, detect_accumulation, detect_dupli
 from ..pk.engine import (
     DEFAULT_RESOLUTION_H,
     Dose,
+    PKParams,
     UnsupportedKinetics,
     superpose,
     time_grid,
@@ -181,10 +182,22 @@ def recompute_alerts(
     for sid in sorted({d.substance_id for d in doses}):
         entry = registry.get(sid)
         params = registry.pk_params(sid)
+        # The 24h sum needs no PK parameters, so it runs whatever the tier.
         dup = detect_duplication(
-            doses, params, entry["name"], entry["threshold_24h_mg"], 0.0, patient
+            doses,
+            params,
+            entry["name"],
+            entry.get("threshold_24h_mg"),
+            0.0,
+            patient,
         )
-        acc = detect_accumulation(doses, params, entry["name"], patient, 0.0)
+        # Accumulation needs a real curve. Without Vd and ka there isn't one,
+        # and staying quiet beats alerting on an approximation.
+        acc = (
+            detect_accumulation(doses, params, entry["name"], patient, 0.0)
+            if registry.modelability(sid) in ("full", "unsupported")
+            else None
+        )
         produced += [a for a in (dup, acc) if a is not None]
 
     active = {
@@ -290,9 +303,47 @@ class CurveResult:
     peak: dict | None
     current: dict | None
     notes: list[str]  # causes behind the curve, from adjusted_ke
+    # "mg/L" for a full curve. An approximate curve (see registry.Modelability)
+    # is the amount remaining in the body, in mg: no Vd, so no concentration.
+    unit: str = "mg/L"
+    fidelity: str = "full"  # "full" | "approximate"
     # The same curve with future scheduled doses added, from `now` on; empty
     # when no schedule contributes. A projection, never merged into `points`.
     projected_points: list[dict] | None = None
+
+
+APPROXIMATE_NOTE = "Approximate — missing distribution parameters"
+
+
+def _missing_parameter_notes(entry: dict) -> list[str]:
+    notes = [
+        "This is the estimated amount of the substance left in the body (mg), "
+        "not a blood concentration, and it assumes each dose is absorbed at "
+        "once. Only its half-life and bioavailability are on file."
+    ]
+    if entry.get("vd_l_per_kg") is None:
+        notes.append("No volume of distribution on file, so mg/L can't be computed.")
+    if entry.get("ka_per_hour") is None:
+        notes.append("No absorption rate on file, so the rise after a dose is skipped.")
+    return notes
+
+
+def _decay_amount(
+    doses: list[Dose], params: PKParams, ke: float, grid: np.ndarray
+) -> np.ndarray:
+    """mg remaining: F * dose * exp(-ke * elapsed), summed over past doses.
+
+    Deliberately not app.pk: that engine needs Vd and ka, which this tier
+    lacks. Instant absorption is a stated simplification, not a parameter.
+    """
+    total = np.zeros_like(grid, dtype=float)
+    for d in doses:
+        elapsed = grid - d.t_hours
+        live = elapsed >= 0.0
+        total[live] += (
+            params.bioavailability * d.amount_mg * np.exp(-ke * elapsed[live])
+        )
+    return total
 
 
 def _point(origin: datetime, t_hours: float, conc: float) -> dict:
@@ -328,17 +379,44 @@ def compute_curve(
     except UnsupportedKinetics as exc:
         return CurveResult(False, str(exc), [], None, None, [])
 
+    entry = registry.get(substance_id)
+    tier = registry.modelability(substance_id)
+    if tier == "none":
+        return CurveResult(
+            False,
+            f"No pharmacokinetic parameters on file for {entry['name']}: "
+            "its doses are logged, but no curve is drawn.",
+            [],
+            None,
+            None,
+            [],
+        )
+
     ke, notes = adjusted_ke(params, patient)
-    doses = [
+    if entry.get("kinetics_assumed"):
+        notes.append(
+            "Imported from DrugBank, which doesn't state the elimination "
+            "order: first-order elimination is assumed and unchecked."
+        )
+    approximate = tier == "approximate"
+    if approximate:
+        notes = [APPROXIMATE_NOTE, *_missing_parameter_notes(entry), *notes]
+
+    logged = [
         Dose(d.t_hours, d.amount_mg)
         for d in logged_doses(events, origin=start)
         if d.substance_id == substance_id
     ]
 
+    def level(at_hours: np.ndarray, extra: list[Dose] = []) -> np.ndarray:  # noqa: B006
+        if approximate:
+            return _decay_amount([*logged, *extra], params, ke, at_hours)
+        return superpose([*logged, *extra], params, patient.weight_kg, at_hours, ke=ke)
+
     end_h = hours_since(end, start)
     grid = time_grid(0.0, end_h)
     grid = grid[grid <= end_h + 1e-9]  # `to` is inclusive; never overshoot it
-    conc = superpose(doses, params, patient.weight_kg, grid, ke=ke)
+    conc = level(grid)
 
     step = DECIMATION[resolution]
     points = [
@@ -350,21 +428,29 @@ def compute_curve(
         i = int(np.argmax(conc))
         peak = _point(start, grid[i], conc[i])
 
+    now_h = hours_since(now, start)
     current = None
     if start <= now <= end:
-        now_h = hours_since(now, start)
-        c_now = superpose(doses, params, patient.weight_kg, np.array([now_h]), ke=ke)
-        current = _point(start, now_h, c_now[0])
+        current = _point(start, now_h, level(np.array([now_h]))[0])
 
     projected = None
     if scheduled:
         planned = [Dose(hours_since(t, start), mg) for t, mg in scheduled]
-        both = superpose([*doses, *planned], params, patient.weight_kg, grid, ke=ke)
-        now_h = hours_since(now, start)
+        both = level(grid, planned)
         projected = [
             _point(start, t, c)
             for t, c in zip(grid[::step], both[::step], strict=True)
             if t >= now_h
         ]
 
-    return CurveResult(True, None, points, peak, current, notes, projected)
+    return CurveResult(
+        True,
+        None,
+        points,
+        peak,
+        current,
+        notes,
+        "mg" if approximate else "mg/L",
+        "approximate" if approximate else "full",
+        projected,
+    )

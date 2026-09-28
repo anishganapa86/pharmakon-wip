@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEST FIXTURE in the shape of a DrugBank export (namespace, element names,
+  free-text PK fields). Every drug and every number below is FICTIONAL and made
+  up to exercise the importer; none of it is DrugBank content or real
+  pharmacology, and none of it should ever be copied into the registry.
+  The one real name is "Caffeine", present only to prove that an entry the
+  curated registry already has is not overwritten.
+-->
+<drugbank xmlns="http://www.drugbank.ca" version="5.1.12" exported-on="2024-03-14">
+  <drug type="small molecule" created="2005-06-13" updated="2024-01-01">
+    <drugbank-id primary="true">DBX0001</drugbank-id>
+    <drugbank-id>EXPT00001</drugbank-id>
+    <name>Examplamine</name>
+    <synonyms>
+      <synonym language="english" coder="">Exampla-mine HCl</synonym>
+      <synonym language="english" coder="">EXM-100</synonym>
+      <synonym language="spanish" coder="">Examplamina</synonym>
+    </synonyms>
+    <absorption>Oral bioavailability is 85%. Intravenous bioavailability is 100%. The absorption rate constant (ka) is 1.5 h-1. Food delays absorption.</absorption>
+    <half-life>The elimination half-life is approximately 5 hours.</half-life>
+    <volume-of-distribution>The volume of distribution is 0.6 L/kg.</volume-of-distribution>
+    <pathways>
+      <pathway>
+        <name>Example Pathway</name>
+        <drugs>
+          <drug>
+            <drugbank-id>DBX9999</drugbank-id>
+            <name>Nested Should Not Import</name>
+          </drug>
+        </drugs>
+      </pathway>
+    </pathways>
+  </drug>
+  <drug type="small molecule" created="2005-06-13" updated="2024-01-01">
+    <drugbank-id primary="true">DBX0002</drugbank-id>
+    <name>Partialol</name>
+    <synonyms>
+      <synonym language="english" coder="">Partial-ol</synonym>
+    </synonyms>
+    <absorption>The absolute oral bioavailability is approximately 60%.</absorption>
+    <half-life>12 hours</half-life>
+    <volume-of-distribution>Approximately 40 L.</volume-of-distribution>
+  </drug>
+  <drug type="small molecule" created="2005-06-13" updated="2024-01-01">
+    <drugbank-id primary="true">DBX0003</drugbank-id>
+    <name>Nulldrug</name>
+    <synonyms/>
+    <absorption/>
+    <half-life/>
+    <volume-of-distribution/>
+  </drug>
+  <drug type="small molecule" created="2005-06-13" updated="2024-01-01">
+    <drugbank-id primary="true">DBX0004</drugbank-id>
+    <name>Caffeine</name>
+    <synonyms>
+      <synonym language="english" coder="">Guaranine</synonym>
+    </synonyms>
+    <absorption>Oral bioavailability is 50%.</absorption>
+    <half-life>4 hours</half-life>
+    <volume-of-distribution>0.9 L/kg</volume-of-distribution>
+  </drug>
+  <drug type="small molecule" created="2005-06-13" updated="2024-01-01">
+    <drugbank-id primary="true">DBX0005</drugbank-id>
+    <name>Rangeazole</name>
+    <synonyms>
+      <synonym language="english" coder="">Paracetamol</synonym>
+      <synonym language="english" coder="">RGZ</synonym>
+    </synonyms>
+    <absorption>Oral bioavailability is 50% in fasted and 70% in fed subjects.</absorption>
+    <half-life>2-3 hours</half-life>
+    <volume-of-distribution>0.5-1 L/kg</volume-of-distribution>
+  </drug>
+</drugbank>

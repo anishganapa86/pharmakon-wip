@@ -26,6 +26,9 @@ export function ingredientLabel(i: Ingredient): string {
   if (i.unmodeled_reason === "unknown_strength") {
     return `${i.name} (strength unknown, not counted)`;
   }
+  if (i.unmodeled_reason === "no_pk_parameters") {
+    return `${i.name} (logged only, no pharmacokinetic data)`;
+  }
   return `${i.name} ${i.strength_mg} mg`;
 }
 
@@ -143,6 +146,9 @@ export function loggedIngredientLabel(i: LoggedIngredient): string {
   }
   if (i.unmodeled_reason === "unknown_strength") {
     return `${withDescription} (strength unknown, not counted)`;
+  }
+  if (i.unmodeled_reason === "no_pk_parameters") {
+    return `${withDescription} (logged only, no pharmacokinetic data)`;
   }
   return `${withDescription} ${i.amount_mg} mg`;
 }

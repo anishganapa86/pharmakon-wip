@@ -389,10 +389,16 @@ def get_curve(
         },
         "modelable": result.modelable,
         "reason": result.reason,
-        "unit": "mg/L",
+        "unit": result.unit,
+        # "full" is a concentration curve; "approximate" is the amount left in
+        # the body, drawn when Vd or ka are missing (see registry.Modelability).
+        "fidelity": result.fidelity,
         "points": result.points,
-        "threshold_concentration_mg_per_l": registry.threshold_concentration_mg_per_l(
-            substance_id
+        # A concentration limit can't be compared against an amount in mg.
+        "threshold_concentration_mg_per_l": (
+            registry.threshold_concentration_mg_per_l(substance_id)
+            if result.fidelity == "full"
+            else None
         ),
         "peak": result.peak,
         "current": result.current,

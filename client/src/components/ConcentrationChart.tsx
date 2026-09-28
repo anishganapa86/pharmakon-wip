@@ -92,6 +92,11 @@ export function ConcentrationChart({ curve, window }: Props) {
   return (
     <div className="chart">
       <SubstanceHeading curve={curve} />
+      {curve.fidelity === "approximate" && (
+        <p className="warning small chart-approximate">
+          Approximate: amount left in the body (mg), not a blood concentration.
+        </p>
+      )}
       <div className="chart-plot">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
@@ -121,7 +126,7 @@ export function ConcentrationChart({ curve, window }: Props) {
             <Tooltip
               labelFormatter={(t) => formatDateClock(Number(t))}
               formatter={(v, n) => [
-                typeof v === "number" ? `${v.toFixed(3)} mg/L` : String(v),
+                typeof v === "number" ? `${v.toFixed(3)} ${curve.unit}` : String(v),
                 n === projectedName ? `${name} (expected)` : name,
               ]}
               contentStyle={{

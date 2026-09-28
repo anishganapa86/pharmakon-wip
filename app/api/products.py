@@ -36,7 +36,8 @@ class DecomposedIngredient:
     name: str
     substance_id: str | None
     strength_mg: float | None
-    unmodeled_reason: str | None  # None | "unmatched" | "unknown_strength"
+    # None | "unmatched" | "unknown_strength" | "no_pk_parameters"
+    unmodeled_reason: str | None
 
 
 PRODUCTS: dict[str, Product] = {
@@ -197,7 +198,9 @@ def search(q: str, registry: Registry) -> list[Product]:
 
 
 def decompose(product, registry: Registry) -> list[DecomposedIngredient]:
-    """Resolve each labelled ingredient. `unmatched` wins over `unknown_strength`.
+    """Resolve each labelled ingredient. `unmatched` wins over `unknown_strength`,
+    which wins over `no_pk_parameters` (recognized, but the registry has too few
+    parameters to chart it: logged only, like the other two).
 
     Accepts anything shaped like `Product` -- brand_name plus an `ingredients`
     sequence of name/strength_mg pairs. `openfda.OpenFDAProduct` has that same
@@ -210,6 +213,8 @@ def decompose(product, registry: Registry) -> list[DecomposedIngredient]:
             reason = "unmatched"
         elif ing.strength_mg is None:
             reason = "unknown_strength"
+        elif registry.modelability(substance_id) == "none":
+            reason = "no_pk_parameters"
         else:
             reason = None
         out.append(

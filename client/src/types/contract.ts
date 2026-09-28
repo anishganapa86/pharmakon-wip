@@ -13,8 +13,12 @@
 /** ISO 8601 timestamp with timezone offset. */
 export type IsoTimestamp = string;
 
-/** The only concentration unit in this API. */
-export type ConcentrationUnit = "mg/L";
+/**
+ * "mg/L" for a concentration curve. "mg" only on an approximate curve
+ * (SubstanceCurve.fidelity): the amount left in the body, drawn when the
+ * registry has a half-life and bioavailability but no volume of distribution.
+ */
+export type ConcentrationUnit = "mg/L" | "mg";
 
 export interface SubstanceRef {
   id: string; // registry id, e.g. "acetaminophen"
@@ -68,6 +72,9 @@ export interface SubstanceCurve {
   modelable: boolean;
   reason: string | null; // null when modelable is true
   unit: ConcentrationUnit;
+  // "approximate" is a simplified decay curve in mg (see ConcentrationUnit);
+  // its `notes` say what is missing.
+  fidelity: "full" | "approximate";
   points: ConcentrationPoint[]; // ordered by t ascending; empty if !modelable
   // Published plasma concentration from the registry. Never derived from a
   // dose threshold. null for every substance at launch — the Curves screen
@@ -99,7 +106,12 @@ export type AlertKind =
 
 export type AlertSeverity = "info" | "caution" | "urgent";
 
-export type UnmodeledReason = "unmatched" | "unknown_strength";
+// "no_pk_parameters": recognized, but the registry has too few pharmacokinetic
+// parameters to chart it. Logged only, like the other two.
+export type UnmodeledReason =
+  | "unmatched"
+  | "unknown_strength"
+  | "no_pk_parameters";
 
 /** A dose counted in the alert's figure. */
 export interface ContributingDose {

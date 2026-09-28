@@ -301,8 +301,8 @@ def _compute_level(entry, registry, all_doses, recent, patient) -> dict:
     sid = entry["id"]
     total = sum(d.amount_mg for d in recent)
 
-    limit = entry["threshold_24h_mg"]
-    if limit is not None and entry["clearance_route"] in ("hepatic", "mixed"):
+    limit = entry.get("threshold_24h_mg")
+    if limit is not None and entry.get("clearance_route") in ("hepatic", "mixed"):
         limit *= HEPATIC_THRESHOLD_FACTOR[patient.hepatic_impairment]
 
     current = None
@@ -312,11 +312,14 @@ def _compute_level(entry, registry, all_doses, recent, patient) -> dict:
     except UnsupportedKinetics:
         pass  # no curve, so no current level; the 24h total still applies
     else:
-        ke, _ = adjusted_ke(params, patient)
-        own = [d.as_dose() for d in all_doses if d.substance_id == sid]
-        current = float(
-            superpose(own, params, patient.weight_kg, np.array([0.0]), ke=ke)[0]
-        )
+        # Only a full curve is in mg/L; an approximate one has no level to
+        # compare against a limit, so `current` stays None for it.
+        if registry.modelability(sid) == "full":
+            ke, _ = adjusted_ke(params, patient)
+            own = [d.as_dose() for d in all_doses if d.substance_id == sid]
+            current = float(
+                superpose(own, params, patient.weight_kg, np.array([0.0]), ke=ke)[0]
+            )
 
     conc_limit = registry.threshold_concentration_mg_per_l(sid)
 
