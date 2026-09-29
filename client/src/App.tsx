@@ -4,6 +4,7 @@ import {
   fetchAlerts,
   fetchCurve,
   fetchDoses,
+  fetchInteractionCheck,
   fetchSchedule,
   fetchSkincareCheck,
   logDose,
@@ -13,6 +14,7 @@ import {
   ConcentrationChart,
   type TimeWindow,
 } from "./components/ConcentrationChart";
+import { Interactions } from "./components/Interactions";
 import { LogForm } from "./components/LogForm";
 import { ProductName } from "./components/ProductName";
 import { ProductSearch } from "./components/ProductSearch";
@@ -37,7 +39,7 @@ import type {
   SubstanceCurve,
 } from "./types/contract";
 
-type View = "concentration" | "timeline" | "skincare";
+type View = "concentration" | "timeline" | "skincare" | "interactions";
 
 const USER_ID = "default";
 const MAX_RECENT_PRODUCTS = 5;
@@ -163,6 +165,7 @@ function App() {
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
+  const [interactionsNotice, setInteractionsNotice] = useState(false);
 
   // State is set only in promise callbacks, so this is safe to run from an
   // effect. Callers that re-load set `loading` themselves.
@@ -187,14 +190,23 @@ function App() {
     void load();
   }
 
-  // Best-effort: a failed skincare check must never block a dose that was
-  // already recorded.
+  // Best-effort: a failed skincare or interaction check must never block a
+  // dose that was already recorded.
   async function refreshSkincareNotice() {
     try {
       const check = await fetchSkincareCheck(USER_ID);
       setSkincareNotice(
         check.incompatibilities.length > 0 || check.irritants.length > 0,
       );
+    } catch {
+      // Leave the existing notice state as-is.
+    }
+  }
+
+  async function refreshInteractionsNotice() {
+    try {
+      const check = await fetchInteractionCheck(USER_ID);
+      setInteractionsNotice(check.interactions.length > 0);
     } catch {
       // Leave the existing notice state as-is.
     }
@@ -208,6 +220,7 @@ function App() {
     setLoading(true);
     await load();
     await refreshSkincareNotice();
+    await refreshInteractionsNotice();
   }
 
   const qty = Number(quantity);
@@ -234,6 +247,7 @@ function App() {
       setLoading(true);
       await load();
       await refreshSkincareNotice();
+      await refreshInteractionsNotice();
     } catch (err) {
       setLogError(errorMessage(err));
     } finally {
@@ -252,6 +266,8 @@ function App() {
         medications={dashboard?.schedule ?? null}
         recent={dashboard?.recent ?? []}
         onChanged={() => void handleScheduleChanged()}
+        interactionsNotice={interactionsNotice}
+        onViewInteractions={() => setView("interactions")}
       />
 
       <section className="panel">
@@ -324,9 +340,19 @@ function App() {
         >
           Skincare
         </button>
+        <button
+          role="tab"
+          aria-selected={view === "interactions"}
+          className={view === "interactions" ? "view-tab active" : "view-tab"}
+          onClick={() => setView("interactions")}
+        >
+          Interactions
+        </button>
       </nav>
 
       {view === "skincare" && <Skincare userId={USER_ID} />}
+
+      {view === "interactions" && <Interactions userId={USER_ID} />}
 
       {view === "timeline" && (
         <>

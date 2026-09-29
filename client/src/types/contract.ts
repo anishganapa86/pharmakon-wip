@@ -338,6 +338,71 @@ export interface SkincareCheckResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Medication interaction checker (see app/api/interactions.py)
+//
+// Informational only -- never creates or feeds an Alert. Two cited sources:
+// curated rules (verified: false until a human opens the source) and live
+// openFDA drug_interactions label text (quoted verbatim, never paraphrased).
+// ---------------------------------------------------------------------------
+
+export interface InteractionCheckRequest {
+  names: string[]; // product or substance names, as typed
+}
+
+export type InteractionSourceType = "curated" | "fda_label";
+
+export interface InteractionSubstanceSource {
+  kind: "dose" | "schedule" | "manual";
+  label: string; // product name, or the raw text typed for a manual check
+  dose_event_id: string | null;
+  product_id: string | null;
+  schedule_id: string | null;
+  taken_at: IsoTimestamp | null;
+}
+
+export interface InteractionSubstanceRef {
+  id: string;
+  display_name: string;
+  description: string | null;
+  sources: InteractionSubstanceSource[];
+}
+
+/** A window this estimate says both substances are above 10% of their own
+ * peak -- computed from the concentration model, always labelled as such. */
+export interface OverlapWindow {
+  from: IsoTimestamp;
+  to: IsoTimestamp;
+  estimate: true;
+  description: string;
+}
+
+export interface Interaction {
+  substance_a: InteractionSubstanceRef;
+  substance_b: InteractionSubstanceRef;
+  effect: string | null; // curated only
+  recommendation: string | null; // curated only
+  source_type: InteractionSourceType;
+  source: string; // citation (curated) or "FDA label, <drug>, ..." (fda_label)
+  quoted_text: string | null; // fda_label only, <=300 chars, verbatim
+  // Curated: false until a human opens the cited source. fda_label: true --
+  // quoted verbatim from the live FDA label, not a curated guess.
+  verified: boolean;
+  severity: string | null; // null unless the source itself states one
+  overlap: OverlapWindow[] | null; // null when either substance isn't modeled
+  message: string;
+}
+
+export interface InteractionCheckResponse {
+  interactions: Interaction[];
+  checked_pairs: number;
+  // Never silently dropped: unresolved ingredient/substance names and an
+  // unreachable openFDA are both surfaced here.
+  unchecked_reason: string[];
+  // Set to the exact required sentence when `interactions` is empty, else null.
+  message: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Daily log: POST/GET/DELETE /users/{id}/log  (see app/api/logger.py)
 // ---------------------------------------------------------------------------
 

@@ -264,6 +264,8 @@ interface Props {
   recent: RecentProduct[];
   /** Called after any change (a dose taken, a medication added or removed). */
   onChanged: () => void;
+  interactionsNotice: boolean;
+  onViewInteractions: () => void;
 }
 
 /**
@@ -271,7 +273,14 @@ interface Props {
  * plan: nothing counts as taken until "Take now" (or manual logging) records a
  * real dose, and only recorded doses feed alerts.
  */
-export function Schedule({ userId, medications, recent, onChanged }: Props) {
+export function Schedule({
+  userId,
+  medications,
+  recent,
+  onChanged,
+  interactionsNotice,
+  onViewInteractions,
+}: Props) {
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -333,6 +342,16 @@ export function Schedule({ userId, medications, recent, onChanged }: Props) {
           </button>
         )}
       </div>
+
+      {interactionsNotice && (
+        <p className="warning">
+          Interactions found in your regimen. See the{" "}
+          <button className="button-link" onClick={onViewInteractions} type="button">
+            Interactions tab
+          </button>
+          .
+        </p>
+      )}
 
       {!open && allDone && (
         <p className="muted">All of today's doses are taken.</p>

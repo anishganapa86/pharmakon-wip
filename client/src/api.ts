@@ -9,6 +9,7 @@ import type {
   DailyLogRequest,
   DoseRequest,
   DoseResponse,
+  InteractionCheckResponse,
   LoggedDoseEvent,
   ProductSearchResponse,
   ProductSearchResult,
@@ -155,6 +156,22 @@ export function fetchTimeline(
   return request(
     `/users/${encodeURIComponent(userId)}/timeline${qs ? `?${qs}` : ""}`,
   );
+}
+
+// --- Medication interaction checker ---------------------------------------------
+
+export function checkInteractions(names: string[]): Promise<InteractionCheckResponse> {
+  return request("/interaction-check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names }),
+  });
+}
+
+export function fetchInteractionCheck(
+  userId: string,
+): Promise<InteractionCheckResponse> {
+  return request(`/users/${encodeURIComponent(userId)}/interaction-check`);
 }
 
 // --- Medication schedule -------------------------------------------------------
