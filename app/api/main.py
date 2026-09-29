@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
-from . import logger, openfda, schedule, service, side_effects, skincare
+from . import interactions, logger, openfda, schedule, service, side_effects, skincare
 from .db import Base, make_engine
 from .products import PRODUCTS, decompose, search
 
@@ -719,6 +719,30 @@ def get_skincare_check(user_id: UserId, session: Db, now: Now) -> dict:
         text for r in recent_logs for text in (r.category, r.value, r.notes) if text
     ]
     return skincare.annotate_eczema_context(result, recent_skin_texts)
+
+
+# --- Medication interaction checker ---------------------------------------------
+#
+# Informational only: this never creates or feeds an app.detect alert. See
+# app/api/interactions.py and app/data/drug_interactions.json.
+
+
+class InteractionCheckRequest(BaseModel):
+    names: list[str] = Field(min_length=1)
+
+
+@app.post("/interaction-check")
+def interaction_check(body: InteractionCheckRequest, registry: Reg, now: Now) -> dict:
+    return interactions.check_manual(body.names, registry, now)
+
+
+@app.get("/users/{id}/interaction-check")
+def get_interaction_check(
+    user_id: UserId, session: Db, registry: Reg, now: Now
+) -> dict:
+    """All active scheduled medications plus doses logged in the last 24h,
+    checked pairwise (see app/api/interactions.py)."""
+    return interactions.check_regimen(session, user_id, registry, now)
 
 
 # --- POST /products/user-entered -----------------------------------------------
