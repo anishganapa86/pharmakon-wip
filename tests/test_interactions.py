@@ -18,6 +18,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.api import interactions, main
 from app.api.db import Base
+from app.registry.loader import load_registry
 
 NOW = datetime.fromisoformat("2026-09-13T18:00:00-07:00")
 
@@ -142,24 +143,30 @@ def test_rule_with_no_source_is_rejected_at_load_time(tmp_path):
 
 
 def test_label_text_mentioning_the_other_drug_is_flagged_with_quote(client, openfda):
-    openfda.labels["LISINOPRIL"] = (
-        "Diuretics: excessive reduction of blood pressure may occur. "
-        "NSAIDs: may reduce the antihypertensive effect of lisinopril."
+    # loratadine + warfarin: no curated rule covers this pair, so a literal
+    # label mention produces its own fda_label finding.
+    openfda.labels["LORATADINE"] = (
+        "Ketoconazole: increased plasma concentrations of loratadine were "
+        "observed. Warfarin: no clinically significant interaction was "
+        "observed in a controlled study."
     )
 
-    body = manual_check(client, ["lisinopril", "ibuprofen"])
+    body = manual_check(client, ["loratadine", "warfarin"])
 
     label_findings = [
         f for f in body["interactions"] if f["source_type"] == "fda_label"
     ]
     assert len(label_findings) == 1
     finding = label_findings[0]
-    assert finding["substance_a"]["id"] == "lisinopril"
-    assert finding["substance_b"]["id"] == "ibuprofen"
-    assert "NSAIDs" in finding["quoted_text"]
+    assert finding["substance_a"]["id"] == "loratadine"
+    assert finding["substance_b"]["id"] == "warfarin"
+    assert "Warfarin" in finding["quoted_text"]
     assert len(finding["quoted_text"]) <= 300
     assert finding["verified"] is True
-    assert "The FDA label for Lisinopril mentions Ibuprofen" in finding["message"]
+    assert finding["message"] == (
+        "The FDA label for Loratadine mentions Warfarin in its drug "
+        "interactions section."
+    )
 
 
 def test_label_text_not_mentioning_the_other_drug_is_not_flagged(client, openfda):
@@ -169,6 +176,70 @@ def test_label_text_not_mentioning_the_other_drug_is_not_flagged(client, openfda
     body = manual_check(client, ["loratadine", "famotidine"])
 
     assert body["interactions"] == []
+
+
+def test_class_word_match_uses_class_headline_wording(client, openfda):
+    # loratadine + lisinopril: no curated rule covers this pair either, so a
+    # qualifying class-word match (a combination-use sentence, no literal
+    # "lisinopril") produces its own fda_label finding with the class wording.
+    openfda.labels["LORATADINE"] = (
+        "Concomitant administration with an ACE inhibitor may increase the "
+        "antihypertensive effect."
+    )
+
+    body = manual_check(client, ["loratadine", "lisinopril"])
+
+    (finding,) = [f for f in body["interactions"] if f["source_type"] == "fda_label"]
+    assert finding["message"] == (
+        "The FDA label for Loratadine mentions the drug class ACE inhibitors "
+        "in its drug interactions section. Lisinopril belongs to this class."
+    )
+
+
+def test_class_word_match_without_combination_context_is_not_flagged(client, openfda):
+    # A passing mention of the class name is not evidence of a combination
+    # warning -- this sentence is about aspirin-sensitive asthma, not about
+    # taking ibuprofen together with another NSAID.
+    openfda.labels["IBUPROFEN"] = (
+        "Since cross reactivity, including bronchospasm, between aspirin and "
+        "NSAIDs has been reported in such aspirin-sensitive patients, "
+        "ibuprofen should be used with caution in patients with preexisting "
+        "asthma."
+    )
+
+    assert interactions.label_mention("ibuprofen", "naproxen", load_registry()) is None
+
+
+def test_naproxen_ssri_bleeding_text_does_not_match_ibuprofen(openfda):
+    # This sentence is about SSRIs and bleeding risk, not about combining
+    # naproxen with another NSAID -- "NSAID" here names naproxen itself, not
+    # a combination partner, and there's no literal "ibuprofen" either.
+    openfda.labels["NAPROXEN"] = (
+        "Drugs that Affect Hemostasis: NSAIDs and SSRIs both increase the "
+        "risk of GI bleeding when used with anticoagulants."
+    )
+
+    assert interactions.label_mention("naproxen", "ibuprofen", load_registry()) is None
+
+
+def test_curated_pair_produces_one_card_not_three(client, openfda):
+    openfda.labels["IBUPROFEN"] = (
+        "Concomitant use with naproxen or other NSAIDs increases the risk of "
+        "GI bleeding."
+    )
+    openfda.labels["NAPROXEN"] = (
+        "Concomitant administration with ibuprofen or other NSAIDs is not recommended."
+    )
+
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    assert len(body["interactions"]) == 1
+    (finding,) = body["interactions"]
+    assert finding["source_type"] == "curated"
+    assert finding["also_mentioned_in_label"] is not None
+    assert len(finding["also_mentioned_in_label"]) == 2
+    for mention in finding["also_mentioned_in_label"]:
+        assert mention["quoted_text"]
 
 
 # --- Empty result --------------------------------------------------------------

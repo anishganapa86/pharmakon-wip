@@ -64,6 +64,27 @@ CLASS_KEYWORDS: dict[str, tuple[str, ...]] = {
     "ACE_INHIBITOR": ("ACE inhibitor", "angiotensin-converting enzyme inhibitor"),
     "ANTIHISTAMINE_SEDATING": ("antihistamine",),
 }
+# How the class reads in a headline: "the drug class NSAIDs", not "NSAID".
+CLASS_DISPLAY: dict[str, str] = {
+    "NSAID": "NSAIDs",
+    "SSRI": "SSRIs",
+    "ACE_INHIBITOR": "ACE inhibitors",
+    "ANTIHISTAMINE_SEDATING": "sedating antihistamines",
+}
+
+# A class keyword alone (e.g. a label's aside about aspirin-sensitive asthma
+# mentioning "NSAIDs") is not evidence of a combining-these-two-drugs
+# interaction. Require one of these nearby before trusting a class-word match.
+CONTEXT_KEYWORDS = (
+    "concomitant",
+    "concomitantly",
+    "combination",
+    "coadminister",
+    "co-administer",
+    "administered together",
+    "other nsaid",
+    "with another",
+)
 
 SUBSTANCE_CLASSES: dict[str, tuple[str, ...]] = {}
 for _cls, _members in CLASS_MEMBERS.items():
@@ -201,31 +222,80 @@ def _mentions(text: str, phrase: str) -> bool:
     return re.search(pattern, text, re.IGNORECASE) is not None
 
 
-def _search_terms(substance_id: str, registry: Registry) -> list[str]:
-    entry = registry.get(substance_id)
-    terms = [entry["name"], *entry.get("aliases", [])]
-    for cls in SUBSTANCE_CLASSES.get(substance_id, ()):
-        terms.extend(CLASS_KEYWORDS.get(cls, ()))
-    return terms
+def _has_combination_context(sentence: str) -> bool:
+    lowered = sentence.lower()
+    return any(kw in lowered for kw in CONTEXT_KEYWORDS)
 
 
-def _find_sentence(text: str, terms: list[str]) -> str | None:
-    for sentence in _SENTENCE_SPLIT.split(text):
-        if any(_mentions(sentence, term) for term in terms):
-            return sentence.strip()[:300]
+@dataclass(frozen=True)
+class LabelMatch:
+    sentence: str  # <=300 chars, verbatim
+    matched_term: str  # the literal name/alias, or the class keyword, that hit
+    is_literal: bool  # True: other_id's own name/alias appears in the sentence
+    other_class: str | None  # the CLASS_MEMBERS key, only set when not literal
+
+
+def _match_in_sentence(
+    sentence: str, other_id: str, registry: Registry
+) -> tuple[str, bool, str | None] | None:
+    """(matched_term, is_literal, class) for this one sentence, or None.
+
+    A literal hit (the other drug's own name or alias) always wins. A class
+    keyword ("NSAIDs") only counts when the sentence also reads like it's
+    about combining drugs -- otherwise a passing mention (e.g. aspirin-allergy
+    cross-reactivity) would falsely read as a combination warning.
+    """
+    entry = registry.get(other_id)
+    for term in (entry["name"], *entry.get("aliases", [])):
+        if _mentions(sentence, term):
+            return term, True, None
+    if _has_combination_context(sentence):
+        for cls in SUBSTANCE_CLASSES.get(other_id, ()):
+            for term in CLASS_KEYWORDS.get(cls, ()):
+                if _mentions(sentence, term):
+                    return term, False, cls
     return None
 
 
-def label_mention(self_id: str, other_id: str, registry: Registry) -> str | None:
-    """The sentence in self_id's own FDA label mentioning other_id (by name,
-    alias, or drug class), or None if self_id has no label or doesn't mention
-    it. Raises OpenFDAUnavailable, never interpreted as "no mention".
+def _find_best_match(text: str, other_id: str, registry: Registry) -> LabelMatch | None:
+    """At most one match: the first literal name/alias hit if any sentence has
+    one, else the first qualifying class-word hit. Literal always beats class."""
+    best: LabelMatch | None = None
+    for raw_sentence in _SENTENCE_SPLIT.split(text):
+        sentence = raw_sentence.strip()
+        if not sentence:
+            continue
+        found = _match_in_sentence(sentence, other_id, registry)
+        if found is None:
+            continue
+        term, is_literal, cls = found
+        match = LabelMatch(sentence[:300], term, is_literal, cls)
+        if is_literal:
+            return match  # literal wins outright; stop looking
+        if best is None:
+            best = match
+    return best
+
+
+def label_mention(self_id: str, other_id: str, registry: Registry) -> LabelMatch | None:
+    """The best sentence in self_id's own FDA label mentioning other_id (by
+    literal name/alias, preferred, or drug class in a combination-use
+    sentence), or None if self_id has no label or doesn't mention it. Raises
+    OpenFDAUnavailable, never interpreted as "no mention".
     """
     entry = registry.get(self_id)
     text = _label_text(self_id, entry["name"])
     if text is None:
         return None
-    return _find_sentence(text, _search_terms(other_id, registry))
+    match = _find_best_match(text, other_id, registry)
+    if match is None:
+        return None
+    if not _mentions(match.sentence, match.matched_term):
+        # Safety net: never show a quote that doesn't literally contain
+        # whatever we claim matched it. Should be unreachable given how
+        # `match` was built above; drop rather than trust it if it ever isn't.
+        return None
+    return match
 
 
 # --- Concentration overlap (the only place this module touches app.pk) --------
@@ -357,7 +427,20 @@ def _substance_ref(entry: dict, rs: RegimenSubstance) -> dict:
     }
 
 
-def _curated_finding(entry_a, entry_b, a, b, rule: CuratedRule, overlap) -> dict:
+def _also_mentioned(self_entry: dict, match: LabelMatch) -> dict:
+    """A literal label mention folded into a curated finding's card, rather
+    than a separate finding -- the curated rule is already the primary claim
+    for this pair; the label is corroboration, not a second interaction."""
+    return {
+        "source": f"FDA label, {self_entry['name']}, Drug Interactions section",
+        "quoted_text": match.sentence,
+        "message": f"Also mentioned in the FDA label for {self_entry['name']}.",
+    }
+
+
+def _curated_finding(
+    entry_a, entry_b, a, b, rule: CuratedRule, overlap, also_mentioned_in_label
+) -> dict:
     return {
         "substance_a": _substance_ref(entry_a, a),
         "substance_b": _substance_ref(entry_b, b),
@@ -370,12 +453,28 @@ def _curated_finding(entry_a, entry_b, a, b, rule: CuratedRule, overlap) -> dict
         "severity": None,  # never invented; no curated rule states one yet
         "overlap": overlap,
         "message": f"{entry_a['name']} + {entry_b['name']}: {rule.effect}",
+        # Literal (never class-only) label mentions of the same pair, shown as
+        # corroboration beneath the primary curated card. None when there are
+        # none, never an empty list.
+        "also_mentioned_in_label": also_mentioned_in_label or None,
     }
 
 
 def _label_finding(
-    self_entry, other_entry, self_rs, other_rs, sentence, overlap
+    self_entry, other_entry, self_rs, other_rs, match: LabelMatch, overlap
 ) -> dict:
+    if match.is_literal:
+        message = (
+            f"The FDA label for {self_entry['name']} mentions {other_entry['name']} "
+            "in its drug interactions section."
+        )
+    else:
+        class_display = CLASS_DISPLAY.get(match.other_class, match.other_class)
+        message = (
+            f"The FDA label for {self_entry['name']} mentions the drug class "
+            f"{class_display} in its drug interactions section. "
+            f"{other_entry['name']} belongs to this class."
+        )
     return {
         "substance_a": _substance_ref(self_entry, self_rs),
         "substance_b": _substance_ref(other_entry, other_rs),
@@ -383,14 +482,12 @@ def _label_finding(
         "recommendation": None,
         "source_type": "fda_label",
         "source": f"FDA label, {self_entry['name']}, Drug Interactions section",
-        "quoted_text": sentence,
+        "quoted_text": match.sentence,
         "verified": True,  # quoted verbatim from the live FDA label, not a guess
         "severity": None,  # never interpreted from label prose
         "overlap": overlap,
-        "message": (
-            f"The FDA label for {self_entry['name']} mentions {other_entry['name']} "
-            "in its drug interactions section."
-        ),
+        "message": message,
+        "also_mentioned_in_label": None,
     }
 
 
@@ -425,24 +522,44 @@ def check(
                 a.substance_id, b.substance_id, registry, events, now, patient
             )
 
-        for rule in rules:
-            if rule.matches(a.substance_id, b.substance_id):
-                findings.append(_curated_finding(entry_a, entry_b, a, b, rule, overlap))
+        curated_matches = [
+            rule for rule in rules if rule.matches(a.substance_id, b.substance_id)
+        ]
 
-        for self_entry, self_rs, other_entry, other_rs in (
-            (entry_a, a, entry_b, b),
-            (entry_b, b, entry_a, a),
-        ):
-            try:
-                sentence = label_mention(self_entry["id"], other_entry["id"], registry)
-            except OpenFDAUnavailable:
-                label_unavailable = True
-                continue
-            if sentence is not None:
+        match_ab = match_ba = None
+        try:
+            match_ab = label_mention(a.substance_id, b.substance_id, registry)
+        except OpenFDAUnavailable:
+            label_unavailable = True
+        try:
+            match_ba = label_mention(b.substance_id, a.substance_id, registry)
+        except OpenFDAUnavailable:
+            label_unavailable = True
+
+        if curated_matches:
+            # A curated rule is the primary claim for this pair. A literal
+            # label mention corroborates it beneath the same card; a
+            # class-only match adds nothing a human hasn't already reviewed
+            # for this exact pair, so it's dropped rather than shown twice.
+            also_mentioned = []
+            if match_ab is not None and match_ab.is_literal:
+                also_mentioned.append(_also_mentioned(entry_a, match_ab))
+            if match_ba is not None and match_ba.is_literal:
+                also_mentioned.append(_also_mentioned(entry_b, match_ba))
+            for rule in curated_matches:
                 findings.append(
-                    _label_finding(
-                        self_entry, other_entry, self_rs, other_rs, sentence, overlap
+                    _curated_finding(
+                        entry_a, entry_b, a, b, rule, overlap, also_mentioned
                     )
+                )
+        else:
+            if match_ab is not None:
+                findings.append(
+                    _label_finding(entry_a, entry_b, a, b, match_ab, overlap)
+                )
+            if match_ba is not None:
+                findings.append(
+                    _label_finding(entry_b, entry_a, b, a, match_ba, overlap)
                 )
 
     unchecked_reason = [
