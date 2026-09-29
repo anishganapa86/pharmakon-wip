@@ -607,6 +607,23 @@
   color: #16a34a;
 }
 
+.alternatives-section {
+  margin-top: 10px;
+}
+
+.alternative-candidate {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+
+  &:first-child {
+    border-top: none;
+  }
+
+  & > p {
+    margin: 0 0 4px;
+  }
+}
+
 /* --- Interactions tab ----------------------------------------------------------- */
 
 .pharmacist-questions {

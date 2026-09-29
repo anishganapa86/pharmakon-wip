@@ -338,6 +338,40 @@ export interface SkincareCheckResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Skincare alternatives (see app/api/alternatives.py)
+//
+// Curated only -- app/data/skincare_products.json is hand-sourced, never
+// generated or fetched live. Never a recommendation: only what was checked.
+// ---------------------------------------------------------------------------
+
+export interface SkincareAlternativeCandidate {
+  brand: string;
+  name: string;
+  category: string;
+  ingredients: string[]; // full list, straight from the curated source
+  source_url: string;
+  date_checked: string;
+  verified: boolean;
+  checked_note: string; // e.g. "Does not contain Retinol. No documented..."
+  search_url: string; // Google Shopping search, brand + name, no tracking
+}
+
+/** Alternatives for one flagged ingredient of one product. */
+export interface SkincareAlternativesGroup {
+  flagged_ingredient: string;
+  product_name: string;
+  // Only set when the flagged product itself happens to be a curated one --
+  // never guessed otherwise, so alternatives then span every category.
+  category: string | null;
+  alternatives: SkincareAlternativeCandidate[]; // at most 5
+}
+
+export interface SkincareAlternativesResponse {
+  results: SkincareAlternativesGroup[];
+  disclaimer: string;
+}
+
+// ---------------------------------------------------------------------------
 // Medication interaction checker (see app/api/interactions.py)
 //
 // Informational only -- never creates or feeds an Alert. Two cited sources:

@@ -1,6 +1,15 @@
 import { useEffect, useState } from "react";
-import { checkSkincare, fetchSkincareCheck } from "../api";
-import type { SkincareCheckResponse } from "../types/contract";
+import {
+  checkSkincare,
+  checkSkincareAlternatives,
+  fetchSkincareCheck,
+} from "../api";
+import type {
+  SkincareAlternativesGroup,
+  SkincareAlternativesResponse,
+  SkincareCheckResponse,
+  SkincareProductRequest,
+} from "../types/contract";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -36,7 +45,84 @@ function groupByProduct(
   return order.map((product) => [product, byProduct.get(product)!]);
 }
 
-function SkincareResults({ result }: { result: SkincareCheckResponse }) {
+/** The alternatives group for one flagged (ingredient, product) pair, if the
+ * alternatives response has one -- both sides come from the same underlying
+ * skincare.check_ingredients() call on the same product list, so the strings
+ * line up exactly. */
+function findGroup(
+  resp: SkincareAlternativesResponse | null,
+  ingredient: string,
+  product: string,
+): SkincareAlternativesGroup | undefined {
+  if (!resp) return undefined;
+  const ing = ingredient.trim().toLowerCase();
+  const prod = product.trim().toLowerCase();
+  return resp.results.find(
+    (g) =>
+      g.flagged_ingredient.trim().toLowerCase() === ing &&
+      g.product_name.trim().toLowerCase() === prod,
+  );
+}
+
+function AlternativesSection({
+  ingredient,
+  group,
+  disclaimer,
+}: {
+  ingredient: string;
+  group: SkincareAlternativesGroup | undefined;
+  disclaimer: string | undefined;
+}) {
+  const candidates = group?.alternatives ?? [];
+  return (
+    <details className="collapsible alternatives-section">
+      <summary>Products without {ingredient}</summary>
+      <div className="collapsible-body">
+        {candidates.length === 0 ? (
+          <p className="muted small">
+            No alternatives in our curated set. That doesn't mean none exist.
+          </p>
+        ) : (
+          <>
+            {candidates.map((c, i) => (
+              <div key={i} className="alternative-candidate">
+                <p>
+                  <strong>{c.brand}</strong> {c.name}{" "}
+                  <span className="muted small">({c.category})</span>
+                </p>
+                <p className="muted small">{c.checked_note}</p>
+                <details className="collapsible">
+                  <summary>Ingredients</summary>
+                  <p className="muted small collapsible-body">
+                    {c.ingredients.join(", ")}
+                  </p>
+                </details>
+                <p className="muted small">
+                  <a href={c.source_url} target="_blank" rel="noreferrer">
+                    Source
+                  </a>
+                  {" · "}
+                  <a href={c.search_url} target="_blank" rel="noreferrer">
+                    Search on Google
+                  </a>
+                </p>
+              </div>
+            ))}
+            {disclaimer && <p className="muted small">{disclaimer}</p>}
+          </>
+        )}
+      </div>
+    </details>
+  );
+}
+
+function SkincareResults({
+  result,
+  alternatives,
+}: {
+  result: SkincareCheckResponse;
+  alternatives: SkincareAlternativesResponse | null;
+}) {
   const flagged = result.incompatibilities.length > 0 || result.irritants.length > 0;
 
   return (
@@ -53,6 +139,16 @@ function SkincareResults({ result }: { result: SkincareCheckResponse }) {
           <p>{f.effect}</p>
           <p className="muted small">{f.recommendation}</p>
           <p className="muted small">Source: {f.source}</p>
+          <AlternativesSection
+            ingredient={f.ingredient_a}
+            group={findGroup(alternatives, f.ingredient_a, f.product_a)}
+            disclaimer={alternatives?.disclaimer}
+          />
+          <AlternativesSection
+            ingredient={f.ingredient_b}
+            group={findGroup(alternatives, f.ingredient_b, f.product_b)}
+            disclaimer={alternatives?.disclaimer}
+          />
         </div>
       ))}
       {result.irritants.map((f, i) => (
@@ -63,6 +159,11 @@ function SkincareResults({ result }: { result: SkincareCheckResponse }) {
           <p>{f.effect}</p>
           {f.note && <p className="muted small">{f.note}</p>}
           <p className="muted small">Source: {f.source}</p>
+          <AlternativesSection
+            ingredient={f.ingredient}
+            group={findGroup(alternatives, f.ingredient, f.product)}
+            disclaimer={alternatives?.disclaimer}
+          />
         </div>
       ))}
       {result.clear.length > 0 && (
@@ -99,18 +200,38 @@ export function Skincare({ userId }: Props) {
   const [autoResult, setAutoResult] = useState<SkincareCheckResponse | null>(null);
   const [autoLoading, setAutoLoading] = useState(true);
   const [autoError, setAutoError] = useState<string | null>(null);
+  const [autoAlternatives, setAutoAlternatives] =
+    useState<SkincareAlternativesResponse | null>(null);
 
   const [drafts, setDrafts] = useState<DraftProduct[]>([{ ...EMPTY_DRAFT }]);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<SkincareCheckResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [alternatives, setAlternatives] =
+    useState<SkincareAlternativesResponse | null>(null);
+
+  // Best-effort: alternatives are an enhancement on top of the check result,
+  // and a failure here must never hide the check itself.
+  function loadAlternatives(
+    products: SkincareProductRequest[],
+    setter: (r: SkincareAlternativesResponse | null) => void,
+  ) {
+    setter(null);
+    checkSkincareAlternatives(products)
+      .then(setter)
+      .catch(() => setter(null));
+  }
 
   // Mounts once per tab visit -- App.tsx only renders this component while
   // the Skincare tab is active, so switching to it always gets a fresh check.
   useEffect(() => {
     let cancelled = false;
     fetchSkincareCheck(userId)
-      .then((r) => !cancelled && setAutoResult(r))
+      .then((r) => {
+        if (cancelled) return;
+        setAutoResult(r);
+        if (r.products.length > 0) loadAlternatives(r.products, setAutoAlternatives);
+      })
       .catch((e: unknown) => !cancelled && setAutoError(errorMessage(e)))
       .finally(() => !cancelled && setAutoLoading(false));
     return () => {
@@ -141,6 +262,7 @@ export function Skincare({ userId }: Props) {
     setError(null);
     try {
       setResult(await checkSkincare(products));
+      loadAlternatives(products, setAlternatives);
     } catch (err) {
       setResult(null);
       setError(errorMessage(err));
@@ -183,7 +305,7 @@ export function Skincare({ userId }: Props) {
               ))}
             </ul>
             <div className="skincare-auto-results">
-              <SkincareResults result={autoResult} />
+              <SkincareResults result={autoResult} alternatives={autoAlternatives} />
             </div>
           </>
         )}
@@ -243,7 +365,7 @@ export function Skincare({ userId }: Props) {
       {result && (
         <section className="panel">
           <h2>Results</h2>
-          <SkincareResults result={result} />
+          <SkincareResults result={result} alternatives={alternatives} />
         </section>
       )}
     </>

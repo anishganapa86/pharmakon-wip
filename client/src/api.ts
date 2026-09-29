@@ -16,6 +16,7 @@ import type {
   ScheduledMedication,
   ScheduleRequest,
   SideEffectProfileResponse,
+  SkincareAlternativesResponse,
   SkincareCheckResponse,
   SkincareProductRequest,
   SubstanceCurve,
@@ -132,6 +133,16 @@ export function checkSkincare(
 
 export function fetchSkincareCheck(userId: string): Promise<SkincareCheckResponse> {
   return request(`/users/${encodeURIComponent(userId)}/skincare-check`);
+}
+
+export function checkSkincareAlternatives(
+  products: SkincareProductRequest[],
+): Promise<SkincareAlternativesResponse> {
+  return request("/skincare-alternatives", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ products }),
+  });
 }
 
 export function createUserEnteredProduct(
