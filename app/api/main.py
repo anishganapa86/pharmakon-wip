@@ -24,7 +24,16 @@ from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
-from . import interactions, logger, openfda, schedule, service, side_effects, skincare
+from . import (
+    alternatives,
+    interactions,
+    logger,
+    openfda,
+    schedule,
+    service,
+    side_effects,
+    skincare,
+)
 from .db import Base, make_engine
 from .products import PRODUCTS, decompose, search
 
@@ -719,6 +728,92 @@ def get_skincare_check(user_id: UserId, session: Db, now: Now) -> dict:
         text for r in recent_logs for text in (r.category, r.value, r.notes) if text
     ]
     return skincare.annotate_eczema_context(result, recent_skin_texts)
+
+
+# --- Skincare alternatives -----------------------------------------------------
+#
+# Curated only: app/data/skincare_products.json, hand-sourced from
+# manufacturer pages, never generated or fetched live. See
+# app/api/alternatives.py.
+
+
+def _medication_rejection(names: list[str], registry: Registry) -> JSONResponse | None:
+    bad = alternatives.medication_ingredient_names(names, registry)
+    if not bad:
+        return None
+    return _error(
+        422,
+        "validation_error",
+        f"{', '.join(sorted(set(bad)))} looks like a medication ingredient, "
+        "not a skincare ingredient. This checker covers topical/skincare "
+        "products only.",
+    )
+
+
+@app.get("/users/{id}/skincare-alternatives")
+def get_skincare_alternatives(
+    user_id: UserId, session: Db, registry: Reg, now: Now, product_id: str
+) -> dict:
+    """Alternatives for one logged product's flagged ingredients (see
+    app/api/alternatives.py), checked against everything else the user has
+    logged topically in the last 24 hours."""
+    events = service.load_doses(session, user_id)
+
+    target_ev = next(
+        (
+            ev
+            for ev in sorted(events, key=lambda e: e.taken_at, reverse=True)
+            if ev.product_id == product_id and ev.topical_ingredients
+        ),
+        None,
+    )
+    if target_ev is None:
+        if any(ev.product_id == product_id for ev in events):
+            return _error(
+                422,
+                "validation_error",
+                f"product {product_id!r} isn't a topical/skincare product; "
+                "alternatives only apply to skincare products.",
+            )
+        raise HTTPException(404, f"unknown product {product_id!r}")
+
+    rejection = _medication_rejection(list(target_ev.topical_ingredients), registry)
+    if rejection is not None:
+        return rejection
+
+    target = skincare.Product(
+        target_ev.product_name, tuple(target_ev.topical_ingredients)
+    )
+    regimen = []
+    for ev in events:
+        if ev.product_id == product_id or not ev.topical_ingredients:
+            continue
+        taken_at = datetime.fromisoformat(ev.taken_at)
+        if -24.0 <= service.hours_since(taken_at, now) <= 0.0:
+            regimen.append(
+                skincare.Product(ev.product_name, tuple(ev.topical_ingredients))
+            )
+
+    return alternatives.check_alternatives_for_product(target, regimen)
+
+
+class SkincareAlternativesRequest(BaseModel):
+    products: list[SkincareProductRequest] = Field(min_length=1)
+
+
+@app.post("/skincare-alternatives")
+def post_skincare_alternatives(
+    body: SkincareAlternativesRequest, registry: Reg
+) -> dict:
+    all_ingredients = [ing for p in body.products for ing in p.ingredients]
+    rejection = _medication_rejection(all_ingredients, registry)
+    if rejection is not None:
+        return rejection
+    products = [
+        skincare.Product(name=p.name, ingredients=tuple(p.ingredients))
+        for p in body.products
+    ]
+    return alternatives.check_alternatives_manual(products)
 
 
 # --- Medication interaction checker ---------------------------------------------

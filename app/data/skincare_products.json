@@ -1,0 +1,23 @@
+{
+  "products": [
+    {
+      "brand": "TODO",
+      "name": "TODO placeholder entry 1 -- replace or remove",
+      "category": "TODO",
+      "ingredients": [],
+      "source_url": "TODO",
+      "date_checked": "TODO",
+      "verified": false
+    },
+    {
+      "brand": "TODO",
+      "name": "TODO placeholder entry 2 -- replace or remove",
+      "category": "TODO",
+      "ingredients": [],
+      "source_url": "TODO",
+      "date_checked": "TODO",
+      "verified": false
+    }
+  ],
+  "_README": "No source URL, no entry. Ingredient lists must be copied from the manufacturer or packaging, never generated. The two entries above are placeholders (empty ingredients, source_url \"TODO\"): the loader in app/api/alternatives.py drops any entry with an empty ingredient list or a missing/TODO source_url, so these never reach a user. Replace them with real, sourced entries -- brand, name, category (cleanser, moisturizer, serum, sunscreen, etc.), the full ingredient list as printed on the product or its manufacturer page, source_url pointing at that page, date_checked (the date you copied it, ISO 8601), and verified: false until a human re-confirms it against the current label."
+}
