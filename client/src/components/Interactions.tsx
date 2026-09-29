@@ -13,6 +13,34 @@ function parseNames(text: string): string[] {
     .filter((n) => n.length > 0);
 }
 
+// Plain templates, generated from the finding's own substances -- never an
+// invented medical claim, and never a suggested drug (we only ask the
+// pharmacist to name one; we don't name one ourselves).
+function pharmacistQuestions(interaction: Interaction): string[] {
+  const a = interaction.substance_a.display_name;
+  const b = interaction.substance_b.display_name;
+  return [
+    `Is it OK for me to take both ${a} and ${b}?`,
+    "Which one should I use?",
+    `Is there an alternative to ${a} that doesn't interact with ${b}? ` +
+      "Which would you suggest for me?",
+  ];
+}
+
+function pharmacistSummaryText(result: InteractionCheckResponse): string {
+  const sections = result.interactions.map((interaction, i) => {
+    const a = interaction.substance_a.display_name;
+    const b = interaction.substance_b.display_name;
+    const lines = [
+      `${i + 1}. ${a} + ${b}`,
+      `   ${interaction.effect ?? interaction.message}`,
+      ...pharmacistQuestions(interaction).map((q) => `   - ${q}`),
+    ];
+    return lines.join("\n");
+  });
+  return ["Questions for my pharmacist", "", ...sections].join("\n\n");
+}
+
 function SourceTag({ interaction }: { interaction: Interaction }) {
   return (
     <span className="tag tag-source">
@@ -58,6 +86,41 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
           </>
         )}
       </p>
+      <div className="pharmacist-questions">
+        <p className="muted small">Questions for your pharmacist:</p>
+        <ul>
+          {pharmacistQuestions(interaction).map((q, i) => (
+            <li key={i} className="muted small">
+              {q}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function CopyForPharmacist({ result }: { result: InteractionCheckResponse }) {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function copy() {
+    setError(null);
+    try {
+      await navigator.clipboard.writeText(pharmacistSummaryText(result));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+
+  return (
+    <div className="log-row">
+      <button className="control button" type="button" onClick={() => void copy()}>
+        {copied ? "Copied!" : "Copy for my pharmacist"}
+      </button>
+      {error && <span className="error small">Couldn't copy: {error}</span>}
     </div>
   );
 }
@@ -77,9 +140,12 @@ function Results({ result }: { result: InteractionCheckResponse }) {
       {result.interactions.length === 0 ? (
         <p className="muted">{result.message}</p>
       ) : (
-        result.interactions.map((interaction, i) => (
-          <InteractionCard key={i} interaction={interaction} />
-        ))
+        <>
+          <CopyForPharmacist result={result} />
+          {result.interactions.map((interaction, i) => (
+            <InteractionCard key={i} interaction={interaction} />
+          ))}
+        </>
       )}
     </>
   );

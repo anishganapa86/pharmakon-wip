@@ -607,6 +607,23 @@
   color: #16a34a;
 }
 
+/* --- Interactions tab ----------------------------------------------------------- */
+
+.pharmacist-questions {
+  margin-top: 10px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+
+  & ul {
+    margin: 4px 0 0;
+    padding-left: 20px;
+  }
+
+  & li {
+    margin-bottom: 2px;
+  }
+}
+
 /* --- View tabs ---------------------------------------------------------------- */
 
 .view-tabs {
