@@ -67,6 +67,8 @@ def curated_entry(
     source_url="https://example.com/product",
     date_checked="2026-09-01",
     verified=False,
+    source_type=None,
+    reference_url=None,
 ):
     return {
         "brand": brand,
@@ -76,6 +78,8 @@ def curated_entry(
         "source_url": source_url,
         "date_checked": date_checked,
         "verified": verified,
+        "source_type": source_type,
+        "reference_url": reference_url,
     }
 
 
@@ -103,6 +107,151 @@ def test_entry_missing_source_url_is_rejected_at_load(tmp_path):
     path = write_curated(tmp_path, [entry])
 
     assert alternatives.load_products(path=path) == ()
+
+
+def test_packaging_entry_with_no_source_url_is_loaded(tmp_path):
+    path = write_curated(
+        tmp_path,
+        [
+            curated_entry(
+                name="Packaging Product", source_type="packaging", source_url=None
+            )
+        ],
+    )
+
+    products = alternatives.load_products(path=path)
+
+    names = {p.name for p in products}
+    assert names == {"Packaging Product"}
+
+
+# --- source_type: category lookup vs. candidate eligibility --------------------
+
+
+def test_category_lookup_works_for_a_packaging_product(tmp_path):
+    # No source_url at all -- would have been rejected before source_type
+    # existed. It's still usable to recognize the flagged product as one of
+    # our own and infer its category.
+    path = write_curated(
+        tmp_path,
+        [
+            curated_entry(
+                brand="TIRTIR",
+                name="SOS Serum",
+                category="serum",
+                ingredients=("Retinol", "Water"),
+                source_type="packaging",
+                source_url=None,
+                verified=False,
+                reference_url=None,
+            )
+        ],
+    )
+    curated = alternatives.load_products(path=path)
+
+    target = skincare.Product("TIRTIR SOS Serum", ("Retinol",))
+    result = alternatives.check_alternatives_for_product(
+        target, FLAGGING_COMPANION, curated=curated
+    )
+
+    (group,) = result["results"]
+    assert group["category"] == "serum"
+
+
+def test_unverified_packaging_entry_is_excluded_from_candidates(tmp_path):
+    path = write_curated(
+        tmp_path,
+        [
+            curated_entry(
+                name="Unverified Packaging",
+                ingredients=("Water", "Glycerin"),
+                source_type="packaging",
+                source_url=None,
+                verified=False,
+                reference_url="https://retailer.example.com/product",
+            )
+        ],
+    )
+    curated = alternatives.load_products(path=path)
+
+    target = skincare.Product("Night Serum", ("Retinol",))
+    result = alternatives.check_alternatives_for_product(
+        target, FLAGGING_COMPANION, curated=curated
+    )
+
+    (group,) = result["results"]
+    assert group["alternatives"] == []
+
+
+def test_packaging_entry_with_no_reference_url_is_excluded_even_if_verified(tmp_path):
+    path = write_curated(
+        tmp_path,
+        [
+            curated_entry(
+                name="Verified But No Link",
+                ingredients=("Water", "Glycerin"),
+                source_type="packaging",
+                source_url=None,
+                verified=True,
+                reference_url=None,
+            )
+        ],
+    )
+    curated = alternatives.load_products(path=path)
+
+    target = skincare.Product("Night Serum", ("Retinol",))
+    result = alternatives.check_alternatives_for_product(
+        target, FLAGGING_COMPANION, curated=curated
+    )
+
+    (group,) = result["results"]
+    assert group["alternatives"] == []
+
+
+def test_verified_packaging_entry_with_reference_url_is_a_candidate(tmp_path):
+    path = write_curated(
+        tmp_path,
+        [
+            curated_entry(
+                name="Verified Packaging",
+                ingredients=("Water", "Glycerin"),
+                source_type="packaging",
+                source_url=None,
+                verified=True,
+                reference_url="https://retailer.example.com/product",
+            )
+        ],
+    )
+    curated = alternatives.load_products(path=path)
+
+    target = skincare.Product("Night Serum", ("Retinol",))
+    result = alternatives.check_alternatives_for_product(
+        target, FLAGGING_COMPANION, curated=curated
+    )
+
+    (group,) = result["results"]
+    names = {a["name"] for a in group["alternatives"]}
+    assert names == {"Verified Packaging"}
+
+
+def test_entry_with_no_source_type_behaves_as_before(tmp_path):
+    # Legacy shape: no source_type key at all, source_url present, verified
+    # false -- must still be an eligible candidate, same as pre-source_type
+    # behavior.
+    path = write_curated(
+        tmp_path,
+        [curated_entry(name="Legacy Product", ingredients=("Water", "Glycerin"))],
+    )
+    curated = alternatives.load_products(path=path)
+
+    target = skincare.Product("Night Serum", ("Retinol",))
+    result = alternatives.check_alternatives_for_product(
+        target, FLAGGING_COMPANION, curated=curated
+    )
+
+    (group,) = result["results"]
+    names = {a["name"] for a in group["alternatives"]}
+    assert names == {"Legacy Product"}
 
 
 # --- Ingredient / alias exclusion -----------------------------------------------

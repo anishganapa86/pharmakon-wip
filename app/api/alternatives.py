@@ -12,8 +12,16 @@ products (app/data/skincare_products.json) that:
 
 A candidate with a missing or empty ingredient list is excluded, never
 assumed clean -- app/data/skincare_products.json's own loader already drops
-any entry that doesn't carry a real ingredient list and source_url (see its
-_README), so this module never even sees a placeholder.
+any entry that doesn't carry a real ingredient list and (for "brand"/
+"retailer" entries, or legacy ones with no source_type) a source_url (see
+its _README), so this module never even sees a placeholder.
+
+A "packaging" entry (checked against the physical product, not a page) has
+no source_url and is loaded anyway -- it's still used to recognize a
+flagged product as one of our own (category lookup), which only requires
+knowing about it. It is never offered as an alternative to someone else
+unless a human has verified it AND left a reference_url; see
+_is_candidate_eligible.
 
 This never claims a candidate is better, safer, or will help -- only what
 was checked and what it lacks. It never touches medication ingredients: a
@@ -57,17 +65,47 @@ class CuratedProduct:
     source_url: str
     date_checked: str
     verified: bool
+    # None for entries written before source_type existed -- treated as the
+    # old "brand/retailer"-style shape (source_url required, always a
+    # candidate). See _is_real_entry and _is_candidate_eligible.
+    source_type: str | None = None
+    reference_url: str | None = None
 
 
 def _is_real_entry(e: dict) -> bool:
-    """False for a placeholder: empty ingredients, or a missing/"TODO"
-    source_url. CLAUDE.md's "no source, no entry" invariant, enforced here
-    rather than trusted -- a placeholder is an expected, in-progress state of
-    the data file, never a load error, and it must simply never reach a user.
+    """False for a placeholder: empty ingredients, or -- for anything other
+    than a "packaging" entry -- a missing/"TODO" source_url. CLAUDE.md's "no
+    source, no entry" invariant, enforced here rather than trusted -- a
+    placeholder is an expected, in-progress state of the data file, never a
+    load error, and it must simply never reach a user.
+
+    A "packaging" entry (checked against the physical product, not a page)
+    has no source_url at all; that's not a placeholder, it's the documented
+    shape for that source_type (see scripts/validate_skincare_products.py).
+    It still needs real ingredients to be loaded at all.
     """
     ingredients = e.get("ingredients") or []
+    if not ingredients:
+        return False
+    if e.get("source_type") == "packaging":
+        return True
     source_url = (e.get("source_url") or "").strip()
-    return bool(ingredients) and bool(source_url) and source_url != "TODO"
+    return bool(source_url) and source_url != "TODO"
+
+
+def _is_candidate_eligible(c: CuratedProduct) -> bool:
+    """Every loaded entry can be used to infer a flagged product's own
+    category (see _infer_category) -- that's just recognizing the user's own
+    product. But a "packaging" entry (no source_url; checked against the
+    physical product rather than a page) is only ever offered to someone
+    else as an alternative once a human has verified it AND left a
+    reference_url -- until then there's nothing another user could open to
+    see what was checked. "brand"/"retailer" entries, and legacy entries
+    with no source_type at all, behave as before: eligible once loaded.
+    """
+    if c.source_type == "packaging":
+        return c.verified and bool(c.reference_url)
+    return True
 
 
 @lru_cache(maxsize=1)
@@ -79,9 +117,11 @@ def load_products(path: Path | None = None) -> tuple[CuratedProduct, ...]:
             name=e["name"],
             category=e["category"],
             ingredients=tuple(e["ingredients"]),
-            source_url=e["source_url"],
+            source_url=e.get("source_url") or "",
             date_checked=e.get("date_checked", ""),
             verified=e.get("verified", False),
+            source_type=e.get("source_type"),
+            reference_url=e.get("reference_url"),
         )
         for e in data["products"]
         if _is_real_entry(e)
@@ -199,11 +239,15 @@ def _alternatives_for(
     rules: skincare.Rules,
 ) -> dict:
     targets = _aliases_for(flagged_name, rules)
+    # Category lookup uses every loaded entry, including ineligible
+    # packaging ones -- it's only ever recognizing the flagged product
+    # against itself, never suggesting it to someone else.
     category = _infer_category(product_name, curated)
+    eligible = tuple(c for c in curated if _is_candidate_eligible(c))
     pool = (
-        curated
+        eligible
         if category is None
-        else tuple(c for c in curated if c.category == category)
+        else tuple(c for c in eligible if c.category == category)
     )
 
     alternatives: list[dict] = []
