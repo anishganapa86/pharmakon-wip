@@ -234,6 +234,26 @@ def fetch_label_for_product(product_name: str) -> dict | None:
     return labels[0] if labels else None
 
 
+def fetch_label_by_set_id(set_id: str) -> dict | None:
+    """The exact label a curated entry cites, by its own set_id -- used to
+    re-verify a curated quote against the specific label it came from,
+    sidestepping any generic-name/alias mismatch a fresh name search could
+    hit (e.g. a registry name that doesn't match openFDA's own generic_name
+    string for a salt form)."""
+    try:
+        r = _http.get(
+            OPENFDA_LABEL_URL, params={"search": f'set_id:"{set_id}"', "limit": 1}
+        )
+    except httpx.HTTPError as exc:
+        raise OpenFDAUnavailable(str(exc)) from exc
+    if r.status_code == 404:
+        return None
+    if r.status_code != 200:
+        raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
+    results = r.json().get("results", [])
+    return results[0] if results else None
+
+
 def label_route(label: dict) -> str | None:
     routes = label.get("openfda", {}).get("route") or []
     return routes[0] if routes else None
@@ -244,23 +264,147 @@ def is_oral(label: dict) -> bool:
     return "ORAL" in routes
 
 
-# --- Sentence extraction and qualification --------------------------------------
+# --- Sentence/list extraction and quote integrity --------------------------------
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+")
 
+MAX_QUOTE_CHARS = 300
+# How far into a plain sentence a ":" may sit and still be read as a short
+# audience-qualifier prefix ("Adults:", "Children under 12 years:") rather
+# than a second, flattened-together Drug Facts entry ("...product Allergy
+# alert: Acetaminophen may cause...").
+_LEAD_COLON_MAX_CHARS = 40
 
-def _sentences_from_label(label: dict) -> list[tuple[str, str, int]]:
-    """(sentence, field, field_priority_index) for every sentence of every
-    text field that actually exists on this label, in TEXT_FIELDS order --
-    never assumes a field is present."""
-    out = []
-    for idx, field in enumerate(TEXT_FIELDS):
-        for block in label.get(field) or []:
-            for raw in _SENTENCE_SPLIT_RE.split(block):
-                sentence = raw.strip()
-                if sentence:
-                    out.append((sentence, field, idx))
+# openFDA's plain-text extraction strips virtually all structural markup:
+# across naproxen, sertraline, acetaminophen, aspirin, and ibuprofen's own
+# labels, the only separator that survives into the text at all is a
+# literal "•" bullet character, and only on some fields of some label
+# submissions (spl_medguide, sometimes drug_interactions or
+# dosage_and_administration) -- never a newline, never a comma or
+# semicolon marking list items. OTC Drug-Facts fields (warnings,
+# do_not_use, ask_doctor*, directions) carry NO separator of any kind: list
+# items are joined with a single space and are otherwise indistinguishable
+# from prose ("...must not use with any other drug containing acetaminophen
+# (prescription or n..."). So "•" is the only structural signal this
+# code can safely treat as "this is a list" -- everything else is read as
+# plain sentences, and a list item with no bullet and no colon-terminated
+# lead-in right before it is never reconstructed, just left unquotable
+# (see qualifying_pointers).
+_LIST_BULLET = "•"
+
+# A numbered ALL-CAPS section heading that leaked into extracted text, e.g.
+# "2 DOSAGE AND ADMINISTRATION" or "17 PATIENT COUNSELING INFORMATION".
+_HEADING_RE = re.compile(r"\b\d{1,2}(?:\.\d+)?\s+[A-Z]{2,}(?:\s+[A-Z]{2,}){1,}")
+# A cross-reference to another label section, e.g. "( 2.1 )" or "( 7.1 , 12.3 )".
+_XREF_RE = re.compile(r"\(\s*\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*\s*\)")
+
+
+def _has_heading_or_xref_noise(text: str) -> bool:
+    return bool(_HEADING_RE.search(text) or _XREF_RE.search(text))
+
+
+def _split_sentences(chunk: str, block_end: str) -> list[tuple[str, bool]]:
+    """(sentence, ends_properly) for each `.!?`-delimited piece of `chunk`.
+    ends_properly is True when the piece itself ends in terminal
+    punctuation, or -- only for whichever piece is the true tail of the
+    whole field -- when `block_end` (the field's own trimmed end) ends with
+    it. Never True just because a piece happened to be the last one
+    produced by this particular split call."""
+    pieces = [s.strip() for s in _SENTENCE_SPLIT_RE.split(chunk) if s.strip()]
+    out: list[tuple[str, bool]] = []
+    for i, s in enumerate(pieces):
+        proper = s[-1:] in ".!?"
+        if (
+            not proper
+            and i == len(pieces) - 1
+            and len(s) >= 8
+            and block_end.endswith(s)
+        ):
+            proper = True
+        out.append((s, proper))
     return out
+
+
+def _units_from_block(block: str) -> list[tuple[str, bool, bool]]:
+    """(text, is_list_item, ends_properly) quotable units from one raw
+    field block. List structure is read directly off "•" in the raw
+    text, before any flattening -- a list item's assembled text always
+    carries its governing lead-in (the immediately preceding clause ending
+    in ":", itself starting at a capital letter or digit), joined with
+    " • ". A bullet with no valid lead-in right before it produces no
+    list-item unit -- its raw text still flows through as plain-sentence
+    units via consume(), which will fail the "starts capitalized" rule on
+    its own (bullet fragments are grammatical continuations, so they start
+    lowercase) rather than being silently reconstructed."""
+    units: list[tuple[str, bool, bool]] = []
+    block_end = block.rstrip()
+    lead_in: str | None = None
+
+    def consume(pieces: list[tuple[str, bool]]) -> None:
+        nonlocal lead_in
+        if not pieces:
+            return
+        last_text, _ = pieces[-1]
+        if (
+            last_text.endswith(":")
+            and last_text[:1]
+            and (last_text[0].isupper() or last_text[0].isdigit())
+        ):
+            lead_in = last_text
+            units.extend((s, False, proper) for s, proper in pieces[:-1])
+        else:
+            lead_in = None
+            units.extend((s, False, proper) for s, proper in pieces)
+
+    if _LIST_BULLET not in block:
+        consume(_split_sentences(block, block_end))
+        return units
+
+    parts = block.split(_LIST_BULLET)
+    consume(_split_sentences(parts[0], block_end))
+    for part in parts[1:]:
+        inner = _split_sentences(part, block_end)
+        if lead_in is not None and inner:
+            item_text, _ = inner[0]
+            units.append((f"{lead_in} {_LIST_BULLET} {item_text}", True, True))
+        consume(inner[1:])
+    return units
+
+
+def _quote_ok(text: str, is_list_item: bool, ends_properly: bool) -> bool:
+    """The quote-integrity gate: under the character cap, no heading or
+    cross-reference noise anywhere in it, and -- for a plain sentence -- a
+    true sentence start (capital letter or digit) and a true end (terminal
+    punctuation or the real end of the field, never an arbitrary cut). A
+    list item is exempt from the start/end check: it's already bounded by
+    real "•" structure (or its own internal sentence end) by
+    construction in _units_from_block, and its lead-in's start was already
+    validated there."""
+    if not text or len(text) > MAX_QUOTE_CHARS:
+        return False
+    if _has_heading_or_xref_noise(text):
+        return False
+    if is_list_item:
+        return True
+    if not (text[0].isupper() or text[0].isdigit()):
+        return False
+    colon = text.find(":")
+    if colon != -1:
+        lead_clause = text[:colon].lower()
+        # A short leading clause ending in ":" is allowed only when it
+        # actually names an audience ("Adults:", "Children under 12 years
+        # and over:") -- a real Drug Facts pattern. "This product"/"when
+        # using" is the field re-announcing its own section name inline
+        # (the same self-titling that "2 DOSAGE AND ADMINISTRATION" does
+        # for Rx labels, just not ALL-CAPS), not an audience, and a colon
+        # deep in the sentence is a second Drug-Facts entry flattened onto
+        # the first with no line break, e.g. "...alcoholic drinks every day
+        # while using this product Allergy alert: Acetaminophen may cause
+        # severe skin reactions." Either way it means this "sentence" isn't
+        # one single, coherent instruction.
+        if colon > _LEAD_COLON_MAX_CHARS or "product" in lead_clause:
+            return False
+    return ends_properly
 
 
 def _phrase_in(text_lower: str, phrase: str) -> bool:
@@ -273,7 +417,13 @@ def _cue_count(sentence_lower: str) -> int:
 
 @dataclass(frozen=True)
 class QuoteMatch:
-    quote: str  # <=300 chars, verbatim
+    quote: str  # <=300 chars, verbatim, passes _quote_ok
+    field: str
+    item: str
+
+
+@dataclass(frozen=True)
+class PointerMatch:
     field: str
     item: str
 
@@ -288,45 +438,171 @@ def _matching_variant(text_lower: str, item: str) -> str | None:
     return None
 
 
-def qualifying_matches(label: dict, item: str) -> list[QuoteMatch]:
-    """At most 2 qualifying sentences for this (label, item), best-scoring
-    (most instruction cues, then earliest field) first, deduped by quote
-    text. A sentence qualifies only if it contains one of the item's listed
-    variants AND at least one instruction cue -- both checked here, never
-    assumed."""
+def _label_units(label: dict) -> list[tuple[str, str, int, bool, bool]]:
+    """(text, field, field_priority_index, is_list_item, ends_properly) for
+    every quotable unit of every text field that actually exists on this
+    label, in TEXT_FIELDS order -- never assumes a field is present."""
+    out = []
+    for idx, field in enumerate(TEXT_FIELDS):
+        for block in label.get(field) or []:
+            for text, is_list_item, ends_properly in _units_from_block(block):
+                out.append((text, field, idx, is_list_item, ends_properly))
+    return out
+
+
+def label_matches(
+    label: dict, item: str
+) -> tuple[list[QuoteMatch], list[PointerMatch]]:
+    """Every unit (sentence or reconstructed list item) that qualifies by
+    item-variant + instruction cue: at most 2 QuoteMatches (best-scoring --
+    most instruction cues, then earliest field -- deduped by text) for the
+    units that also pass _quote_ok, and a PointerMatch for any other field
+    whose only qualifying units failed quote integrity -- never silently
+    dropped, just not quotable. A field that produced at least one passing
+    quote never also produces a pointer for the same item."""
     scored: list[tuple[tuple[int, int], str, str]] = []
-    for sentence, field, field_idx in _sentences_from_label(label):
-        # Qualify against the text as it will actually be quoted (<=300
-        # chars) -- a real label "sentence" (the splitter isn't perfect on
-        # bullet-style, period-free lists) can run past that, and checking
-        # the untruncated text would let a match get created and then have
-        # its evidence sliced off.
-        quote = sentence[:300]
-        lowered = quote.lower()
+    field_status: dict[str, str] = {}  # field -> "pass" | "fail"
+
+    for text, field, field_idx, is_list_item, ends_properly in _label_units(label):
+        lowered = text.lower()
         variant = _matching_variant(lowered, item)
         if variant is None:
             continue
         cues = _cue_count(lowered)
         if cues == 0:
             continue
-        # The quote must literally contain the *variant* it's credited with
-        # matching -- asserted, never just assumed from the check above. The
-        # base item term itself (e.g. "food") need not appear verbatim.
-        assert variant in quote.lower(), (
-            f"quote {quote!r} does not contain matched variant {variant!r}"
-        )
-        scored.append(((-cues, field_idx), quote, field))
+        if _quote_ok(text, is_list_item, ends_properly):
+            # The quote must literally contain the *variant* it's credited
+            # with matching -- asserted, never just assumed from the check
+            # above. The base item term itself (e.g. "food") need not
+            # appear verbatim.
+            assert variant in lowered, (
+                f"quote {text!r} does not contain matched variant {variant!r}"
+            )
+            scored.append(((-cues, field_idx), text, field))
+            field_status[field] = "pass"
+        elif field not in field_status:
+            field_status[field] = "fail"
 
     seen: set[str] = set()
-    out: list[QuoteMatch] = []
-    for _score, quote, field in sorted(scored, key=lambda t: t[0]):
-        if quote in seen:
+    quotes: list[QuoteMatch] = []
+    for _score, text, field in sorted(scored, key=lambda t: t[0]):
+        if text in seen:
             continue
-        seen.add(quote)
-        out.append(QuoteMatch(quote, field, item))
-        if len(out) == 2:
+        seen.add(text)
+        quotes.append(QuoteMatch(text, field, item))
+        if len(quotes) == 2:
             break
-    return out
+
+    pointers = [
+        PointerMatch(field, item)
+        for field, status in field_status.items()
+        if status == "fail"
+    ]
+    return quotes, pointers
+
+
+def qualifying_matches(label: dict, item: str) -> list[QuoteMatch]:
+    """At most 2 quote-integrity-passing matches -- see label_matches. Kept
+    as its own function since it's the direct, pre-pointer-fallback
+    contract scripts/build_food_guidance_curated.py builds curated entries
+    from: an entry is only ever written from a real, passing quote."""
+    return label_matches(label, item)[0]
+
+
+def qualifying_pointers(label: dict, item: str) -> list[PointerMatch]:
+    """Fields with a qualifying-but-not-quotable unit -- see label_matches."""
+    return label_matches(label, item)[1]
+
+
+# --- Dosage form and product name (for attribution, not matching) ---------------
+
+_DOSAGE_FORM_FIELDS = (
+    "dosage_forms_and_strengths",
+    "package_label_principal_display_panel",
+    "dosage_and_administration",
+    "directions",
+)
+
+# The modifier group is a fixed release/form vocabulary, not "any preceding
+# word" -- a drug's own name often precedes its dosage-form noun too (e.g.
+# "Warfarin Sodium Tablets"), and "sodium" is no more a dosage form than
+# "warfarin" is.
+_DOSAGE_FORM_NOUN_RE = re.compile(
+    r"\b(?:((?:Extended|Immediate|Delayed|Sustained|Controlled)-Release|"
+    r"Orally[- ]Disintegrating|Chewable|Effervescent)\s+)?"
+    r"(Tablets?|Capsules?|Caplets?|Gelcaps?|Softgels?|Chewables?|"
+    r"Suspensions?|Solutions?|Syrups?|Liquids?|Lozenges?|Powders?|Granules?)\b",
+    re.IGNORECASE,
+)
+
+
+def _singularize(word: str) -> str:
+    lower = word.lower()
+    if lower.endswith("ies"):
+        return lower[:-3] + "y"
+    if lower.endswith("s") and not lower.endswith("ss"):
+        return lower[:-1]
+    return lower
+
+
+def label_dosage_form(label: dict) -> str | None:
+    """A dosage form phrase read off the label's own text (e.g.
+    "extended-release tablet") with a fixed noun vocabulary -- never
+    guessed when nothing matches. openFDA's structured
+    openfda.dosage_form field is empty on nearly every label in this
+    dataset, so free text (dosage_forms_and_strengths for Rx labels,
+    package_label_principal_display_panel for OTC Drug Facts panels) is
+    all there is."""
+    for field in _DOSAGE_FORM_FIELDS:
+        for block in label.get(field) or []:
+            m = _DOSAGE_FORM_NOUN_RE.search(block)
+            if m:
+                modifier = (m.group(1) or "").strip()
+                noun = _singularize(m.group(2))
+                return f"{modifier.lower()} {noun}".strip()
+    return None
+
+
+def label_product_name(label: dict) -> str | None:
+    names = label.get("openfda", {}).get("brand_name") or []
+    return names[0] if names else None
+
+
+# --- Pointer text (DailyMed) ------------------------------------------------------
+
+DAILYMED_URL = "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid={set_id}"
+
+FIELD_DISPLAY_NAMES = {
+    "dosage_and_administration": "Dosage and Administration",
+    "directions": "Directions",
+    "information_for_patients": "Patient Counseling Information",
+    "spl_medguide": "Medication Guide",
+    "warnings": "Warnings",
+    "precautions": "Precautions",
+    "when_using": "When Using This Product",
+    "do_not_use": "Do Not Use",
+    "ask_doctor": "Ask a Doctor",
+    "ask_doctor_or_pharmacist": "Ask a Doctor or Pharmacist",
+    "drug_interactions": "Drug Interactions",
+}
+
+
+def _field_display(field: str) -> str:
+    return FIELD_DISPLAY_NAMES.get(field, field.replace("_", " ").title())
+
+
+def pointer_text(product_name: str, item: str, field: str, set_id: str | None) -> str:
+    """Never invents a DailyMed link -- built only from a real set_id, the
+    citation sentence otherwise stands alone."""
+    base = (
+        f"The FDA label for {product_name} mentions {item} in its "
+        f"{_field_display(field)} section."
+    )
+    if not set_id:
+        return base
+    url = DAILYMED_URL.format(set_id=set_id)
+    return f"{base} Read the full section on DailyMed: {url}"
 
 
 # --- Classification and timing windows ------------------------------------------
@@ -437,6 +713,8 @@ class CuratedGuidance:
     set_id: str | None
     date_fetched: str
     verified: bool
+    product_name: str | None = None
+    dosage_form: str | None = None
 
 
 def _is_real_curated_entry(e: dict) -> bool:
@@ -457,6 +735,8 @@ def load_curated(path: Path | None = None) -> tuple[CuratedGuidance, ...]:
             set_id=e.get("set_id"),
             date_fetched=e.get("date_fetched", ""),
             verified=e.get("verified", False),
+            product_name=e.get("product_name"),
+            dosage_form=e.get("dosage_form"),
         )
         for e in data["entries"]
         if _is_real_curated_entry(e)
@@ -518,6 +798,8 @@ def _finding(
     match: QuoteMatch,
     source_type: str,
     verified: bool,
+    product_name: str | None = None,
+    dosage_form: str | None = None,
 ) -> dict:
     return {
         "name": item.display_name,
@@ -525,6 +807,7 @@ def _finding(
         "item": item_term,
         "class": classify(match.quote, item_term),
         "quote": match.quote,
+        "pointer": None,
         "source_type": source_type,
         "label_field": match.field,
         "verified": verified,
@@ -533,6 +816,41 @@ def _finding(
         # folded into this (live) finding -- see _dedupe_against_curated.
         # Never set on a curated finding itself.
         "also_in_curated": False,
+        # The label this finding was read from -- so a form-specific
+        # instruction (e.g. "extended-release tablet") is never displayed
+        # as if it applied generally. Read off the label's own text; None
+        # when nothing matched, never guessed.
+        "product_name": product_name,
+        "dosage_form": dosage_form,
+    }
+
+
+def _pointer_finding(
+    item: RegimenItem,
+    item_term: str,
+    pointer: PointerMatch,
+    product_name: str | None,
+    dosage_form: str | None,
+    set_id: str | None,
+) -> dict:
+    """A unit qualified by item + instruction cue but failed the quote
+    integrity rules -- reported anyway, as a citation with no quote, rather
+    than silently dropped."""
+    display_product = product_name or item.display_name
+    return {
+        "name": item.display_name,
+        "is_product": item.is_product,
+        "item": item_term,
+        "class": "other",
+        "quote": None,
+        "pointer": pointer_text(display_product, item_term, pointer.field, set_id),
+        "source_type": "fda_label",
+        "label_field": pointer.field,
+        "verified": True,
+        "window": None,
+        "also_in_curated": False,
+        "product_name": product_name,
+        "dosage_form": dosage_form,
     }
 
 
@@ -545,9 +863,13 @@ def _dedupe_against_curated(
 ) -> list[dict]:
     """When a live and a curated finding quote the same sentence (exact, or
     the same after collapsing whitespace), keep only the live one, flagged
-    also_in_curated -- one finding, not two, for something confirmed twice."""
+    also_in_curated -- one finding, not two, for something confirmed twice.
+    Pointer findings (quote is None) never participate -- there's no quote
+    text to compare."""
     live_by_quote: dict[str, list[dict]] = {}
     for f in live_findings:
+        if f["quote"] is None:
+            continue
         live_by_quote.setdefault(_normalize_whitespace(f["quote"]), []).append(f)
 
     kept_curated: list[dict] = []
@@ -597,15 +919,43 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
                     )
             else:
                 seen_quotes: set[str] = set()
+                seen_pointers: set[tuple[str, str]] = set()
                 for label in oral_labels:
+                    product_name = label_product_name(label)
+                    dosage_form = label_dosage_form(label)
+                    set_id = label.get("set_id")
                     for item_term in ITEM_TERMS:
-                        for match in qualifying_matches(label, item_term):
+                        quotes, pointers = label_matches(label, item_term)
+                        for match in quotes:
                             norm = _normalize_whitespace(match.quote)
                             if norm in seen_quotes:
                                 continue
                             seen_quotes.add(norm)
                             live_findings.append(
-                                _finding(item, item_term, match, "fda_label", True)
+                                _finding(
+                                    item,
+                                    item_term,
+                                    match,
+                                    "fda_label",
+                                    True,
+                                    product_name,
+                                    dosage_form,
+                                )
+                            )
+                        for p in pointers:
+                            key = (p.field, p.item)
+                            if key in seen_pointers:
+                                continue
+                            seen_pointers.add(key)
+                            live_findings.append(
+                                _pointer_finding(
+                                    item,
+                                    item_term,
+                                    p,
+                                    product_name,
+                                    dosage_form,
+                                    set_id,
+                                )
                             )
 
     # Source B, curated: single-ingredient only -- a combination product's
@@ -616,7 +966,15 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
                 continue
             match = QuoteMatch(c.quote, c.label_field, c.item)
             curated_findings.append(
-                _finding(item, c.item, match, "curated", c.verified)
+                _finding(
+                    item,
+                    c.item,
+                    match,
+                    "curated",
+                    c.verified,
+                    c.product_name,
+                    c.dosage_form,
+                )
             )
 
     return _dedupe_against_curated(live_findings, curated_findings)

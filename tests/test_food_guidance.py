@@ -204,6 +204,161 @@ def test_at_most_two_matches_kept_best_scoring_first():
     assert len(matches) <= 2
 
 
+# --- Quote integrity --------------------------------------------------------------
+
+
+def test_antabuse_style_list_item_never_quoted_without_its_lead_in():
+    # Mirrors a real sertraline label: no "•" bullets at all -- each
+    # "do not take if" list item is just period-separated, so once split it
+    # reads as its own lowercase-started "sentence" with no governing
+    # clause attached.
+    label = oral_label(
+        spl_medguide=[
+            "Do not take this product if you: take the antipsychotic "
+            "medicine pimozide. take Antabuse (disulfiram) due to the "
+            "alcohol content. are allergic to any of the ingredients."
+        ]
+    )
+    quotes, pointers = food_guidance.label_matches(label, "alcohol")
+    assert not any(
+        "antabuse" in q.quote.lower() and "do not" not in q.quote.lower()
+        for q in quotes
+    )
+    # Never silently dropped either -- it still surfaces as a pointer.
+    assert any(p.field == "spl_medguide" for p in pointers)
+
+
+def test_truncated_sentence_is_not_quoted():
+    tail = " and continuing on with further explanation" * 6
+    long_sentence = f"Avoid alcohol while taking this medication{tail} as advised."
+    assert len(long_sentence) > food_guidance.MAX_QUOTE_CHARS
+    label = oral_label(warnings=[long_sentence])
+
+    assert food_guidance.qualifying_matches(label, "alcohol") == []
+    pointers = food_guidance.qualifying_pointers(label, "alcohol")
+    assert any(p.field == "warnings" for p in pointers)
+
+
+def test_heading_noise_sentence_is_not_quoted():
+    label = oral_label(
+        dosage_and_administration=["2 DOSAGE AND ADMINISTRATION Take with food daily."]
+    )
+
+    assert food_guidance.qualifying_matches(label, "food") == []
+    pointers = food_guidance.qualifying_pointers(label, "food")
+    assert any(p.field == "dosage_and_administration" for p in pointers)
+
+
+def test_xref_token_sentence_is_not_quoted():
+    label = oral_label(
+        drug_interactions=["Take with food ( 2.1 ) to reduce stomach upset."]
+    )
+    assert food_guidance.qualifying_matches(label, "food") == []
+
+
+def test_bullet_list_item_assembled_quote_keeps_bullet_separator():
+    label = oral_label(
+        spl_medguide=[
+            "This medicine may increase certain risks: • with food "
+            "intolerance • with prolonged use."
+        ]
+    )
+    matches = food_guidance.qualifying_matches(label, "food")
+    assert len(matches) == 1
+    assert " • " in matches[0].quote
+    assert matches[0].quote.startswith("This medicine may increase certain risks:")
+    assert "with food intolerance" in matches[0].quote
+
+
+def test_over_300_char_assembled_list_quote_becomes_pointer():
+    long_lead = (
+        "This medicine carries several important considerations that "
+        "patients should be aware of before beginning treatment, including "
+        "interactions with other substances and specific timing "
+        "instructions that must be followed precisely for the medication "
+        "to work as intended and to avoid any adverse effects occurring:"
+    )
+    label = oral_label(spl_medguide=[f"{long_lead} • take with food."])
+    assert len(long_lead) + len(" • take with food.") > food_guidance.MAX_QUOTE_CHARS
+
+    assert food_guidance.qualifying_matches(label, "food") == []
+    pointers = food_guidance.qualifying_pointers(label, "food")
+    assert any(p.field == "spl_medguide" for p in pointers)
+
+
+def test_audience_qualifier_leading_colon_is_still_quotable():
+    label = oral_label(
+        directions=["Adults: take 1 tablet with food or milk if stomach upset occurs."]
+    )
+    matches = food_guidance.qualifying_matches(label, "food")
+    assert len(matches) == 1
+
+
+def test_self_titled_section_colon_is_not_quotable():
+    # "When using this product:" is the field re-announcing its own
+    # section name inline, not a real audience qualifier -- structurally
+    # the same self-titling "2 DOSAGE AND ADMINISTRATION" does for Rx
+    # labels, just not ALL-CAPS.
+    label = oral_label(
+        when_using=[
+            "When using this product: avoid alcohol sedatives and "
+            "tranquilizers may increase drowsiness use caution driving"
+        ]
+    )
+    assert food_guidance.qualifying_matches(label, "alcohol") == []
+    pointers = food_guidance.qualifying_pointers(label, "alcohol")
+    assert any(p.field == "when_using" for p in pointers)
+
+
+def test_pointer_finding_has_no_quote_and_class_other():
+    item = food_guidance.RegimenItem("ibuprofen", "Ibuprofen", False, "Ibuprofen")
+    pointer = food_guidance.PointerMatch("warnings", "alcohol")
+
+    finding = food_guidance._pointer_finding(
+        item, "alcohol", pointer, "Ibuprofen", "tablet", "abc-123"
+    )
+
+    assert finding["quote"] is None
+    assert finding["class"] == "other"
+    assert "dailymed.nlm.nih.gov" in finding["pointer"]
+
+
+def test_with_or_without_food_is_other_not_take_with_food():
+    quote = "Sertraline hydrochloride tablets may be taken with or without food."
+    assert food_guidance.classify(quote, "food") == "other"
+
+
+def test_findings_include_product_name_and_dosage_form(monkeypatch, tmp_path):
+    monkeypatch.setattr(food_guidance, "DATA_PATH", write_curated(tmp_path, []))
+    food_guidance.clear_curated_cache()
+
+    label = oral_label(
+        openfda={"route": ["ORAL"], "brand_name": ["Metformin"]},
+        dosage_forms_and_strengths=["Extended-Release Tablets: 500 mg."],
+        directions=["Take with food each evening."],
+    )
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: [label]
+    )
+    item = food_guidance.RegimenItem("metformin", "Metformin", False, "Metformin")
+
+    findings = food_guidance._findings_for_item(item, [])
+    food_guidance.clear_curated_cache()
+
+    food_finding = next(f for f in findings if f["item"] == "food")
+    assert food_finding["product_name"] == "Metformin"
+    assert food_finding["dosage_form"] == "extended-release tablet"
+
+
+def test_dailymed_url_only_built_from_real_set_id():
+    with_id = food_guidance.pointer_text("Ibuprofen", "alcohol", "warnings", "abc-123")
+    assert "dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=abc-123" in with_id
+
+    without_id = food_guidance.pointer_text("Ibuprofen", "alcohol", "warnings", None)
+    assert "dailymed" not in without_id.lower()
+    assert "abc-123" not in without_id
+
+
 # --- Timing windows ------------------------------------------------------------
 
 
