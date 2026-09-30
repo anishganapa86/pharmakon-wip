@@ -18,7 +18,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api import food_guidance, main
+from app.api import food_guidance, main, service
 from app.api.db import Base
 
 NOW = datetime.fromisoformat("2026-09-13T18:00:00-07:00")
@@ -113,6 +113,15 @@ def register_and_log(client, product_id, hours_ago=1):
         },
     )
     assert r.status_code == 201, r.text
+
+
+def add_schedule(client, product_id, frequency="daily", times=("08:00",)):
+    r = client.post(
+        "/users/default/schedule",
+        json={"product_id": product_id, "frequency": frequency, "times": list(times)},
+    )
+    assert r.status_code == 201, r.text
+    return r.json()
 
 
 # --- Sentence qualification --------------------------------------------------
@@ -460,3 +469,103 @@ def test_food_guidance_never_creates_an_alert(client, openfda):
 
     alerts = client.get("/users/default/alerts").json()
     assert alerts == []
+
+
+# --- Timeline ----------------------------------------------------------------------
+
+
+def test_timeline_take_with_food_marker_logged_and_scheduled(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+    add_schedule(client, "prod_advil_200", times=["08:00"])
+
+    body = client.get("/users/default/food-guidance").json()
+
+    markers = [
+        e
+        for e in body["timeline"]
+        if e["type"] == "dose_marker" and e["class"] == "take_with_food"
+    ]
+    sources = {m["source"] for m in markers}
+    assert sources == {"logged", "scheduled"}
+    assert all(m["name"] == "Ibuprofen" for m in markers)
+
+
+def test_timeline_separate_from_window_drawn_around_dose(client, openfda):
+    openfda.labels["ACETAMINOPHEN"] = oral_label(
+        drug_interactions=[
+            "Take at least 2 hours before or 4 hours after taking an antacid."
+        ]
+    )
+    taken_at = NOW - timedelta(hours=1)
+    register_and_log(client, "prod_tylenol_es_500", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    windows = [e for e in body["timeline"] if e["type"] == "window"]
+    assert len(windows) == 1
+    w = windows[0]
+    assert w["class"] == "separate_from"
+    assert datetime.fromisoformat(w["from"]) == taken_at - timedelta(hours=2)
+    assert datetime.fromisoformat(w["to"]) == taken_at + timedelta(hours=4)
+
+
+def test_timeline_avoid_item_gives_ongoing_note_and_no_window(client, openfda):
+    openfda.labels["DIPHENHYDRAMINE"] = oral_label(
+        when_using=["Avoid alcohol while taking this product."]
+    )
+    register_and_log(client, "prod_benadryl_25", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    ongoing = [e for e in body["timeline"] if e["type"] == "ongoing"]
+    windows = [e for e in body["timeline"] if e["type"] == "window"]
+    assert len(ongoing) == 1
+    assert ongoing[0]["class"] == "avoid_item"
+    assert ongoing[0]["note"] == food_guidance.ONGOING_NOTE
+    assert windows == []
+
+
+def test_timeline_as_needed_schedule_has_no_scheduled_markers(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+    )
+    add_schedule(client, "prod_advil_200", frequency="as_needed", times=[])
+
+    body = client.get("/users/default/food-guidance").json()
+
+    scheduled_markers = [
+        e
+        for e in body["timeline"]
+        if e["type"] == "dose_marker" and e.get("source") == "scheduled"
+    ]
+    assert scheduled_markers == []
+
+
+def test_timeline_never_derived_from_concentrations(client, openfda, monkeypatch):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+    )
+    # Schedule creation's own response legitimately calls compute_curve (to
+    # show current concentration) -- set up the regimen before patching it
+    # out, so only the food-guidance call itself is under test.
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+    add_schedule(client, "prod_advil_200", times=["08:00"])
+
+    def _boom(*args, **kwargs):
+        raise AssertionError("food guidance timeline must never call compute_curve")
+
+    monkeypatch.setattr(service, "compute_curve", _boom)
+
+    r = client.get("/users/default/food-guidance")
+
+    assert r.status_code == 200, r.text
+    markers = [e for e in r.json()["timeline"] if e["type"] == "dose_marker"]
+    assert markers  # the marker was produced without ever touching a curve
+
+
+def test_timeline_empty_regimen_gives_empty_timeline(client):
+    body = client.get("/users/default/food-guidance").json()
+    assert body["timeline"] == []
