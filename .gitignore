@@ -9,5 +9,6 @@ venv/
 .DS_Store
 node_modules/
 client/dist/
+reports/
 build_notebook.py
 build_split_pdf.py
