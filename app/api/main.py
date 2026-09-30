@@ -26,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..registry.loader import Registry, load_registry
 from . import (
     alternatives,
+    food_guidance,
     interactions,
     logger,
     openfda,
@@ -838,6 +839,28 @@ def get_interaction_check(
     """All active scheduled medications plus doses logged in the last 24h,
     checked pairwise (see app/api/interactions.py)."""
     return interactions.check_regimen(session, user_id, registry, now)
+
+
+# --- Food, drink, and timing guidance --------------------------------------------
+#
+# Informational only, oral medications only, never an alert. See
+# app/api/food_guidance.py and app/data/food_drug_guidance.json.
+
+
+class FoodGuidanceRequest(BaseModel):
+    names: list[str] = Field(min_length=1)
+
+
+@app.post("/food-guidance")
+def post_food_guidance(body: FoodGuidanceRequest, registry: Reg) -> dict:
+    return food_guidance.check_manual(body.names, registry)
+
+
+@app.get("/users/{id}/food-guidance")
+def get_food_guidance(user_id: UserId, session: Db, registry: Reg, now: Now) -> dict:
+    """Active scheduled medications plus doses logged in the last 24h (see
+    app/api/interactions.py's identical regimen definition)."""
+    return food_guidance.check_regimen(session, user_id, registry, now)
 
 
 # --- POST /products/user-entered -----------------------------------------------
