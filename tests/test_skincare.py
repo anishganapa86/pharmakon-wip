@@ -222,6 +222,43 @@ def test_irritant_reports_matched_ingredient_and_alias():
     assert found["matched_alias"] == "parfum"
 
 
+# --- same-product vs. two-product recommendation --------------------------------
+
+
+def test_same_product_incompatibility_gets_pharmacist_recommendation():
+    products = [
+        skincare.Product("Eva Serum", ("Retinol", "Salicylic Acid")),
+    ]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["incompatibilities"]
+    assert found["product_a"] == found["product_b"] == "Eva Serum"
+    assert (
+        "Ask a pharmacist or dermatologist about this product."
+        in (found["recommendation"])
+    )
+    assert "The source says: " in found["recommendation"]
+    assert "Use on alternate nights." in found["recommendation"]
+    # Effect text is untouched -- only recommendation is rewritten.
+    assert found["effect"] == (
+        "Both cause dryness and exfoliation. Combined use increases risk of "
+        "irritation, peeling, and barrier damage."
+    )
+
+
+def test_two_product_incompatibility_keeps_original_recommendation():
+    products = [
+        skincare.Product("Night Serum", ("Retinol",)),
+        skincare.Product("Morning Wash", ("Salicylic Acid",)),
+    ]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["incompatibilities"]
+    assert found["recommendation"] == "Use on alternate nights."
+
+
 # --- POST /skincare-check -------------------------------------------------------
 
 

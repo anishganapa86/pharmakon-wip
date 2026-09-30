@@ -143,6 +143,13 @@ class Product:
     ingredients: tuple[str, ...]
 
 
+_SAME_PRODUCT_RECOMMENDATION = (
+    "Both ingredients are in the same product, so the source's timing advice "
+    "doesn't apply directly. The source says: {original}. Ask a pharmacist "
+    "or dermatologist about this product."
+)
+
+
 def check_ingredients(products: list[Product], rules: Rules | None = None) -> dict:
     """Every ingredient pair across all products against the incompatibility
     rules (fuzzy-matched on aliases), and every ingredient against known
@@ -172,6 +179,14 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
                 if key in seen_pairs:
                     continue
                 seen_pairs.add(key)
+
+                if name_a == name_b:
+                    recommendation = _SAME_PRODUCT_RECOMMENDATION.format(
+                        original=rule.recommendation
+                    )
+                else:
+                    recommendation = rule.recommendation
+
                 incompatibilities_found.append(
                     {
                         "ingredient_a": ing_a,
@@ -183,7 +198,7 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
                         "matched_ingredient_b": ing_b,
                         "matched_alias_b": term_b,
                         "effect": rule.effect,
-                        "recommendation": rule.recommendation,
+                        "recommendation": recommendation,
                         "source": rule.source,
                     }
                 )

@@ -320,6 +320,9 @@ export interface SkincareIncompatibility {
   matched_ingredient_b: string;
   matched_alias_b: string;
   effect: string;
+  // Rewritten when product_a === product_b: the source's timing advice
+  // ("use at different times") doesn't apply when both ingredients are
+  // already combined in one product.
   recommendation: string;
   source: string;
 }
