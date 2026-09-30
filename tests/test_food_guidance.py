@@ -314,8 +314,8 @@ def test_generic_take_with_no_food_word_is_not_take_with_food():
 def test_topical_label_produces_nothing_and_is_unchecked(monkeypatch):
     monkeypatch.setattr(
         food_guidance,
-        "fetch_label_for_substance",
-        lambda name: topical_label(warnings=["Avoid contact with eyes."]),
+        "fetch_labels_for_substance",
+        lambda name, **kw: [topical_label(warnings=["Avoid contact with eyes."])],
     )
     item = food_guidance.RegimenItem(
         "hydrocortisone", "Hydrocortisone", False, "Hydrocortisone"
@@ -331,8 +331,8 @@ def test_topical_label_produces_nothing_and_is_unchecked(monkeypatch):
 def test_unknown_route_is_unchecked_not_guessed(monkeypatch):
     monkeypatch.setattr(
         food_guidance,
-        "fetch_label_for_substance",
-        lambda name: no_route_label(warnings=["Take with food."]),
+        "fetch_labels_for_substance",
+        lambda name, **kw: [no_route_label(warnings=["Take with food."])],
     )
     item = food_guidance.RegimenItem("mystery", "Mystery Drug", False, "Mystery Drug")
     unchecked: list[str] = []
@@ -344,7 +344,9 @@ def test_unknown_route_is_unchecked_not_guessed(monkeypatch):
 
 
 def test_no_label_found_is_unchecked(monkeypatch):
-    monkeypatch.setattr(food_guidance, "fetch_label_for_substance", lambda name: None)
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: []
+    )
     item = food_guidance.RegimenItem("unknownium", "Unknownium", False, "Unknownium")
     unchecked: list[str] = []
 
@@ -352,6 +354,68 @@ def test_no_label_found_is_unchecked(monkeypatch):
 
     assert findings == []
     assert any("No oral label found for Unknownium" in u for u in unchecked)
+
+
+# --- Label selection (up to LABEL_SELECT_LIMIT labels, single-ingredient first) ----
+
+
+def test_select_labels_prefers_single_ingredient():
+    combo = oral_label(openfda={"route": ["ORAL"], "substance_name": ["A", "B"]})
+    single = oral_label(openfda={"route": ["ORAL"], "substance_name": ["A"]})
+
+    selected = food_guidance._select_labels([combo, single], limit=2, prefer_otc=False)
+
+    assert selected == [single, combo]
+
+
+def test_select_labels_prefers_otc_only_when_requested():
+    rx = oral_label(
+        openfda={
+            "route": ["ORAL"],
+            "substance_name": ["A"],
+            "product_type": ["HUMAN PRESCRIPTION DRUG"],
+        }
+    )
+    otc = oral_label(
+        openfda={
+            "route": ["ORAL"],
+            "substance_name": ["A"],
+            "product_type": ["HUMAN OTC DRUG"],
+        }
+    )
+
+    assert food_guidance._select_labels([rx, otc], 2, prefer_otc=True) == [otc, rx]
+    # Without prefer_otc, both are single-ingredient, so the original (stable)
+    # order is kept -- OTC-ness isn't a tie-break unless asked for.
+    assert food_guidance._select_labels([rx, otc], 2, prefer_otc=False) == [rx, otc]
+
+
+def test_findings_for_item_reads_multiple_labels_and_dedupes_shared_quotes(
+    monkeypatch, tmp_path
+):
+    # No curated entries for this substance -- isolates the test from
+    # app/data/food_drug_guidance.json's real contents.
+    monkeypatch.setattr(food_guidance, "DATA_PATH", write_curated(tmp_path, []))
+    food_guidance.clear_curated_cache()
+
+    shared_quote = "Take with food to reduce stomach upset."
+    label_a = oral_label(directions=[shared_quote])
+    label_b = oral_label(
+        directions=[shared_quote, "Avoid alcohol while taking this medication."]
+    )
+    monkeypatch.setattr(
+        food_guidance,
+        "fetch_labels_for_substance",
+        lambda name, **kw: [label_a, label_b],
+    )
+    item = food_guidance.RegimenItem("ibuprofen", "Ibuprofen", False, "Ibuprofen")
+
+    findings = food_guidance._findings_for_item(item, [])
+    food_guidance.clear_curated_cache()
+
+    food_quotes = [f["quote"] for f in findings if f["item"] == "food"]
+    assert food_quotes == [shared_quote]  # not duplicated across the two labels
+    assert any(f["item"] == "alcohol" for f in findings)  # read from the 2nd label
 
 
 # --- Combination products ---------------------------------------------------------
@@ -363,7 +427,7 @@ def test_combination_product_guidance_attributed_to_product(monkeypatch):
         drug_interactions=["Do not take with alcohol; avoid grapefruit juice."],
     )
     monkeypatch.setattr(
-        food_guidance, "fetch_label_for_product", lambda name: combo_label
+        food_guidance, "fetch_labels_for_product", lambda name, **kw: [combo_label]
     )
     item = food_guidance.RegimenItem("product:nyquil", "NyQuil", True, "NyQuil")
 
@@ -445,10 +509,10 @@ def test_unreachable_openfda_still_returns_curated_entries(monkeypatch, tmp_path
     monkeypatch.setattr(food_guidance, "DATA_PATH", curated_path)
     food_guidance.clear_curated_cache()
 
-    def _boom(name):
+    def _boom(name, **kw):
         raise food_guidance.OpenFDAUnavailable("down")
 
-    monkeypatch.setattr(food_guidance, "fetch_label_for_substance", _boom)
+    monkeypatch.setattr(food_guidance, "fetch_labels_for_substance", _boom)
     item = food_guidance.RegimenItem("warfarin", "Warfarin", False, "Warfarin")
     unchecked: list[str] = []
 
@@ -467,7 +531,9 @@ def test_live_and_curated_same_quote_dedupe_to_one_fda_label_finding(
 ):
     quote = "When using this product take with food or milk if stomach upset occurs"
     label = oral_label(when_using=[quote])
-    monkeypatch.setattr(food_guidance, "fetch_label_for_substance", lambda name: label)
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: [label]
+    )
 
     curated_path = write_curated(
         tmp_path,
@@ -499,7 +565,9 @@ def test_same_quote_after_whitespace_normalization_still_dedupes(monkeypatch, tm
     live_quote = "Take   with food\nor milk if stomach upset occurs"
     curated_quote = "Take with food or milk if stomach upset occurs"
     label = oral_label(when_using=[live_quote])
-    monkeypatch.setattr(food_guidance, "fetch_label_for_substance", lambda name: label)
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: [label]
+    )
 
     curated_path = write_curated(
         tmp_path,
@@ -528,7 +596,9 @@ def test_same_quote_after_whitespace_normalization_still_dedupes(monkeypatch, tm
 
 def test_different_quotes_are_not_deduped(monkeypatch, tmp_path):
     label = oral_label(when_using=["Take with food to reduce stomach upset."])
-    monkeypatch.setattr(food_guidance, "fetch_label_for_substance", lambda name: label)
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: [label]
+    )
 
     curated_path = write_curated(
         tmp_path,

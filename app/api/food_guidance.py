@@ -4,13 +4,18 @@ sources, never a model, never an alert.
 Like app/api/interactions.py, there are two sources:
 
   A) Live openFDA label text. For each oral substance (or combination
-     product) in the user's regimen, the substance's (or product's) own
-     label is fetched and read for whichever of TEXT_FIELDS actually exist
-     on it -- openFDA labels don't carry every field, and this never assumes
-     one does. A sentence qualifies only when it contains both an item term
-     (food, milk, grapefruit, ...) and an instruction cue (take, avoid,
-     before, hours, ...); the matched item term is asserted present in the
-     quote before it's ever shown, in code, not just by convention.
+     product) in the user's regimen, up to LABEL_SELECT_LIMIT of the
+     substance's (or product's) own labels are fetched (single-ingredient
+     labels preferred) and each is read for whichever of TEXT_FIELDS
+     actually exist on it -- openFDA labels don't carry every field, and
+     this never assumes one does. A sentence qualifies only when it
+     contains one of an item's listed variants (ITEM_VARIANTS; food, milk,
+     grapefruit, ...) and an instruction cue (take, avoid, before, hours,
+     ...); the matched variant is asserted present in the quote before it's
+     ever shown, in code, not just by convention. Label selection can also
+     prefer OTC labels (`prefer_otc`), but nothing in the regimen/product
+     model currently says whether the user's own product is OTC or Rx, so
+     no caller sets it yet -- it's live but unused.
 
   B) Curated quotes (app/data/food_drug_guidance.json), built by
      scripts/build_food_guidance_curated.py from the same live-label logic
@@ -54,14 +59,21 @@ from .db import DoseEvent, ScheduledDose
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "food_drug_guidance.json"
 
 OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
-LABEL_LIMIT = 5
+# Candidates fetched per openFDA query, to select from -- not all of these
+# are read; see LABEL_SELECT_LIMIT.
+LABEL_SEARCH_LIMIT = 10
+# Labels actually read for quotes, per substance/product, after selection.
+LABEL_SELECT_LIMIT = 3
 
 # Priority order: also the tie-break when two sentences score equally on
 # instruction-cue count (an earlier field's sentence is preferred).
+# spl_medguide is the FDA Medication Guide text -- a distinct patient-facing
+# field from information_for_patients that many Rx labels carry.
 TEXT_FIELDS = (
     "dosage_and_administration",
     "directions",
     "information_for_patients",
+    "spl_medguide",
     "warnings",
     "precautions",
     "when_using",
@@ -131,11 +143,11 @@ TIMELINE_HORIZON_HOURS = 24.0
 # Replaced with a mock-transport client in tests.
 _http = httpx.Client(timeout=5.0)
 
-# cache key ("substance:<name>" | "product:<name>", lowercased) -> raw label
-# dict, or None if no label was found. Not cached on failure (an
-# OpenFDAUnavailable raise happens before the cache write), so the next call
-# retries.
-_label_cache: dict[str, dict | None] = {}
+# cache key ("substance:<name>" | "product:<name>", lowercased) -> raw
+# candidate labels as openFDA returned them (pre-selection), or [] if none
+# were found. Not cached on failure (an OpenFDAUnavailable raise happens
+# before the cache write), so the next call retries.
+_label_cache: dict[str, list[dict]] = {}
 
 
 class OpenFDAUnavailable(Exception):
@@ -149,40 +161,77 @@ def clear_cache() -> None:
 # --- Fetching ------------------------------------------------------------------
 
 
-def _fetch_label_by(field: str, value: str) -> dict | None:
+def _fetch_candidates_by(field: str, value: str) -> list[dict]:
     search = f'openfda.{field}.exact:"{value.upper()}"'
     try:
         r = _http.get(
-            OPENFDA_LABEL_URL, params={"search": search, "limit": LABEL_LIMIT}
+            OPENFDA_LABEL_URL, params={"search": search, "limit": LABEL_SEARCH_LIMIT}
         )
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
-        return None
+        return []
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
-    results = r.json().get("results", [])
-    return results[0] if results else None
+    return r.json().get("results", [])
+
+
+def _is_single_ingredient(label: dict) -> bool:
+    substances = label.get("openfda", {}).get("substance_name") or []
+    return len(substances) <= 1
+
+
+def _is_otc(label: dict) -> bool:
+    return "HUMAN OTC DRUG" in (label.get("openfda", {}).get("product_type") or [])
+
+
+def _select_labels(candidates: list[dict], limit: int, prefer_otc: bool) -> list[dict]:
+    """Up to `limit` candidates: single-ingredient labels first, then (only
+    when prefer_otc) OTC labels first. openFDA's own result order is the
+    tie-break within each group -- sorted() is stable, so nothing is
+    re-ranked beyond these two criteria."""
+
+    def _key(label: dict) -> tuple[int, int]:
+        return (
+            0 if _is_single_ingredient(label) else 1,
+            0 if prefer_otc and _is_otc(label) else 1,
+        )
+
+    return sorted(candidates, key=_key)[:limit]
+
+
+def fetch_labels_for_substance(
+    generic_name: str, *, limit: int = LABEL_SELECT_LIMIT, prefer_otc: bool = False
+) -> list[dict]:
+    """Up to `limit` labels for this substance, single-ingredient labels
+    preferred (and OTC labels preferred when `prefer_otc` is set -- the
+    regimen/product model doesn't carry an OTC/Rx flag yet, so no caller
+    passes this True today; see the module docstring)."""
+    key = f"substance:{generic_name.strip().lower()}"
+    if key not in _label_cache:
+        _label_cache[key] = _fetch_candidates_by("generic_name", generic_name)
+    return _select_labels(_label_cache[key], limit, prefer_otc)
 
 
 def fetch_label_for_substance(generic_name: str) -> dict | None:
-    key = f"substance:{generic_name.strip().lower()}"
-    if key in _label_cache:
-        return _label_cache[key]
-    label = _fetch_label_by("generic_name", generic_name)  # may raise
-    _label_cache[key] = label
-    return label
+    labels = fetch_labels_for_substance(generic_name, limit=1)
+    return labels[0] if labels else None
+
+
+def fetch_labels_for_product(
+    product_name: str, *, limit: int = LABEL_SELECT_LIMIT, prefer_otc: bool = False
+) -> list[dict]:
+    """A combination product's own labels, by brand name -- its guidance
+    belongs to the whole product, never attributed to one ingredient."""
+    key = f"product:{product_name.strip().lower()}"
+    if key not in _label_cache:
+        _label_cache[key] = _fetch_candidates_by("brand_name", product_name)
+    return _select_labels(_label_cache[key], limit, prefer_otc)
 
 
 def fetch_label_for_product(product_name: str) -> dict | None:
-    """A combination product's own label, by brand name -- its guidance
-    belongs to the whole product, never attributed to one ingredient."""
-    key = f"product:{product_name.strip().lower()}"
-    if key in _label_cache:
-        return _label_cache[key]
-    label = _fetch_label_by("brand_name", product_name)  # may raise
-    _label_cache[key] = label
-    return label
+    labels = fetch_labels_for_product(product_name, limit=1)
+    return labels[0] if labels else None
 
 
 def label_route(label: dict) -> str | None:
@@ -517,10 +566,10 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
     curated_findings: list[dict] = []
 
     try:
-        label = (
-            fetch_label_for_product(item.lookup_name)
+        labels = (
+            fetch_labels_for_product(item.lookup_name)
             if item.is_product
-            else fetch_label_for_substance(item.lookup_name)
+            else fetch_labels_for_substance(item.lookup_name)
         )
     except OpenFDAUnavailable:
         unchecked.append(
@@ -528,26 +577,36 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
             f"{item.display_name}."
         )
     else:
-        if label is None:
+        if not labels:
             unchecked.append(f"No oral label found for {item.display_name}.")
         else:
-            route = label_route(label)
-            if route is None:
-                unchecked.append(
-                    f"{item.display_name}'s route could not be determined "
-                    "from its label."
-                )
-            elif not is_oral(label):
-                unchecked.append(
-                    f"No oral label found for {item.display_name} "
-                    f"(label route is {route.title()})."
-                )
+            oral_labels = [label for label in labels if is_oral(label)]
+            if not oral_labels:
+                # Message from the top-ranked candidate -- the one that
+                # would have been read, had it been oral.
+                route = label_route(labels[0])
+                if route is None:
+                    unchecked.append(
+                        f"{item.display_name}'s route could not be "
+                        "determined from its label."
+                    )
+                else:
+                    unchecked.append(
+                        f"No oral label found for {item.display_name} "
+                        f"(label route is {route.title()})."
+                    )
             else:
-                for item_term in ITEM_TERMS:
-                    for match in qualifying_matches(label, item_term):
-                        live_findings.append(
-                            _finding(item, item_term, match, "fda_label", True)
-                        )
+                seen_quotes: set[str] = set()
+                for label in oral_labels:
+                    for item_term in ITEM_TERMS:
+                        for match in qualifying_matches(label, item_term):
+                            norm = _normalize_whitespace(match.quote)
+                            if norm in seen_quotes:
+                                continue
+                            seen_quotes.add(norm)
+                            live_findings.append(
+                                _finding(item, item_term, match, "fda_label", True)
+                            )
 
     # Source B, curated: single-ingredient only -- a combination product's
     # guidance belongs to the product (Source A), never one ingredient.
