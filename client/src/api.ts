@@ -9,6 +9,7 @@ import type {
   DailyLogRequest,
   DoseRequest,
   DoseResponse,
+  FoodGuidanceResponse,
   InteractionCheckResponse,
   LoggedDoseEvent,
   ProductSearchResponse,
@@ -183,6 +184,20 @@ export function fetchInteractionCheck(
   userId: string,
 ): Promise<InteractionCheckResponse> {
   return request(`/users/${encodeURIComponent(userId)}/interaction-check`);
+}
+
+// --- Food, drink, and timing guidance --------------------------------------------
+
+export function checkFoodGuidance(names: string[]): Promise<FoodGuidanceResponse> {
+  return request("/food-guidance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names }),
+  });
+}
+
+export function fetchFoodGuidance(userId: string): Promise<FoodGuidanceResponse> {
+  return request(`/users/${encodeURIComponent(userId)}/food-guidance`);
 }
 
 // --- Medication schedule -------------------------------------------------------

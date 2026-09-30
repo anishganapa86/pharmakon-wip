@@ -25,6 +25,16 @@ function errorMessage(e: unknown): string {
 
 const FREQUENCIES = Object.keys(FREQUENCY_LABELS) as ScheduleFrequency[];
 
+// app/api/food_guidance.py keys a single-ingredient finding by the
+// substance's own display name, and a combination product's finding by the
+// product name -- so a schedule card matches on either.
+function hasFoodGuidance(m: ScheduledMedication, withFoodNames: Set<string>): boolean {
+  if (withFoodNames.has(m.product_name.trim().toLowerCase())) return true;
+  return m.substances.some(
+    (s) => s.display_name && withFoodNames.has(s.display_name.trim().toLowerCase()),
+  );
+}
+
 function nextDueText(m: ScheduledMedication): string {
   if (m.frequency === "as_needed") return "Take only when needed";
   if (m.next_due === null) return "Nothing scheduled";
@@ -39,11 +49,13 @@ function Card({
   busy,
   onTake,
   onRemove,
+  withFood,
 }: {
   med: ScheduledMedication;
   busy: boolean;
   onTake: () => void;
   onRemove: () => void;
+  withFood: boolean;
 }) {
   const days = daysLabel(med.days_of_week);
   const when = med.times.map(timeOfDayLabel).join(", ");
@@ -57,6 +69,14 @@ function Card({
         <span className={`med-status med-status-${med.status}`}>
           {STATUS_LABELS[med.status]}
         </span>
+        {withFood && (
+          <span
+            className="tag"
+            title="A quoted FDA label sentence says to take this with food."
+          >
+            With food
+          </span>
+        )}
       </div>
       <p className="muted small med-when">
         {FREQUENCY_LABELS[med.frequency]}
@@ -266,6 +286,9 @@ interface Props {
   onChanged: () => void;
   interactionsNotice: boolean;
   onViewInteractions: () => void;
+  /** Lowercased product names with a quoted take_with_food finding (see
+   * app/api/food_guidance.py) -- drives the small "With food" chip. */
+  withFoodNames: Set<string>;
 }
 
 /**
@@ -280,6 +303,7 @@ export function Schedule({
   onChanged,
   interactionsNotice,
   onViewInteractions,
+  withFoodNames,
 }: Props) {
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -375,6 +399,7 @@ export function Schedule({
                   busy={busyId === m.id}
                   onTake={() => void take(m)}
                   onRemove={() => void remove(m)}
+                  withFood={hasFoodGuidance(m, withFoodNames)}
                 />
               ))}
             </ul>

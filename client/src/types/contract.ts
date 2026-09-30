@@ -463,6 +463,74 @@ export interface InteractionCheckResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Food, drink, and timing guidance (see app/api/food_guidance.py)
+//
+// Two cited sources: live openFDA label text (quoted verbatim, <=300 chars)
+// and a curated quote list (verified: false until a human opens the
+// source). Oral medications only -- a non-oral or undeclared route
+// produces no guidance, surfaced in unchecked_reason instead. Never
+// creates or feeds an alert.
+// ---------------------------------------------------------------------------
+
+export interface FoodGuidanceRequest {
+  names: string[]; // medication names, as typed
+}
+
+export type FoodGuidanceClass =
+  | "take_with_food"
+  | "take_on_empty_stomach"
+  | "avoid_item"
+  | "separate_from"
+  | "other";
+
+export type FoodGuidanceSourceType = "fda_label" | "curated";
+
+/** Only set when the quote states explicit hours ("2 hours before or 4
+ * hours after") -- never derived or guessed otherwise. */
+export interface FoodGuidanceWindow {
+  before_hours: number;
+  after_hours: number;
+}
+
+export interface FoodGuidanceFinding {
+  name: string; // substance display name, or the product name for a combo
+  is_product: boolean; // true when `name` is a combination product
+  item: string; // e.g. "food", "grapefruit", "vitamin k"
+  class: FoodGuidanceClass;
+  quote: string; // <=300 chars, verbatim from the label
+  source_type: FoodGuidanceSourceType;
+  label_field: string; // e.g. "dosage_and_administration"
+  // Curated: false until a human opens the cited source. fda_label: true --
+  // quoted verbatim from the live FDA label, not a curated guess.
+  verified: boolean;
+  window: FoodGuidanceWindow | null;
+}
+
+export type FoodGuidanceTimelineType = "dose_marker" | "window" | "ongoing";
+
+export interface FoodGuidanceTimelineEntry {
+  type: FoodGuidanceTimelineType;
+  class: FoodGuidanceClass;
+  name: string;
+  quote: string;
+  at?: IsoTimestamp; // dose_marker only
+  source?: "scheduled" | "logged"; // dose_marker only
+  from?: IsoTimestamp; // window only
+  to?: IsoTimestamp; // window only
+  note?: string; // ongoing only
+}
+
+export interface FoodGuidanceResponse {
+  guidance: FoodGuidanceFinding[];
+  timeline: FoodGuidanceTimelineEntry[];
+  // Never silently dropped: unrecognized names, non-oral/unknown routes,
+  // and an unreachable openFDA are all surfaced here.
+  unchecked_reason: string[];
+  // Set to the exact required sentence when `guidance` is empty, else null.
+  message: string | null;
+}
+
+// ---------------------------------------------------------------------------
 // Daily log: POST/GET/DELETE /users/{id}/log  (see app/api/logger.py)
 // ---------------------------------------------------------------------------
 

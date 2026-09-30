@@ -537,6 +537,10 @@
   gap: 6px;
 }
 
+.timeline-strip {
+  margin-bottom: 12px;
+}
+
 .effect-tag {
   padding: 2px 10px;
   border: 1px solid var(--border);

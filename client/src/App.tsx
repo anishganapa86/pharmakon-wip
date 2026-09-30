@@ -4,6 +4,7 @@ import {
   fetchAlerts,
   fetchCurve,
   fetchDoses,
+  fetchFoodGuidance,
   fetchInteractionCheck,
   fetchSchedule,
   fetchSkincareCheck,
@@ -14,6 +15,7 @@ import {
   ConcentrationChart,
   type TimeWindow,
 } from "./components/ConcentrationChart";
+import { FoodGuidance } from "./components/FoodGuidance";
 import { Interactions } from "./components/Interactions";
 import { LogForm } from "./components/LogForm";
 import { ProductName } from "./components/ProductName";
@@ -39,7 +41,12 @@ import type {
   SubstanceCurve,
 } from "./types/contract";
 
-type View = "concentration" | "timeline" | "skincare" | "interactions";
+type View =
+  | "concentration"
+  | "timeline"
+  | "skincare"
+  | "interactions"
+  | "food";
 
 const USER_ID = "default";
 const MAX_RECENT_PRODUCTS = 5;
@@ -166,6 +173,9 @@ function App() {
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
   const [interactionsNotice, setInteractionsNotice] = useState(false);
+  // Lowercased names/product names with a quoted take_with_food finding --
+  // drives the small "With food" chip on each Schedule card.
+  const [withFoodNames, setWithFoodNames] = useState<Set<string>>(new Set());
 
   // State is set only in promise callbacks, so this is safe to run from an
   // effect. Callers that re-load set `loading` themselves.
@@ -183,6 +193,7 @@ function App() {
 
   useEffect(() => {
     void load();
+    void refreshFoodGuidanceChips();
   }, [load]);
 
   function reload() {
@@ -212,6 +223,21 @@ function App() {
     }
   }
 
+  async function refreshFoodGuidanceChips() {
+    try {
+      const check = await fetchFoodGuidance(USER_ID);
+      setWithFoodNames(
+        new Set(
+          check.guidance
+            .filter((f) => f.class === "take_with_food")
+            .map((f) => f.name.trim().toLowerCase()),
+        ),
+      );
+    } catch {
+      // Leave the existing chip state as-is.
+    }
+  }
+
   // After a schedule change or a dose taken from it: same refresh as manual
   // logging, since "Take now" records a real dose.
   async function handleScheduleChanged() {
@@ -221,6 +247,7 @@ function App() {
     await load();
     await refreshSkincareNotice();
     await refreshInteractionsNotice();
+    await refreshFoodGuidanceChips();
   }
 
   const qty = Number(quantity);
@@ -248,6 +275,7 @@ function App() {
       await load();
       await refreshSkincareNotice();
       await refreshInteractionsNotice();
+      await refreshFoodGuidanceChips();
     } catch (err) {
       setLogError(errorMessage(err));
     } finally {
@@ -268,6 +296,7 @@ function App() {
         onChanged={() => void handleScheduleChanged()}
         interactionsNotice={interactionsNotice}
         onViewInteractions={() => setView("interactions")}
+        withFoodNames={withFoodNames}
       />
 
       <section className="panel">
@@ -348,11 +377,21 @@ function App() {
         >
           Interactions
         </button>
+        <button
+          role="tab"
+          aria-selected={view === "food"}
+          className={view === "food" ? "view-tab active" : "view-tab"}
+          onClick={() => setView("food")}
+        >
+          Food & drink
+        </button>
       </nav>
 
       {view === "skincare" && <Skincare userId={USER_ID} />}
 
       {view === "interactions" && <Interactions userId={USER_ID} />}
+
+      {view === "food" && <FoodGuidance userId={USER_ID} />}
 
       {view === "timeline" && (
         <>
