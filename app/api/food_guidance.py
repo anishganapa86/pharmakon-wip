@@ -71,23 +71,35 @@ TEXT_FIELDS = (
     "drug_interactions",
 )
 
-ITEM_TERMS = (
-    "food",
-    "meal",
-    "milk",
-    "dairy",
-    "alcohol",
-    "grapefruit",
-    "juice",
-    "caffeine",
-    "antacid",
-    "empty stomach",
-    "water",
-    "vitamin k",
-    "supplement",
-    "calcium",
-    "iron",
-)
+# Explicit variant lists, not stemming and not fuzzy matching. A sentence
+# qualifies for an item only when it literally contains one of that item's
+# listed variants (word-boundary matched) -- "meal"/"dairy" are folded in as
+# variants of food/milk rather than kept as separate items, since a label
+# that says "with the evening meal" is giving food guidance, not a distinct
+# instruction. Items with a single obvious surface form just list themselves.
+ITEM_VARIANTS: dict[str, tuple[str, ...]] = {
+    "food": ("food", "meal", "meals", "eating"),
+    "milk": ("milk", "dairy"),
+    "alcohol": (
+        "alcohol",
+        "alcoholic",
+        "alcoholic drink",
+        "alcoholic drinks",
+        "drinks containing alcohol",
+    ),
+    "grapefruit": ("grapefruit",),
+    "juice": ("juice",),
+    "caffeine": ("caffeine",),
+    "antacid": ("antacid",),
+    "empty stomach": ("empty stomach",),
+    "water": ("water",),
+    "vitamin k": ("vitamin k",),
+    "supplement": ("supplement",),
+    "calcium": ("calcium",),
+    "iron": ("iron",),
+}
+
+ITEM_TERMS = tuple(ITEM_VARIANTS.keys())
 
 INSTRUCTION_CUES = (
     "take",
@@ -217,11 +229,22 @@ class QuoteMatch:
     item: str
 
 
+def _matching_variant(text_lower: str, item: str) -> str | None:
+    """The first of `item`'s listed variants that literally appears in
+    `text_lower` (word-boundary matched), or None. Never stems or
+    fuzzy-matches -- a variant not on the list is not a match."""
+    for variant in ITEM_VARIANTS[item]:
+        if _phrase_in(text_lower, variant):
+            return variant
+    return None
+
+
 def qualifying_matches(label: dict, item: str) -> list[QuoteMatch]:
     """At most 2 qualifying sentences for this (label, item), best-scoring
     (most instruction cues, then earliest field) first, deduped by quote
-    text. A sentence qualifies only if it contains the item term AND at
-    least one instruction cue -- both checked here, never assumed."""
+    text. A sentence qualifies only if it contains one of the item's listed
+    variants AND at least one instruction cue -- both checked here, never
+    assumed."""
     scored: list[tuple[tuple[int, int], str, str]] = []
     for sentence, field, field_idx in _sentences_from_label(label):
         # Qualify against the text as it will actually be quoted (<=300
@@ -231,15 +254,17 @@ def qualifying_matches(label: dict, item: str) -> list[QuoteMatch]:
         # its evidence sliced off.
         quote = sentence[:300]
         lowered = quote.lower()
-        if not _phrase_in(lowered, item):
+        variant = _matching_variant(lowered, item)
+        if variant is None:
             continue
         cues = _cue_count(lowered)
         if cues == 0:
             continue
-        # The quote must literally contain the item term it's credited with
-        # matching -- asserted, never just assumed from the check above.
-        assert item.lower() in quote.lower(), (
-            f"quote {quote!r} does not contain matched item {item!r}"
+        # The quote must literally contain the *variant* it's credited with
+        # matching -- asserted, never just assumed from the check above. The
+        # base item term itself (e.g. "food") need not appear verbatim.
+        assert variant in quote.lower(), (
+            f"quote {quote!r} does not contain matched variant {variant!r}"
         )
         scored.append(((-cues, field_idx), quote, field))
 
@@ -267,6 +292,8 @@ def qualifying_matches(label: dict, item: str) -> list[QuoteMatch]:
 AVOID_PHRASES = ("avoid", "do not", "should not", "not recommended")
 AVOID_WORD_WINDOW = 8
 TAKE_WITH_FOOD_PHRASES = ("with food", "with meals", "with milk", "after eating")
+# "with the evening meal", "with the morning meal", etc.
+_WITH_THE_MEAL_RE = re.compile(r"\bwith the \w+ meal\b")
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
@@ -298,19 +325,22 @@ def _within_words(lowered: str, phrase: str, item: str, max_words: int) -> bool:
 
 def classify(quote: str, item: str) -> str:
     lowered = quote.lower()
-    item_lower = item.lower()
+    variants = ITEM_VARIANTS.get(item, (item.lower(),))
     if _phrase_in(lowered, "empty stomach"):
         return "take_on_empty_stomach"
     if any(
-        _within_words(lowered, phrase, item_lower, AVOID_WORD_WINDOW)
+        _within_words(lowered, phrase, variant, AVOID_WORD_WINDOW)
         for phrase in AVOID_PHRASES
+        for variant in variants
     ):
         return "avoid_item"
     if re.search(r"\bhours?\s+(before|after)\b", lowered) or _phrase_in(
         lowered, "separate"
     ):
         return "separate_from"
-    if any(_phrase_in(lowered, p) for p in TAKE_WITH_FOOD_PHRASES):
+    if any(
+        _phrase_in(lowered, p) for p in TAKE_WITH_FOOD_PHRASES
+    ) or _WITH_THE_MEAL_RE.search(lowered):
         return "take_with_food"
     return "other"
 

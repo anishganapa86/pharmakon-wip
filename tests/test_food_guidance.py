@@ -151,6 +151,47 @@ def test_qualifying_match_item_term_is_literally_in_quote():
         assert "food" in match.quote.lower()
 
 
+def test_alcoholic_drinks_variant_qualifies_for_alcohol():
+    label = oral_label(
+        warnings=["Avoid alcoholic drinks while taking this medication."]
+    )
+    matches = food_guidance.qualifying_matches(label, "alcohol")
+    assert len(matches) == 1
+    assert "alcoholic drinks" in matches[0].quote.lower()
+
+
+def test_phrase_matching_is_word_boundary_safe_not_substring():
+    # "ash" is a real substring of "crash", but not a matched *word* -- the
+    # boundary-based matcher must not treat it as a hit (no stemming, no
+    # fuzzy/substring matching).
+    assert food_guidance._phrase_in("avoid a crash while driving", "ash") is False
+    assert food_guidance._phrase_in("some ash on the counter", "ash") is True
+
+
+def test_item_variant_present_without_instruction_cue_is_excluded():
+    label = oral_label(
+        warnings=["This product contains alcoholic flavoring for taste."]
+    )
+    matches = food_guidance.qualifying_matches(label, "alcohol")
+    assert matches == []
+
+
+def test_meal_variant_qualifies_as_food_item():
+    label = oral_label(directions=["Take once daily with the evening meal."])
+    matches = food_guidance.qualifying_matches(label, "food")
+    assert len(matches) == 1
+    assert food_guidance.classify(matches[0].quote, "food") == "take_with_food"
+
+
+def test_dairy_variant_qualifies_as_milk_item():
+    label = oral_label(
+        warnings=["Avoid dairy products for two hours after taking this medicine."]
+    )
+    matches = food_guidance.qualifying_matches(label, "milk")
+    assert len(matches) == 1
+    assert "dairy" in matches[0].quote.lower()
+
+
 def test_at_most_two_matches_kept_best_scoring_first():
     label = oral_label(
         dosage_and_administration=[
@@ -246,6 +287,18 @@ def test_avoid_far_from_item_term_does_not_classify_as_avoid_item():
     )
     # "Avoid" is about machinery, more than 8 words from "food".
     assert food_guidance.classify(quote, "food") != "avoid_item"
+
+
+def test_once_daily_with_the_evening_meal_is_take_with_food():
+    quote = "Take one tablet once daily with the evening meal."
+    assert food_guidance.classify(quote, "food") == "take_with_food"
+
+
+def test_avoid_item_matches_via_variant_not_just_base_term():
+    # The quote never says "alcohol" -- only its variant "alcoholic" -- so
+    # avoid_item classification must check variants, not just the base term.
+    quote = "Avoid alcoholic beverages while taking this medication."
+    assert food_guidance.classify(quote, "alcohol") == "avoid_item"
 
 
 def test_generic_take_with_no_food_word_is_not_take_with_food():
