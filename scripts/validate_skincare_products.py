@@ -1,9 +1,18 @@
 """Structural validator for app/data/skincare_products.json.
 
 Reports, without modifying the file: duplicate brand+name pairs, empty
-ingredient lists, missing source_url or date_checked, verified: true with no
-date_checked, unrecognized categories, and ingredient strings carrying
-trailing periods, \\r, other line-break artifacts, or stray HTML.
+ingredient lists, missing date_checked, verified: true with no date_checked,
+unrecognized categories or source_types, a "brand"/"retailer" entry with no
+source_url, and ingredient strings carrying trailing periods, \\r, other
+line-break artifacts, or stray HTML.
+
+source_type distinguishes how an entry was checked: "brand"/"retailer" means
+a fetchable page is the evidence, so source_url is required; "packaging"
+means it was checked against the physical product, so source_url may be
+absent (reference_url, if given, is a convenience link only, never
+evidence). An entry with no source_type at all is treated as legacy and
+held to the old blanket "needs a source_url" rule, so nothing already in the
+file is newly flagged by this distinction.
 
 Known placeholder entries (empty ingredients + source_url "TODO", the seed
 rows shipped in the data file) are not reported -- they're an expected,
@@ -24,10 +33,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from scripts._skincare_common import (  # noqa: E402
+    RECOGNIZED_CATEGORIES,
+    RECOGNIZED_SOURCE_TYPES,
+)
+
 DATA_PATH = (
     Path(__file__).resolve().parent.parent / "app" / "data" / "skincare_products.json"
 )
-RECOGNIZED_CATEGORIES = frozenset({"cleanser", "moisturizer", "serum", "sunscreen"})
 
 _HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^>]*>")
 
@@ -78,8 +91,21 @@ def validate(data: dict) -> list[str]:
             for p in _bad_ingredient_strings(entry["ingredients"]):
                 problems.append(f"{label}: ingredient {p}")
 
-        if not entry.get("source_url"):
+        source_type = entry.get("source_type")
+        if source_type is not None and source_type not in RECOGNIZED_SOURCE_TYPES:
+            problems.append(f"{label}: unrecognized source_type {source_type!r}")
+
+        if source_type in ("brand", "retailer"):
+            if not entry.get("source_url"):
+                problems.append(
+                    f"{label}: source_type {source_type!r} requires a "
+                    "non-empty source_url"
+                )
+        elif source_type is None and not entry.get("source_url"):
+            # No source_type at all: legacy shape, held to the old blanket
+            # rule so nothing already in the file is newly flagged.
             problems.append(f"{label}: missing source_url")
+
         if not entry.get("date_checked"):
             problems.append(f"{label}: missing date_checked")
         if entry.get("verified") is True and not entry.get("date_checked"):

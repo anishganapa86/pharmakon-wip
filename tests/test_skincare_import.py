@@ -11,6 +11,8 @@ from scripts._skincare_common import (
     FetchResult,
     HostRateLimiter,
     extract_ingredients,
+    split_ingredients,
+    split_ingredients_detailed,
 )
 
 # --- Extraction ------------------------------------------------------------
@@ -106,6 +108,72 @@ def test_partial_capture_is_skipped():
     assert result.raw_text is None
     assert "partial capture" in result.reason
     assert "2" in result.reason
+
+
+# --- Splitter hardening: chemical-name commas, parentheses, bullets --------
+
+
+def test_chemical_name_comma_stays_whole():
+    assert split_ingredients("Water,1,2-Hexanediol,Caprylyl Glycol") == [
+        "Water",
+        "1,2-Hexanediol",
+        "Caprylyl Glycol",
+    ]
+
+
+def test_comma_without_surrounding_digits_splits_normally():
+    assert split_ingredients("Hexanediol,Caprylyl Glycol") == [
+        "Hexanediol",
+        "Caprylyl Glycol",
+    ]
+
+
+def test_comma_inside_parentheses_stays_whole():
+    assert split_ingredients("Water, Glycerin (Kosher, Vegetable), Silica") == [
+        "Water",
+        "Glycerin (Kosher, Vegetable)",
+        "Silica",
+    ]
+
+
+def test_bullet_separated_list_splits():
+    assert split_ingredients("Water • Glycerin • Niacinamide") == [
+        "Water",
+        "Glycerin",
+        "Niacinamide",
+    ]
+
+
+def test_comma_separated_list_still_splits():
+    assert split_ingredients("Water, Glycerin, Niacinamide") == [
+        "Water",
+        "Glycerin",
+        "Niacinamide",
+    ]
+
+
+def test_trailing_batch_code_excluded_from_array_but_kept_in_raw_text():
+    text = "AQUA/WATER/EAU • GLYCERIN • TOCOPHEROL. (CODE FIL: N70042172/1)"
+    result = split_ingredients_detailed(text)
+
+    assert result.ingredients == ["AQUA/WATER/EAU", "GLYCERIN", "TOCOPHEROL"]
+    assert result.excluded_trailing_code == "(CODE FIL: N70042172/1)"
+
+
+def test_no_spaces_after_commas_still_splits():
+    assert split_ingredients("Glycerin,Olea Europaea") == ["Glycerin", "Olea Europaea"]
+
+
+def test_splitting_never_changes_spelling_or_case():
+    # A deliberate source typo ("Baicalens") and mixed case must survive
+    # untouched -- splitting only finds boundaries, never edits content.
+    text = "Water, Scutellaria Baicalens Root Extract, TOCOPHEROL, lowercase Bit"
+    assert split_ingredients(text) == [
+        "Water",
+        "Scutellaria Baicalens Root Extract",
+        "TOCOPHEROL",
+        "lowercase Bit",
+    ]
 
 
 # --- Importer: batch/fetch mode ---------------------------------------------
@@ -217,7 +285,7 @@ def test_unrecognized_category_is_rejected_without_fetching(monkeypatch):
         {
             "brand": "B",
             "name": "N",
-            "category": "toner",
+            "category": "mask",
             "url": "https://example.com/p",
         },
         data,
@@ -227,6 +295,53 @@ def test_unrecognized_category_is_rejected_without_fetching(monkeypatch):
     assert outcome.status == "skipped"
     assert "unrecognized category" in outcome.reason
     assert data["products"] == []
+
+
+def test_toner_is_a_recognized_category(monkeypatch):
+    html = "<h3>Ingredients</h3><p>Water, Glycerin, Niacinamide, Tocopherol, Silica</p>"
+    monkeypatch.setattr(
+        importer,
+        "fetch_page",
+        fake_fetch({"https://example.com/p": FetchResult(html, None)}),
+    )
+    data = make_data()
+
+    outcome = importer.import_one(
+        {
+            "brand": "B",
+            "name": "N",
+            "category": "toner",
+            "url": "https://example.com/p",
+        },
+        data,
+        HostRateLimiter(),
+    )
+
+    assert outcome.status == "added"
+    assert data["products"][0]["category"] == "toner"
+
+
+def test_unrecognized_source_type_is_rejected(monkeypatch):
+    def _boom(url, limiter, user_agent=None):
+        raise AssertionError("should not fetch when source_type is unrecognized")
+
+    monkeypatch.setattr(importer, "fetch_page", _boom)
+    data = make_data()
+
+    outcome = importer.import_one(
+        {
+            "brand": "B",
+            "name": "N",
+            "category": "serum",
+            "url": "https://example.com/p",
+            "source_type": "influencer",
+        },
+        data,
+        HostRateLimiter(),
+    )
+
+    assert outcome.status == "skipped"
+    assert "unrecognized source_type" in outcome.reason
 
 
 def test_existing_entry_is_never_overwritten(monkeypatch):
@@ -313,7 +428,14 @@ def test_manual_mode_stores_entry_method_manual_and_verified_false(tmp_path):
     data = make_data()
 
     outcome = importer.import_from_text(
-        text_path, "BrandM", "ProductM", "moisturizer", "https://example.com/m", data
+        text_path,
+        "BrandM",
+        "ProductM",
+        "moisturizer",
+        "brand",
+        "https://example.com/m",
+        None,
+        data,
     )
 
     assert outcome.status == "added"
@@ -336,7 +458,14 @@ def test_manual_mode_normalizes_crlf_and_strips_cr(tmp_path):
     data = make_data()
 
     outcome = importer.import_from_text(
-        text_path, "BrandM", "ProductM", "serum", "https://example.com/m", data
+        text_path,
+        "BrandM",
+        "ProductM",
+        "serum",
+        "brand",
+        "https://example.com/m",
+        None,
+        data,
     )
 
     assert outcome.status == "added"
@@ -358,7 +487,14 @@ def test_manual_mode_partial_capture_is_skipped(tmp_path):
     data = make_data()
 
     outcome = importer.import_from_text(
-        text_path, "BrandM", "ProductM", "serum", "https://example.com/m", data
+        text_path,
+        "BrandM",
+        "ProductM",
+        "serum",
+        "brand",
+        "https://example.com/m",
+        None,
+        data,
     )
 
     assert outcome.status == "skipped"
@@ -374,11 +510,40 @@ def test_manual_mode_unrecognized_category_is_rejected(tmp_path):
     data = make_data()
 
     outcome = importer.import_from_text(
-        text_path, "BrandM", "ProductM", "toner", "https://example.com/m", data
+        text_path,
+        "BrandM",
+        "ProductM",
+        "mask",
+        "brand",
+        "https://example.com/m",
+        None,
+        data,
     )
 
     assert outcome.status == "skipped"
     assert "unrecognized category" in outcome.reason
+
+
+def test_manual_mode_toner_category_is_accepted(tmp_path):
+    text_path = tmp_path / "list.txt"
+    text_path.write_text(
+        "Water, Glycerin, Niacinamide, Tocopherol, Silica", encoding="utf-8"
+    )
+    data = make_data()
+
+    outcome = importer.import_from_text(
+        text_path,
+        "BrandM",
+        "ProductM",
+        "toner",
+        "packaging",
+        None,
+        None,
+        data,
+    )
+
+    assert outcome.status == "added"
+    assert data["products"][0]["category"] == "toner"
 
 
 def test_manual_mode_never_overwrites_existing_entry(tmp_path):
@@ -398,11 +563,129 @@ def test_manual_mode_never_overwrites_existing_entry(tmp_path):
     data = make_data([dict(original_entry)])
 
     outcome = importer.import_from_text(
-        text_path, "BrandM", "ProductM", "serum", "https://example.com/m", data
+        text_path,
+        "BrandM",
+        "ProductM",
+        "serum",
+        "brand",
+        "https://example.com/m",
+        None,
+        data,
     )
 
     assert outcome.status == "exists"
     assert data["products"] == [original_entry]
+
+
+# --- Manual mode: source_type / reference_url schema ------------------------
+
+
+def test_manual_mode_packaging_entry_needs_no_source_url(tmp_path):
+    text_path = tmp_path / "list.txt"
+    text_path.write_text(
+        "Water, Glycerin, Niacinamide, Tocopherol, Silica", encoding="utf-8"
+    )
+    data = make_data()
+
+    outcome = importer.import_from_text(
+        text_path,
+        "BrandM",
+        "ProductM",
+        "serum",
+        "packaging",
+        None,
+        "https://retailer.example.com/product",
+        data,
+    )
+
+    assert outcome.status == "added"
+    (entry,) = data["products"]
+    assert entry["source_type"] == "packaging"
+    assert entry["source_url"] is None
+    assert entry["reference_url"] == "https://retailer.example.com/product"
+
+
+def test_manual_mode_brand_entry_without_source_url_is_rejected(tmp_path):
+    text_path = tmp_path / "list.txt"
+    text_path.write_text(
+        "Water, Glycerin, Niacinamide, Tocopherol, Silica", encoding="utf-8"
+    )
+    data = make_data()
+
+    outcome = importer.import_from_text(
+        text_path, "BrandM", "ProductM", "serum", "brand", None, None, data
+    )
+
+    assert outcome.status == "skipped"
+    assert "requires a non-empty source_url" in outcome.reason
+    assert data["products"] == []
+
+
+def test_manual_mode_unrecognized_source_type_is_rejected(tmp_path):
+    text_path = tmp_path / "list.txt"
+    text_path.write_text(
+        "Water, Glycerin, Niacinamide, Tocopherol, Silica", encoding="utf-8"
+    )
+    data = make_data()
+
+    outcome = importer.import_from_text(
+        text_path,
+        "BrandM",
+        "ProductM",
+        "serum",
+        "influencer",
+        "https://example.com/m",
+        None,
+        data,
+    )
+
+    assert outcome.status == "skipped"
+    assert "unrecognized source_type" in outcome.reason
+
+
+def test_manual_mode_review_notes_are_stored(tmp_path):
+    text_path = tmp_path / "list.txt"
+    text_path.write_text(
+        "Water, Glycerin, Niacinamide, Tocopherol, Silica", encoding="utf-8"
+    )
+    data = make_data()
+
+    outcome = importer.import_from_text(
+        text_path,
+        "BrandM",
+        "ProductM",
+        "serum",
+        "packaging",
+        None,
+        None,
+        data,
+        "Two spots where commas look missing, stored as written.",
+    )
+
+    assert outcome.status == "added"
+    assert (
+        data["products"][0]["review_notes"]
+        == "Two spots where commas look missing, stored as written."
+    )
+
+
+def test_manual_mode_reports_excluded_trailing_code(tmp_path):
+    text_path = tmp_path / "list.txt"
+    text_path.write_text(
+        "Water • Glycerin • Niacinamide • Silica • Tocopherol. (CODE FIL: N70042172/1)",
+        encoding="utf-8",
+    )
+    data = make_data()
+
+    outcome = importer.import_from_text(
+        text_path, "BrandM", "ProductM", "cleanser", "packaging", None, None, data
+    )
+
+    assert outcome.status == "added"
+    assert "CODE FIL: N70042172/1" in outcome.reason
+    (entry,) = data["products"]
+    assert "CODE FIL" not in entry["ingredients"]
+    assert "(CODE FIL: N70042172/1)" in entry["raw_ingredient_text"]
 
 
 # --- save_data round trip ----------------------------------------------------

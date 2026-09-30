@@ -71,8 +71,70 @@ def test_verified_true_without_date_checked_is_flagged():
 
 
 def test_unrecognized_category_is_flagged():
-    problems = validator.validate({"products": [entry(category="toner")]})
+    problems = validator.validate({"products": [entry(category="mask")]})
     assert any("unrecognized category" in p for p in problems)
+
+
+def test_toner_category_is_not_flagged():
+    problems = validator.validate({"products": [entry(category="toner")]})
+    assert problems == []
+
+
+# --- source_type / reference_url schema -------------------------------------
+
+
+def test_brand_entry_with_source_url_is_not_flagged():
+    problems = validator.validate({"products": [entry(source_type="brand")]})
+    assert problems == []
+
+
+def test_retailer_entry_with_source_url_is_not_flagged():
+    problems = validator.validate({"products": [entry(source_type="retailer")]})
+    assert problems == []
+
+
+def test_brand_entry_with_no_source_url_is_rejected():
+    e = entry(source_type="brand")
+    del e["source_url"]
+    problems = validator.validate({"products": [e]})
+    assert any(
+        "source_type 'brand' requires a non-empty source_url" in p for p in problems
+    )
+
+
+def test_retailer_entry_with_no_source_url_is_rejected():
+    e = entry(source_type="retailer")
+    del e["source_url"]
+    problems = validator.validate({"products": [e]})
+    assert any(
+        "source_type 'retailer' requires a non-empty source_url" in p for p in problems
+    )
+
+
+def test_packaging_entry_may_have_null_reference_url_and_no_source_url():
+    e = entry(source_type="packaging", reference_url=None)
+    del e["source_url"]
+    problems = validator.validate({"products": [e]})
+    assert problems == []
+
+
+def test_unrecognized_source_type_is_flagged():
+    problems = validator.validate({"products": [entry(source_type="influencer")]})
+    assert any("unrecognized source_type" in p for p in problems)
+
+
+def test_entry_without_source_type_still_requires_source_url_as_before():
+    # Legacy shape (no source_type key at all): held to the old blanket
+    # rule, so nothing already in the data file is newly flagged.
+    e = entry()
+    del e["source_url"]
+    problems = validator.validate({"products": [e]})
+    assert any("missing source_url" in p for p in problems)
+
+
+def test_entry_without_source_type_and_with_source_url_is_valid():
+    problems = validator.validate({"products": [entry()]})
+    assert problems == []
 
 
 def test_trailing_period_is_flagged():
@@ -101,7 +163,7 @@ def test_main_returns_nonzero_on_problems(tmp_path):
 
     data_path = tmp_path / "skincare_products.json"
     data_path.write_text(
-        json.dumps({"products": [entry(category="toner")]}), encoding="utf-8"
+        json.dumps({"products": [entry(category="mask")]}), encoding="utf-8"
     )
 
     assert validator.main(["--data", str(data_path)]) == 1

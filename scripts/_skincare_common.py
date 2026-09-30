@@ -35,6 +35,22 @@ _INGREDIENT_HEADING_RE = re.compile(
     r"\b(full\s+ingredients|ingredients|inci)\b", re.IGNORECASE
 )
 
+# app/api/alternatives.py treats category as freeform text (see
+# client/src/types/contract.ts: "category is freeform text, not an enum the
+# server enforces") -- there is no enum in app code to keep in sync with.
+# This is the working set app/data/skincare_products.json's own _README
+# names, plus "toner" (added alongside the first toner entry); it's enforced
+# here, by the importer and validator, not by the app.
+RECOGNIZED_CATEGORIES = frozenset(
+    {"cleanser", "moisturizer", "serum", "sunscreen", "toner"}
+)
+
+# "brand"/"retailer": a fetchable page is the evidence, so source_url is
+# required. "packaging": the ingredient list was checked against the
+# physical product, not a page -- there may be no source_url at all, and
+# reference_url (if any) is a convenience link only, never evidence.
+RECOGNIZED_SOURCE_TYPES = frozenset({"brand", "retailer", "packaging"})
+
 
 def normalize_line_endings(text: str) -> str:
     """CRLF/CR -> LF, so stored strings never carry \\r regardless of the
@@ -46,13 +62,76 @@ def sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def split_ingredients(raw_text: str) -> list[str]:
-    """Verbatim split on commas: preserves source spelling, case, and order.
-    Only whitespace (including embedded newlines from HTML text extraction)
-    is collapsed -- nothing is reworded."""
+_TRAILING_CODE_RE = re.compile(r"\(\s*CODE\b[^)]*\)\s*$", re.IGNORECASE)
+
+
+@dataclass
+class SplitResult:
+    ingredients: list[str]
+    # The exact trailing batch-code parenthetical (e.g. "(CODE FIL:
+    # N70042172/1)"), if one was found and excluded from `ingredients`. It
+    # stays in the caller's raw_ingredient_text; only the parsed array drops
+    # it, since a batch code is packaging boilerplate, not an ingredient.
+    excluded_trailing_code: str | None
+
+
+def _split_top_level(text: str) -> list[str]:
+    """Split on commas, bullets (•), and newlines -- except a comma
+    inside parentheses ("Glycerin (Kosher, Vegetable)" is one ingredient),
+    or a comma with a digit immediately on both sides, which is part of a
+    chemical name ("1,2-Hexanediol") rather than a separator."""
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    n = len(text)
+    for i, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+            current.append(ch)
+        elif ch == ")":
+            depth = max(0, depth - 1)
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            prev_digit = i > 0 and text[i - 1].isdigit()
+            next_digit = i + 1 < n and text[i + 1].isdigit()
+            if prev_digit and next_digit:
+                current.append(ch)
+            else:
+                parts.append("".join(current))
+                current = []
+        elif ch in ("•", "\n") and depth == 0:
+            parts.append("".join(current))
+            current = []
+        else:
+            current.append(ch)
+    parts.append("".join(current))
+    return parts
+
+
+def split_ingredients_detailed(raw_text: str) -> SplitResult:
+    """Verbatim split: preserves source spelling, case, and order. Only
+    whitespace is collapsed and a trailing batch code / trailing period on
+    the last item are trimmed -- nothing is reworded, added, or reordered."""
     text = normalize_line_endings(raw_text)
-    parts = [re.sub(r"\s+", " ", p).strip() for p in text.split(",")]
-    return [p for p in parts if p]
+    stripped = text.rstrip()
+    code_match = _TRAILING_CODE_RE.search(stripped)
+    excluded_code: str | None = None
+    working = text
+    if code_match:
+        excluded_code = code_match.group(0).strip()
+        working = stripped[: code_match.start()]
+
+    raw_parts = _split_top_level(working)
+    cleaned = [re.sub(r"\s+", " ", p).strip() for p in raw_parts]
+    cleaned = [p for p in cleaned if p]
+    if cleaned and cleaned[-1].endswith("."):
+        cleaned[-1] = cleaned[-1][:-1].rstrip()
+
+    return SplitResult(cleaned, excluded_code)
+
+
+def split_ingredients(raw_text: str) -> list[str]:
+    return split_ingredients_detailed(raw_text).ingredients
 
 
 class HostRateLimiter:
