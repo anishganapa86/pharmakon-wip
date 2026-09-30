@@ -44,6 +44,51 @@
       "set_id": "00afce9b-48c9-487a-a738-e359c005c707",
       "date_fetched": "2026-09-30",
       "verified": false
+    },
+    {
+      "substance": "acetaminophen",
+      "item": "alcohol",
+      "quote": "Severe liver damage may occur if you take more than 4,000 mg of acetaminophen in 24 hours with other drugs containing acetaminophen 3 or more alcoholic drinks every day while using this product Allergy alert: Acetaminophen may cause severe skin reactions.",
+      "label_field": "warnings",
+      "set_id": "0005aafa-08f8-4990-a54d-cc097195708f",
+      "date_fetched": "2026-09-30",
+      "verified": false
+    },
+    {
+      "substance": "metformin",
+      "item": "food",
+      "quote": "2 DOSAGE AND ADMINISTRATION Swallow metformin hydrochloride extended-release tablets whole and never crush, cut or chew ( 2.1 ) Starting dose: 500 mg orally once daily with the evening meal ( 2.1 ) Increase the dose in increments of 500 mg weekly, up to a maximum of 2,000 mg once daily with the even",
+      "label_field": "dosage_and_administration",
+      "set_id": "27f603ec-25e6-4270-a7a3-34a64a76f7ef",
+      "date_fetched": "2026-09-30",
+      "verified": false
+    },
+    {
+      "substance": "sertraline",
+      "item": "alcohol",
+      "quote": "Do not drink alcohol while you take sertraline hydrochloride tablets.",
+      "label_field": "spl_medguide",
+      "set_id": "03e1f274-fa9a-4461-b7c9-31ba6428c107",
+      "date_fetched": "2026-09-30",
+      "verified": false
+    },
+    {
+      "substance": "aspirin",
+      "item": "alcohol",
+      "quote": "The chance is higher if you: are age 60 or older have had stomach ulcers or bleeding problems take a blood thinning (anticoagulant) or steroid drug take other drugs containing prescription or nonprescription NSAIDs [aspirin, ibuprofen, naproxen, or others] have 3 or more alcoholic drinks every day w",
+      "label_field": "warnings",
+      "set_id": "0058175f-3474-40c3-a046-6cfaec86d84b",
+      "date_fetched": "2026-09-30",
+      "verified": false
+    },
+    {
+      "substance": "ibuprofen",
+      "item": "alcohol",
+      "quote": "The chance is higher if you: take more or for a longer time than directed take a blood thinning (anticoagulant) or steroid drug have had stomach ulcers or bleeding problems have 3 or more alcoholic drinks every day while using this product are age 60 or older take other drugs containing prescription",
+      "label_field": "warnings",
+      "set_id": "00653b7c-7099-487e-9a01-e89781c21323",
+      "date_fetched": "2026-09-30",
+      "verified": false
     }
   ],
   "_README": "Curated food/drink/timing quotes, one per (substance, item) pair. Never hand-written: every entry is produced by scripts/build_food_guidance_curated.py, which fetches the substance's own live openFDA label, extracts a qualifying sentence with the same logic app/api/food_guidance.py uses for the live path, and writes it verbatim. An entry with no quote is never created -- the loader (app/api/food_guidance.py's load_curated) rejects any entry it finds without one, as a second line of defense. Fields: substance (registry id), item, quote (<=300 chars, verbatim), label_field, set_id (openFDA set_id when available), date_fetched (ISO 8601), verified (stays false until a human opens the source)."

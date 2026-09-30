@@ -39,6 +39,9 @@ PAIRS: list[tuple[str, str]] = [
     ("warfarin", "vitamin k"),
     ("sertraline", "alcohol"),
     ("diphenhydramine", "alcohol"),
+    ("aspirin", "alcohol"),
+    ("ibuprofen", "alcohol"),
+    ("naproxen", "alcohol"),
 ]
 
 
