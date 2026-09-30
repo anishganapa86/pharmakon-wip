@@ -258,20 +258,59 @@ def qualifying_matches(label: dict, item: str) -> list[QuoteMatch]:
 # --- Classification and timing windows ------------------------------------------
 
 
+# Conservative on purpose: a quote is classified avoid_item/take_with_food
+# only on these specific phrases, and avoid_item only when the phrase sits
+# close to the item term itself -- a quote that merely *mentions* "avoid"
+# somewhere unrelated (e.g. "avoid drastic diet changes" in a sentence
+# that's really about keeping vitamin K intake *consistent*) must not read
+# as "avoid this item".
+AVOID_PHRASES = ("avoid", "do not", "should not", "not recommended")
+AVOID_WORD_WINDOW = 8
+TAKE_WITH_FOOD_PHRASES = ("with food", "with meals", "with milk", "after eating")
+
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+
+def _word_index_at(words: list[re.Match], char_pos: int) -> int:
+    for i, w in enumerate(words):
+        if w.start() <= char_pos < w.end():
+            return i
+    return min(range(len(words)), key=lambda i: abs(words[i].start() - char_pos))
+
+
+def _within_words(lowered: str, phrase: str, item: str, max_words: int) -> bool:
+    """True if `phrase` and `item` each appear as whole-word/phrase matches
+    within `max_words` words of each other, anywhere in the text."""
+    phrase_hits = [m.start() for m in re.finditer(rf"\b{re.escape(phrase)}\b", lowered)]
+    item_hits = [m.start() for m in re.finditer(rf"\b{re.escape(item)}\b", lowered)]
+    if not phrase_hits or not item_hits:
+        return False
+    words = list(_WORD_RE.finditer(lowered))
+    if not words:
+        return False
+    for p in phrase_hits:
+        pi = _word_index_at(words, p)
+        for it in item_hits:
+            if abs(pi - _word_index_at(words, it)) <= max_words:
+                return True
+    return False
+
+
 def classify(quote: str, item: str) -> str:
     lowered = quote.lower()
+    item_lower = item.lower()
     if _phrase_in(lowered, "empty stomach"):
         return "take_on_empty_stomach"
-    if any(_phrase_in(lowered, p) for p in ("avoid", "do not", "should not")):
+    if any(
+        _within_words(lowered, phrase, item_lower, AVOID_WORD_WINDOW)
+        for phrase in AVOID_PHRASES
+    ):
         return "avoid_item"
     if re.search(r"\bhours?\s+(before|after)\b", lowered) or _phrase_in(
         lowered, "separate"
     ):
         return "separate_from"
-    if any(
-        _phrase_in(lowered, p)
-        for p in ("with food", "with meal", "with meals", "with milk", "take with")
-    ):
+    if any(_phrase_in(lowered, p) for p in TAKE_WITH_FOOD_PHRASES):
         return "take_with_food"
     return "other"
 

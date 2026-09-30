@@ -185,23 +185,65 @@ def test_one_sided_hour_statement_yields_no_window():
 
 
 @pytest.mark.parametrize(
-    "quote,expected",
+    "quote,item,expected",
     [
         (
             "Take on an empty stomach at least 1 hour before eating.",
+            "food",
             "take_on_empty_stomach",
         ),
-        ("Avoid alcohol while taking this medication.", "avoid_item"),
+        ("Avoid alcohol while taking this medication.", "alcohol", "avoid_item"),
         (
             "Take at least 2 hours before or 4 hours after taking an antacid.",
+            "antacid",
             "separate_from",
         ),
-        ("Take with food to reduce stomach upset.", "take_with_food"),
-        ("This medication may interact with grapefruit juice.", "other"),
+        ("Take with food to reduce stomach upset.", "food", "take_with_food"),
+        ("This medication may interact with grapefruit juice.", "grapefruit", "other"),
     ],
 )
-def test_classify_rules(quote, expected):
-    assert food_guidance.classify(quote, "food") == expected
+def test_classify_rules(quote, item, expected):
+    assert food_guidance.classify(quote, item) == expected
+
+
+def test_consistent_intake_sentence_is_not_avoid_item():
+    # "avoid" appears in the sentence, but 25 words from "vitamin k" and
+    # about something else entirely (diet changes in general) -- the advice
+    # actually attached to vitamin K here is to keep intake *consistent*,
+    # not to avoid it.
+    quote = (
+        "Maintain a consistent vitamin K intake throughout treatment since "
+        "large changes in your usual diet from one week to the next can "
+        "affect INR results and patients should avoid drastic sudden "
+        "dietary changes."
+    )
+    assert food_guidance.classify(quote, "vitamin k") == "other"
+
+
+def test_avoid_grapefruit_juice_is_avoid_item():
+    quote = "Avoid grapefruit juice while taking this medication."
+    assert food_guidance.classify(quote, "grapefruit") == "avoid_item"
+
+
+def test_take_with_food_or_milk_is_take_with_food():
+    quote = "Take with food or milk if stomach upset occurs."
+    assert food_guidance.classify(quote, "food") == "take_with_food"
+
+
+def test_avoid_far_from_item_term_does_not_classify_as_avoid_item():
+    quote = (
+        "Avoid operating heavy machinery after taking this medication with "
+        "a full glass of water and a light meal containing food."
+    )
+    # "Avoid" is about machinery, more than 8 words from "food".
+    assert food_guidance.classify(quote, "food") != "avoid_item"
+
+
+def test_generic_take_with_no_food_word_is_not_take_with_food():
+    # The old rule matched bare "take with"; the new one requires one of the
+    # specific phrases.
+    quote = "Take with a full glass of water."
+    assert food_guidance.classify(quote, "water") != "take_with_food"
 
 
 # --- Route gating ----------------------------------------------------------------
