@@ -347,6 +347,10 @@ export interface SkincareCheckResponse {
   incompatibilities: SkincareIncompatibility[];
   irritants: SkincareIrritant[];
   clear: SkincareClearIngredient[];
+  // Total documented rules checked (incompatibilities + irritants), not how
+  // many matched -- lets the UI say "no matching rule among our M
+  // documented rules" rather than implying a guarantee of safety.
+  rules_checked: number;
 }
 
 // ---------------------------------------------------------------------------

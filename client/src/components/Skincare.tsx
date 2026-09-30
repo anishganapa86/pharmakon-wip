@@ -179,7 +179,9 @@ function SkincareResults({
         <details className="collapsible skincare-clear">
           <summary>
             {result.clear.length} ingredient{result.clear.length === 1 ? "" : "s"}{" "}
-            checked — no issues found
+            had no matching rule among our {result.rules_checked} documented
+            rule{result.rules_checked === 1 ? "" : "s"}. This does not mean
+            none are irritating or incompatible.
           </summary>
           <div className="collapsible-body">
             {groupByProduct(result.clear).map(([product, ingredients]) => (

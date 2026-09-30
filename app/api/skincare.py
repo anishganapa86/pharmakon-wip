@@ -245,6 +245,10 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
         "incompatibilities": incompatibilities_found,
         "irritants": irritants_found,
         "clear": clear,
+        # Total documented rules checked (incompatibilities + irritants) --
+        # not a count of what matched. Lets the UI say "no matching rule
+        # among our M documented rules" instead of implying "no issues".
+        "rules_checked": len(rules.incompatibilities) + len(rules.known_irritants),
     }
 
 

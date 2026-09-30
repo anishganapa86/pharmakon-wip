@@ -259,6 +259,18 @@ def test_two_product_incompatibility_keeps_original_recommendation():
     assert found["recommendation"] == "Use on alternate nights."
 
 
+# --- rules_checked ---------------------------------------------------------------
+
+
+def test_rules_checked_counts_incompatibilities_and_irritants():
+    rules = skincare.load_rules()
+    expected = len(rules.incompatibilities) + len(rules.known_irritants)
+
+    result = skincare.check_ingredients([skincare.Product("P", ("Water",))])
+
+    assert result["rules_checked"] == expected
+
+
 # --- POST /skincare-check -------------------------------------------------------
 
 
@@ -404,4 +416,6 @@ def test_products_without_stored_ingredients_are_skipped(client):
         "incompatibilities": [],
         "irritants": [],
         "clear": [],
+        "rules_checked": len(skincare.load_rules().incompatibilities)
+        + len(skincare.load_rules().known_irritants),
     }
