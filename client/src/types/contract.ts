@@ -497,7 +497,15 @@ export interface FoodGuidanceFinding {
   is_product: boolean; // true when `name` is a combination product
   item: string; // e.g. "food", "grapefruit", "vitamin k"
   class: FoodGuidanceClass;
-  quote: string; // <=300 chars, verbatim from the label
+  // <=300 chars, verbatim from the label -- only when the underlying
+  // sentence passed the quote-integrity rules (true sentence start/end, no
+  // heading/cross-reference noise, under the length cap). null means the
+  // label mentions this item but couldn't be safely quoted; see `pointer`.
+  quote: string | null;
+  // Set only when `quote` is null: a citation sentence (never a quote)
+  // pointing to the label section, with a DailyMed link when a set_id was
+  // available. class is always "other" alongside a pointer finding.
+  pointer: string | null;
   source_type: FoodGuidanceSourceType;
   label_field: string; // e.g. "dosage_and_administration"
   // Curated: false until a human opens the cited source. fda_label: true --
@@ -508,6 +516,12 @@ export interface FoodGuidanceFinding {
   // whitespace normalization) -- that entry is folded into this one finding
   // rather than shown twice. Always false on a source_type "curated" finding.
   also_in_curated: boolean;
+  // The label this finding was read from -- read off the label's own text,
+  // null when nothing matched (never guessed). A form-specific instruction
+  // (e.g. "extended-release tablet") should never be shown as if it applied
+  // generally.
+  product_name: string | null;
+  dosage_form: string | null;
 }
 
 export type FoodGuidanceTimelineType = "dose_marker" | "window" | "ongoing";

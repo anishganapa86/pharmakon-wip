@@ -27,6 +27,25 @@ const CLASS_LABELS: Record<FoodGuidanceClass, string> = {
   other: "Other",
 };
 
+// Only set on a pointer finding (quote is null): a citation sentence, with
+// a DailyMed link appended when a set_id was available. Rendered as a
+// clickable link rather than plain URL text when that link is present.
+function PointerText({ pointer }: { pointer: string }) {
+  const marker = "DailyMed: ";
+  const idx = pointer.indexOf(marker);
+  if (idx === -1) return <>{pointer}</>;
+  const before = pointer.slice(0, idx + marker.length);
+  const url = pointer.slice(idx + marker.length);
+  return (
+    <>
+      {before}
+      <a href={url} target="_blank" rel="noreferrer">
+        {url}
+      </a>
+    </>
+  );
+}
+
 function FindingCard({ finding }: { finding: FoodGuidanceFinding }) {
   return (
     <div className="skincare-flag skincare-flag-caution">
@@ -38,7 +57,20 @@ function FindingCard({ finding }: { finding: FoodGuidanceFinding }) {
         {" — "}
         <span className="tag">{CLASS_LABELS[finding.class]}</span>
       </p>
-      <p className="muted small">"{finding.quote}"</p>
+      {finding.quote !== null ? (
+        <p className="muted small">"{finding.quote}"</p>
+      ) : (
+        finding.pointer !== null && (
+          <p className="muted small">
+            <PointerText pointer={finding.pointer} />
+          </p>
+        )
+      )}
+      {(finding.product_name || finding.dosage_form) && (
+        <p className="muted small">
+          {[finding.product_name, finding.dosage_form].filter(Boolean).join(" — ")}
+        </p>
+      )}
       {finding.window && (
         <p className="muted small">
           {finding.window.before_hours}h before / {finding.window.after_hours}h
