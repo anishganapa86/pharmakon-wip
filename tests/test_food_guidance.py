@@ -406,6 +406,104 @@ def test_unreachable_openfda_still_returns_curated_entries(monkeypatch, tmp_path
     food_guidance.clear_curated_cache()
 
 
+# --- Dedupe: live and curated quoting the same sentence -------------------------
+
+
+def test_live_and_curated_same_quote_dedupe_to_one_fda_label_finding(
+    monkeypatch, tmp_path
+):
+    quote = "When using this product take with food or milk if stomach upset occurs"
+    label = oral_label(when_using=[quote])
+    monkeypatch.setattr(food_guidance, "fetch_label_for_substance", lambda name: label)
+
+    curated_path = write_curated(
+        tmp_path,
+        [
+            {
+                "substance": "ibuprofen",
+                "item": "food",
+                "quote": quote,
+                "label_field": "when_using",
+                "date_fetched": "2026-01-01",
+                "verified": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(food_guidance, "DATA_PATH", curated_path)
+    food_guidance.clear_curated_cache()
+
+    item = food_guidance.RegimenItem("ibuprofen", "Ibuprofen", False, "Ibuprofen")
+    findings = food_guidance._findings_for_item(item, [])
+
+    food_findings = [f for f in findings if f["item"] == "food"]
+    assert len(food_findings) == 1
+    assert food_findings[0]["source_type"] == "fda_label"
+    assert food_findings[0]["also_in_curated"] is True
+    food_guidance.clear_curated_cache()
+
+
+def test_same_quote_after_whitespace_normalization_still_dedupes(monkeypatch, tmp_path):
+    live_quote = "Take   with food\nor milk if stomach upset occurs"
+    curated_quote = "Take with food or milk if stomach upset occurs"
+    label = oral_label(when_using=[live_quote])
+    monkeypatch.setattr(food_guidance, "fetch_label_for_substance", lambda name: label)
+
+    curated_path = write_curated(
+        tmp_path,
+        [
+            {
+                "substance": "ibuprofen",
+                "item": "food",
+                "quote": curated_quote,
+                "label_field": "when_using",
+                "date_fetched": "2026-01-01",
+                "verified": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(food_guidance, "DATA_PATH", curated_path)
+    food_guidance.clear_curated_cache()
+
+    item = food_guidance.RegimenItem("ibuprofen", "Ibuprofen", False, "Ibuprofen")
+    findings = food_guidance._findings_for_item(item, [])
+
+    food_findings = [f for f in findings if f["item"] == "food"]
+    assert len(food_findings) == 1
+    assert food_findings[0]["also_in_curated"] is True
+    food_guidance.clear_curated_cache()
+
+
+def test_different_quotes_are_not_deduped(monkeypatch, tmp_path):
+    label = oral_label(when_using=["Take with food to reduce stomach upset."])
+    monkeypatch.setattr(food_guidance, "fetch_label_for_substance", lambda name: label)
+
+    curated_path = write_curated(
+        tmp_path,
+        [
+            {
+                "substance": "ibuprofen",
+                "item": "food",
+                "quote": "A completely different sentence about taking with food.",
+                "label_field": "directions",
+                "date_fetched": "2026-01-01",
+                "verified": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(food_guidance, "DATA_PATH", curated_path)
+    food_guidance.clear_curated_cache()
+
+    item = food_guidance.RegimenItem("ibuprofen", "Ibuprofen", False, "Ibuprofen")
+    findings = food_guidance._findings_for_item(item, [])
+
+    food_findings = [f for f in findings if f["item"] == "food"]
+    assert len(food_findings) == 2
+    assert {f["source_type"] for f in food_findings} == {"fda_label", "curated"}
+    live = next(f for f in food_findings if f["source_type"] == "fda_label")
+    assert live["also_in_curated"] is False
+    food_guidance.clear_curated_cache()
+
+
 # --- Wording -----------------------------------------------------------------------
 
 

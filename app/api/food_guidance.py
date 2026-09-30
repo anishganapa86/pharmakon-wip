@@ -450,11 +450,41 @@ def _finding(
         "label_field": match.field,
         "verified": verified,
         "window": _window_json(parse_window(match.quote)),
+        # True only when a curated entry quoting the same sentence was
+        # folded into this (live) finding -- see _dedupe_against_curated.
+        # Never set on a curated finding itself.
+        "also_in_curated": False,
     }
 
 
+def _normalize_whitespace(s: str) -> str:
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _dedupe_against_curated(
+    live_findings: list[dict], curated_findings: list[dict]
+) -> list[dict]:
+    """When a live and a curated finding quote the same sentence (exact, or
+    the same after collapsing whitespace), keep only the live one, flagged
+    also_in_curated -- one finding, not two, for something confirmed twice."""
+    live_by_quote: dict[str, list[dict]] = {}
+    for f in live_findings:
+        live_by_quote.setdefault(_normalize_whitespace(f["quote"]), []).append(f)
+
+    kept_curated: list[dict] = []
+    for cf in curated_findings:
+        matches = live_by_quote.get(_normalize_whitespace(cf["quote"]))
+        if matches:
+            matches[0]["also_in_curated"] = True
+        else:
+            kept_curated.append(cf)
+
+    return live_findings + kept_curated
+
+
 def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
-    findings: list[dict] = []
+    live_findings: list[dict] = []
+    curated_findings: list[dict] = []
 
     try:
         label = (
@@ -485,7 +515,7 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
             else:
                 for item_term in ITEM_TERMS:
                     for match in qualifying_matches(label, item_term):
-                        findings.append(
+                        live_findings.append(
                             _finding(item, item_term, match, "fda_label", True)
                         )
 
@@ -496,9 +526,11 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
             if c.substance != item.key:
                 continue
             match = QuoteMatch(c.quote, c.label_field, c.item)
-            findings.append(_finding(item, c.item, match, "curated", c.verified))
+            curated_findings.append(
+                _finding(item, c.item, match, "curated", c.verified)
+            )
 
-    return findings
+    return _dedupe_against_curated(live_findings, curated_findings)
 
 
 # --- Timeline --------------------------------------------------------------------

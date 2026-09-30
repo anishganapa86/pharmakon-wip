@@ -504,6 +504,10 @@ export interface FoodGuidanceFinding {
   // quoted verbatim from the live FDA label, not a curated guess.
   verified: boolean;
   window: FoodGuidanceWindow | null;
+  // True when a curated entry quoted the same sentence (exact, or after
+  // whitespace normalization) -- that entry is folded into this one finding
+  // rather than shown twice. Always false on a source_type "curated" finding.
+  also_in_curated: boolean;
 }
 
 export type FoodGuidanceTimelineType = "dose_marker" | "window" | "ongoing";
