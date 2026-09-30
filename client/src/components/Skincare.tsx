@@ -138,6 +138,11 @@ function SkincareResults({
           </p>
           <p>{f.effect}</p>
           <p className="muted small">{f.recommendation}</p>
+          <p className="muted small">
+            Matched on: '{f.matched_ingredient_a}' (rule term: '
+            {f.matched_alias_a}') and '{f.matched_ingredient_b}' (rule term: '
+            {f.matched_alias_b}')
+          </p>
           <p className="muted small">Source: {f.source}</p>
           <AlternativesSection
             ingredient={f.ingredient_a}
@@ -158,6 +163,10 @@ function SkincareResults({
           </p>
           <p>{f.effect}</p>
           {f.note && <p className="muted small">{f.note}</p>}
+          <p className="muted small">
+            Matched on: '{f.matched_ingredient}' (rule term: '{f.matched_alias}
+            ')
+          </p>
           <p className="muted small">Source: {f.source}</p>
           <AlternativesSection
             ingredient={f.ingredient}

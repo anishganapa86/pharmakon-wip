@@ -58,10 +58,16 @@ class Incompatibility:
     source: str
 
     def matches_a(self, name: str) -> bool:
-        return _matches(name, self.ingredient_a, self.aliases_a)
+        return _matched_term(name, self.ingredient_a, self.aliases_a) is not None
 
     def matches_b(self, name: str) -> bool:
-        return _matches(name, self.ingredient_b, self.aliases_b)
+        return _matched_term(name, self.ingredient_b, self.aliases_b) is not None
+
+    def matched_term_a(self, name: str) -> str | None:
+        return _matched_term(name, self.ingredient_a, self.aliases_a)
+
+    def matched_term_b(self, name: str) -> str | None:
+        return _matched_term(name, self.ingredient_b, self.aliases_b)
 
 
 @dataclass(frozen=True)
@@ -72,24 +78,30 @@ class Irritant:
     source: str
 
     def matches(self, name: str) -> bool:
-        return _matches(name, self.ingredient, self.aliases)
+        return _matched_term(name, self.ingredient, self.aliases) is not None
+
+    def matched_term(self, name: str) -> str | None:
+        return _matched_term(name, self.ingredient, self.aliases)
 
 
-def _matches(name: str, canonical: str, aliases: tuple[str, ...]) -> bool:
-    """True if the rule's ingredient name or an alias appears as a whole-word
-    phrase inside the (normalized) label string. Substring rather than exact
-    match, because openFDA ingredient strings carry extra words (dosage,
-    purpose, product form) around the actual ingredient name -- e.g. "Purpose
-    Salicylic Acid 2.0% Acne Medication" must still match "salicylic acid".
+def _matched_term(name: str, canonical: str, aliases: tuple[str, ...]) -> str | None:
+    """The rule's ingredient name or alias that appears as a whole-word
+    phrase inside the (normalized) label string, or None. Substring rather
+    than exact match, because openFDA ingredient strings carry extra words
+    (dosage, purpose, product form) around the actual ingredient name -- e.g.
+    "Purpose Salicylic Acid 2.0% Acne Medication" must still match "salicylic
+    acid". Returns the literal canonical/alias text that matched, exactly as
+    written in the rule, so a finding can show which rule term fired --
+    never a new rule or alias of its own.
     """
     key = normalize(name)
     if not key:
-        return False
+        return None
     for candidate in (canonical, *aliases):
         needle = normalize(candidate)
         if needle and re.search(rf"\b{re.escape(needle)}\b", key):
-            return True
-    return False
+            return candidate
+    return None
 
 
 @dataclass(frozen=True)
@@ -135,6 +147,11 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
     """Every ingredient pair across all products against the incompatibility
     rules (fuzzy-matched on aliases), and every ingredient against known
     irritants. A lookup, not a model: nothing here is derived or scored.
+
+    Each finding carries matched_ingredient(_a/_b) (the exact stored string)
+    and matched_alias(_a/_b) (the literal rule term -- canonical name or
+    alias -- that matched it), so a finding is traceable to the specific
+    text that triggered it, not just "this rule fired somewhere."
     """
     rules = rules or load_rules()
     entries = [(p.name, ing) for p in products for ing in p.ingredients]
@@ -144,10 +161,12 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
     for i, (name_a, ing_a) in enumerate(entries):
         for name_b, ing_b in entries[i + 1 :]:
             for rule in rules.incompatibilities:
-                matched = (rule.matches_a(ing_a) and rule.matches_b(ing_b)) or (
-                    rule.matches_a(ing_b) and rule.matches_b(ing_a)
-                )
-                if not matched:
+                term_a = rule.matched_term_a(ing_a)
+                term_b = rule.matched_term_b(ing_b)
+                if term_a is None or term_b is None:
+                    term_a = rule.matched_term_b(ing_a)
+                    term_b = rule.matched_term_a(ing_b)
+                if term_a is None or term_b is None:
                     continue
                 key = (id(rule), tuple(sorted([normalize(ing_a), normalize(ing_b)])))
                 if key in seen_pairs:
@@ -157,8 +176,12 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
                     {
                         "ingredient_a": ing_a,
                         "product_a": name_a,
+                        "matched_ingredient_a": ing_a,
+                        "matched_alias_a": term_a,
                         "ingredient_b": ing_b,
                         "product_b": name_b,
+                        "matched_ingredient_b": ing_b,
+                        "matched_alias_b": term_b,
                         "effect": rule.effect,
                         "recommendation": rule.recommendation,
                         "source": rule.source,
@@ -169,7 +192,8 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
     seen_irritants = set()
     for name, ing in entries:
         for rule in rules.known_irritants:
-            if not rule.matches(ing):
+            term = rule.matched_term(ing)
+            if term is None:
                 continue
             key = (normalize(ing), name)
             if key in seen_irritants:
@@ -179,6 +203,8 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
                 {
                     "ingredient": ing,
                     "product": name,
+                    "matched_ingredient": ing,
+                    "matched_alias": term,
                     "effect": rule.effect,
                     "source": rule.source,
                 }

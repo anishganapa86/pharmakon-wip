@@ -310,8 +310,15 @@ export interface SkincareCheckedProduct {
 export interface SkincareIncompatibility {
   ingredient_a: string;
   product_a: string;
+  // matched_ingredient_a duplicates ingredient_a -- present so the UI can
+  // pair "which string" with "which rule term" (matched_alias_a) without
+  // knowing whether it's reading the a-side or b-side of a finding.
+  matched_ingredient_a: string;
+  matched_alias_a: string; // the rule's canonical name or alias that hit
   ingredient_b: string;
   product_b: string;
+  matched_ingredient_b: string;
+  matched_alias_b: string;
   effect: string;
   recommendation: string;
   source: string;
@@ -320,6 +327,8 @@ export interface SkincareIncompatibility {
 export interface SkincareIrritant {
   ingredient: string;
   product: string;
+  matched_ingredient: string; // duplicates ingredient; see SkincareIncompatibility
+  matched_alias: string; // the rule's canonical name or alias that hit
   effect: string;
   source: string;
   note?: string; // added only when relevant to something else the user logged

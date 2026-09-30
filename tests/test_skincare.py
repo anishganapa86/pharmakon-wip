@@ -167,6 +167,61 @@ def test_no_source_no_entry_every_rule_is_cited():
     assert all(r.source for r in rules.known_irritants)
 
 
+# --- matched_ingredient / matched_alias ----------------------------------------
+
+
+def test_incompatibility_reports_matched_ingredient_and_alias_per_side():
+    # "Tretinoin" is a cited alias of retinol; "Lactic Acid" is a cited alias
+    # of alpha hydroxy acid -- neither side matched via its canonical name.
+    products = [
+        skincare.Product("Cream", ("Tretinoin",)),
+        skincare.Product("Wash", ("Lactic Acid",)),
+    ]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["incompatibilities"]
+    sides = {
+        (found["matched_ingredient_a"], found["matched_alias_a"]),
+        (found["matched_ingredient_b"], found["matched_alias_b"]),
+    }
+    assert sides == {("Tretinoin", "tretinoin"), ("Lactic Acid", "lactic acid")}
+
+
+def test_incompatibility_matched_alias_is_the_messy_string_that_hit():
+    products = [
+        skincare.Product("ZO Retinol", ("Retinol",)),
+        skincare.Product(
+            "ZO Exfoliating Cleanser",
+            ("Purpose Salicylic Acid 2.0% Acne Medication",),
+        ),
+    ]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["incompatibilities"]
+    aliases = {found["matched_alias_a"], found["matched_alias_b"]}
+    assert aliases == {"retinol", "salicylic acid"}
+    matched_ingredients = {
+        found["matched_ingredient_a"],
+        found["matched_ingredient_b"],
+    }
+    assert matched_ingredients == {
+        "Retinol",
+        "Purpose Salicylic Acid 2.0% Acne Medication",
+    }
+
+
+def test_irritant_reports_matched_ingredient_and_alias():
+    products = [skincare.Product("Body Lotion", ("Parfum",))]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["irritants"]
+    assert found["matched_ingredient"] == "Parfum"
+    assert found["matched_alias"] == "parfum"
+
+
 # --- POST /skincare-check -------------------------------------------------------
 
 
