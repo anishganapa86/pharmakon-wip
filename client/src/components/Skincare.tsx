@@ -74,10 +74,18 @@ function AlternativesSection({
   disclaimer: string | undefined;
 }) {
   const candidates = group?.alternatives ?? [];
+  const samePairIngredients = group?.same_product_partners ?? [];
   return (
     <details className="collapsible alternatives-section">
       <summary>Products without {ingredient}</summary>
       <div className="collapsible-body">
+        {samePairIngredients.length > 0 && (
+          <p className="muted small">
+            Replacing this product removes both ingredients from your
+            routine. Products below are only checked for the ingredients
+            named on each card.
+          </p>
+        )}
         {candidates.length === 0 ? (
           <p className="muted small">
             No alternatives in our curated set. That doesn't mean none exist.
@@ -91,6 +99,9 @@ function AlternativesSection({
                   <span className="muted small">({c.category})</span>
                 </p>
                 <p className="muted small">{c.checked_note}</p>
+                {c.same_product_note && (
+                  <p className="muted small">{c.same_product_note}</p>
+                )}
                 <details className="collapsible">
                   <summary>Ingredients</summary>
                   <p className="muted small collapsible-body">

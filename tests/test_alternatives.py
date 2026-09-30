@@ -350,6 +350,94 @@ def test_empty_result_when_nothing_qualifies(tmp_path):
     assert group["alternatives"] == []
 
 
+# --- Same-product pair: candidate note and banner flag --------------------------
+
+
+def _eva_style_target() -> skincare.Product:
+    # Retinol + Salicylic Acid is a cited same-product-capable incompatibility
+    # (American Academy of Dermatology rule); both ingredients live in one
+    # product here, same as the real Eva Naturals Vitamin C+ Serum entry.
+    return skincare.Product("Eva Serum", ("Retinol", "Salicylic Acid"))
+
+
+def _group_for(result: dict, flagged_ingredient: str) -> dict:
+    return next(
+        g for g in result["results"] if g["flagged_ingredient"] == flagged_ingredient
+    )
+
+
+def test_candidate_with_only_the_partner_ingredient_shows_contains_line(tmp_path):
+    path = write_curated(
+        tmp_path,
+        [
+            curated_entry(
+                name="Has Salicylic Only", ingredients=("Salicylic Acid", "Water")
+            )
+        ],
+    )
+    curated = alternatives.load_products(path=path)
+
+    result = alternatives.check_alternatives_for_product(
+        _eva_style_target(), [], curated=curated
+    )
+
+    retinol_group = _group_for(result, "Retinol")
+    assert retinol_group["same_product_partners"] == ["Salicylic Acid"]
+    (candidate,) = retinol_group["alternatives"]
+    assert candidate["same_product_note"] == (
+        "Does not contain: Retinol. Contains: Salicylic Acid"
+    )
+
+
+def test_candidate_with_neither_ingredient_shows_contains_neither(tmp_path):
+    path = write_curated(
+        tmp_path, [curated_entry(name="Has Neither", ingredients=("Water", "Glycerin"))]
+    )
+    curated = alternatives.load_products(path=path)
+
+    result = alternatives.check_alternatives_for_product(
+        _eva_style_target(), [], curated=curated
+    )
+
+    retinol_group = _group_for(result, "Retinol")
+    (candidate,) = retinol_group["alternatives"]
+    assert candidate["same_product_note"] == (
+        "Contains neither ingredient of the flagged pair"
+    )
+
+
+def test_candidate_with_both_pair_ingredients_is_excluded_from_both_groups(tmp_path):
+    path = write_curated(
+        tmp_path,
+        [curated_entry(name="Has Both", ingredients=("Retinol", "Salicylic Acid"))],
+    )
+    curated = alternatives.load_products(path=path)
+
+    result = alternatives.check_alternatives_for_product(
+        _eva_style_target(), [], curated=curated
+    )
+
+    retinol_group = _group_for(result, "Retinol")
+    salicylic_group = _group_for(result, "Salicylic Acid")
+    assert retinol_group["alternatives"] == []
+    assert salicylic_group["alternatives"] == []
+
+
+def test_two_product_finding_has_no_same_product_partners(tmp_path):
+    path = write_curated(tmp_path, [curated_entry(name="Clean One")])
+    curated = alternatives.load_products(path=path)
+
+    target = skincare.Product("Night Serum", ("Retinol",))
+    result = alternatives.check_alternatives_for_product(
+        target, FLAGGING_COMPANION, curated=curated
+    )
+
+    (group,) = result["results"]
+    assert group["same_product_partners"] == []
+    (candidate,) = group["alternatives"]
+    assert candidate["same_product_note"] is None
+
+
 # --- Wording ---------------------------------------------------------------------
 
 

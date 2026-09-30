@@ -214,7 +214,9 @@ def _search_url(brand: str, name: str) -> str:
     )
 
 
-def _candidate_json(candidate: CuratedProduct, flagged_display: str) -> dict:
+def _candidate_json(
+    candidate: CuratedProduct, flagged_display: str, same_product_note: str | None
+) -> dict:
     return {
         "brand": candidate.brand,
         "name": candidate.name,
@@ -227,8 +229,27 @@ def _candidate_json(candidate: CuratedProduct, flagged_display: str) -> dict:
             f"Does not contain {flagged_display}. "
             "No documented interactions found with your other products."
         ),
+        # Set only when flagged_display was one half of a same-product pair
+        # (see _same_product_partners) -- states what the candidate's own
+        # stored ingredient list says about the OTHER half, never a claim
+        # about the candidate's overall safety.
+        "same_product_note": same_product_note,
         "search_url": _search_url(candidate.brand, candidate.name),
     }
+
+
+def _same_product_note(
+    flagged_name: str,
+    partners: tuple[str, ...],
+    candidate: CuratedProduct,
+    rules: skincare.Rules,
+) -> str | None:
+    if not partners:
+        return None
+    contains = [p for p in partners if _contains_any(candidate, _aliases_for(p, rules))]
+    if contains:
+        return f"Does not contain: {flagged_name}. Contains: {', '.join(contains)}"
+    return "Contains neither ingredient of the flagged pair"
 
 
 def _alternatives_for(
@@ -237,6 +258,7 @@ def _alternatives_for(
     other_products: list[skincare.Product],
     curated: tuple[CuratedProduct, ...],
     rules: skincare.Rules,
+    partners: tuple[str, ...] = (),
 ) -> dict:
     targets = _aliases_for(flagged_name, rules)
     # Category lookup uses every loaded entry, including ineligible
@@ -259,7 +281,8 @@ def _alternatives_for(
             candidate_name, candidate.ingredients, other_products, rules
         ):
             continue
-        alternatives.append(_candidate_json(candidate, flagged_name))
+        note = _same_product_note(flagged_name, partners, candidate, rules)
+        alternatives.append(_candidate_json(candidate, flagged_name, note))
         if len(alternatives) == MAX_ALTERNATIVES:
             break
 
@@ -267,6 +290,10 @@ def _alternatives_for(
         "flagged_ingredient": flagged_name,
         "product_name": product_name,
         "category": category,
+        # Non-empty only when flagged_name was one half of an incompatibility
+        # entirely within this same product -- the client uses this to show
+        # the "replacing this product removes both ingredients" banner.
+        "same_product_partners": list(partners),
         "alternatives": alternatives,
     }
 
@@ -294,6 +321,26 @@ def _flagged_ingredient_names(product_name: str, check_result: dict) -> list[str
     return names
 
 
+def _same_product_partners(
+    product_name: str, check_result: dict
+) -> dict[str, list[str]]:
+    """For each ingredient of `product_name` flagged by an incompatibility
+    entirely WITHIN this one product (both sides the same product), the
+    other ingredient(s) it was paired with -- keyed by normalized name, the
+    same key _flagged_ingredient_names' callers already look up by. A
+    two-product finding, or an irritant (no partner ingredient at all),
+    contributes nothing here."""
+    partners: dict[str, list[str]] = {}
+    for f in check_result["incompatibilities"]:
+        if f["product_a"] != product_name or f["product_b"] != product_name:
+            continue
+        key_a = skincare.normalize(f["ingredient_a"])
+        key_b = skincare.normalize(f["ingredient_b"])
+        partners.setdefault(key_a, []).append(f["ingredient_b"])
+        partners.setdefault(key_b, []).append(f["ingredient_a"])
+    return partners
+
+
 # --- Entry points --------------------------------------------------------------
 
 
@@ -309,8 +356,16 @@ def check_alternatives_for_product(
     rules = skincare.load_rules()
     check_result = skincare.check_ingredients([target, *regimen], rules)
     flagged = _flagged_ingredient_names(target.name, check_result)
+    same_product_partners = _same_product_partners(target.name, check_result)
     results = [
-        _alternatives_for(name, target.name, regimen, curated, rules)
+        _alternatives_for(
+            name,
+            target.name,
+            regimen,
+            curated,
+            rules,
+            partners=tuple(same_product_partners.get(skincare.normalize(name), [])),
+        )
         for name in flagged
     ]
     return {"results": results, "disclaimer": DISCLAIMER}
@@ -331,9 +386,17 @@ def check_alternatives_manual(
         flagged = _flagged_ingredient_names(product.name, check_result)
         if not flagged:
             continue
+        same_product_partners = _same_product_partners(product.name, check_result)
         other_products = [p for j, p in enumerate(products) if j != i]
         results.extend(
-            _alternatives_for(name, product.name, other_products, curated, rules)
+            _alternatives_for(
+                name,
+                product.name,
+                other_products,
+                curated,
+                rules,
+                partners=tuple(same_product_partners.get(skincare.normalize(name), [])),
+            )
             for name in flagged
         )
     return {"results": results, "disclaimer": DISCLAIMER}

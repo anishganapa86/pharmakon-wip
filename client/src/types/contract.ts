@@ -369,6 +369,11 @@ export interface SkincareAlternativeCandidate {
   date_checked: string;
   verified: boolean;
   checked_note: string; // e.g. "Does not contain Retinol. No documented..."
+  // Set only when this group's flagged_ingredient was one half of an
+  // incompatibility entirely within the user's own product (see
+  // SkincareAlternativesGroup.same_product_partners): what the candidate's
+  // own ingredient list says about the OTHER half. Never a safety claim.
+  same_product_note: string | null;
   search_url: string; // Google Shopping search, brand + name, no tracking
 }
 
@@ -379,6 +384,11 @@ export interface SkincareAlternativesGroup {
   // Only set when the flagged product itself happens to be a curated one --
   // never guessed otherwise, so alternatives then span every category.
   category: string | null;
+  // Non-empty only when flagged_ingredient was one half of an
+  // incompatibility entirely within this same product -- the other
+  // ingredient(s) of that pair. Drives the "replacing this product removes
+  // both ingredients" banner.
+  same_product_partners: string[];
   alternatives: SkincareAlternativeCandidate[]; // at most 5
 }
 
