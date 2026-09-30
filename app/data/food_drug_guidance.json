@@ -35,6 +35,15 @@
       "set_id": "38786a65-a12b-4479-b63c-b7c15410da04",
       "date_fetched": "2026-09-30",
       "verified": false
+    },
+    {
+      "substance": "atorvastatin",
+      "item": "grapefruit",
+      "quote": "Inform patients that the risk is also increased when taking certain types of medication or consuming large quantities of grapefruit juice and they should discuss all medication, both prescription and over the counter, with their healthcare provider.",
+      "label_field": "information_for_patients",
+      "set_id": "00afce9b-48c9-487a-a738-e359c005c707",
+      "date_fetched": "2026-09-30",
+      "verified": false
     }
   ],
   "_README": "Curated food/drink/timing quotes, one per (substance, item) pair. Never hand-written: every entry is produced by scripts/build_food_guidance_curated.py, which fetches the substance's own live openFDA label, extracts a qualifying sentence with the same logic app/api/food_guidance.py uses for the live path, and writes it verbatim. An entry with no quote is never created -- the loader (app/api/food_guidance.py's load_curated) rejects any entry it finds without one, as a second line of defense. Fields: substance (registry id), item, quote (<=300 chars, verbatim), label_field, set_id (openFDA set_id when available), date_fetched (ISO 8601), verified (stays false until a human opens the source)."
