@@ -350,6 +350,33 @@ def test_empty_result_when_nothing_qualifies(tmp_path):
     assert group["alternatives"] == []
 
 
+def test_candidate_with_an_internal_incompatible_pair_is_excluded(tmp_path):
+    # Neither retinol nor glycolic acid is the flagged ingredient here -- the
+    # candidate must still be excluded, because the re-check (via
+    # _introduces_new_flags -> skincare.check_ingredients) checks every pair
+    # WITHIN the candidate itself, not just against the user's other
+    # products.
+    path = write_curated(
+        tmp_path,
+        [
+            curated_entry(
+                name="Has Its Own Bad Pair",
+                ingredients=("Retinol", "Glycolic Acid", "Water"),
+            ),
+            curated_entry(name="Clean One", ingredients=("Water", "Glycerin")),
+        ],
+    )
+    curated = alternatives.load_products(path=path)
+
+    target = skincare.Product("Vitamin C Serum", ("Ascorbic Acid",))
+    other = [skincare.Product("Niacinamide Cream", ("Niacinamide",))]
+    result = alternatives.check_alternatives_for_product(target, other, curated=curated)
+
+    (group,) = result["results"]
+    names = {a["name"] for a in group["alternatives"]}
+    assert names == {"Clean One"}
+
+
 # --- Same-product pair: candidate note and banner flag --------------------------
 
 

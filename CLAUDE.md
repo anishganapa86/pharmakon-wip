@@ -11,7 +11,7 @@ copy you write.
 ## Commands
 
     source .venv/bin/activate       # .venv\Scripts\Activate.ps1 on Windows
-    pytest                          # 393 tests (1 xfail), must be green
+    pytest                          # 398 tests (1 xfail), must be green
     ruff check app tests --fix
     ruff format app tests
 
