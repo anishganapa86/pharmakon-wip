@@ -7,16 +7,9 @@
       "label_field": "when_using",
       "set_id": "00653b7c-7099-487e-9a01-e89781c21323",
       "date_fetched": "2026-09-30",
-      "verified": false
-    },
-    {
-      "substance": "metformin",
-      "item": "alcohol",
-      "quote": "Warn patients against excessive alcohol intake ( 7 ) Table 2 presents clinically significant drug interactions with metformin hydrochloride extended-release tablets.",
-      "label_field": "drug_interactions",
-      "set_id": "27f603ec-25e6-4270-a7a3-34a64a76f7ef",
-      "date_fetched": "2026-09-30",
-      "verified": false
+      "verified": false,
+      "product_name": "Ibuprofen Dye Free",
+      "dosage_form": "tablet"
     },
     {
       "substance": "warfarin",
@@ -25,16 +18,9 @@
       "label_field": "drug_interactions",
       "set_id": "2cbcc99d-9107-4d39-a1e9-e19305de8b5d",
       "date_fetched": "2026-09-30",
-      "verified": false
-    },
-    {
-      "substance": "diphenhydramine",
-      "item": "alcohol",
-      "quote": "When using this product: drowsiness may occur avoid alcoholic beverages alcohol, sedatives and tranquilizers may increase the drowsiness effect use caution when driving a motor vehicle or operating machinery excitability may occur, especially in children",
-      "label_field": "when_using",
-      "set_id": "38786a65-a12b-4479-b63c-b7c15410da04",
-      "date_fetched": "2026-09-30",
-      "verified": false
+      "verified": false,
+      "product_name": "Warfarin Sodium",
+      "dosage_form": "tablet"
     },
     {
       "substance": "atorvastatin",
@@ -43,25 +29,9 @@
       "label_field": "information_for_patients",
       "set_id": "00afce9b-48c9-487a-a738-e359c005c707",
       "date_fetched": "2026-09-30",
-      "verified": false
-    },
-    {
-      "substance": "acetaminophen",
-      "item": "alcohol",
-      "quote": "Severe liver damage may occur if you take more than 4,000 mg of acetaminophen in 24 hours with other drugs containing acetaminophen 3 or more alcoholic drinks every day while using this product Allergy alert: Acetaminophen may cause severe skin reactions.",
-      "label_field": "warnings",
-      "set_id": "0005aafa-08f8-4990-a54d-cc097195708f",
-      "date_fetched": "2026-09-30",
-      "verified": false
-    },
-    {
-      "substance": "metformin",
-      "item": "food",
-      "quote": "2 DOSAGE AND ADMINISTRATION Swallow metformin hydrochloride extended-release tablets whole and never crush, cut or chew ( 2.1 ) Starting dose: 500 mg orally once daily with the evening meal ( 2.1 ) Increase the dose in increments of 500 mg weekly, up to a maximum of 2,000 mg once daily with the even",
-      "label_field": "dosage_and_administration",
-      "set_id": "27f603ec-25e6-4270-a7a3-34a64a76f7ef",
-      "date_fetched": "2026-09-30",
-      "verified": false
+      "verified": false,
+      "product_name": "Atorvastatin calcium",
+      "dosage_form": "tablet"
     },
     {
       "substance": "sertraline",
@@ -70,23 +40,18 @@
       "label_field": "spl_medguide",
       "set_id": "03e1f274-fa9a-4461-b7c9-31ba6428c107",
       "date_fetched": "2026-09-30",
-      "verified": false
+      "verified": false,
+      "product_name": "Sertraline",
+      "dosage_form": "tablet"
     },
     {
-      "substance": "aspirin",
-      "item": "alcohol",
-      "quote": "The chance is higher if you: are age 60 or older have had stomach ulcers or bleeding problems take a blood thinning (anticoagulant) or steroid drug take other drugs containing prescription or nonprescription NSAIDs [aspirin, ibuprofen, naproxen, or others] have 3 or more alcoholic drinks every day w",
-      "label_field": "warnings",
-      "set_id": "0058175f-3474-40c3-a046-6cfaec86d84b",
-      "date_fetched": "2026-09-30",
-      "verified": false
-    },
-    {
-      "substance": "ibuprofen",
-      "item": "alcohol",
-      "quote": "The chance is higher if you: take more or for a longer time than directed take a blood thinning (anticoagulant) or steroid drug have had stomach ulcers or bleeding problems have 3 or more alcoholic drinks every day while using this product are age 60 or older take other drugs containing prescription",
-      "label_field": "warnings",
-      "set_id": "00653b7c-7099-487e-9a01-e89781c21323",
+      "substance": "metformin",
+      "item": "food",
+      "quote": "The recommended starting dose of metformin hydrochloride extended-release tablets is 500 mg orally once daily with the evening meal.",
+      "label_field": "dosage_and_administration",
+      "set_id": "27f603ec-25e6-4270-a7a3-34a64a76f7ef",
+      "product_name": "Metformin",
+      "dosage_form": "extended-release tablet",
       "date_fetched": "2026-09-30",
       "verified": false
     }
