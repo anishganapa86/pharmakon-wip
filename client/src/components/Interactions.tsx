@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 import { checkInteractions, fetchInteractionCheck } from "../api";
-import type { Interaction, InteractionCheckResponse } from "../types/contract";
+import type {
+  DuplicateIngredientFinding,
+  Interaction,
+  InteractionCheckResponse,
+} from "../types/contract";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -100,6 +104,28 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
   );
 }
 
+function DuplicateIngredientCard({
+  finding,
+}: {
+  finding: DuplicateIngredientFinding;
+}) {
+  return (
+    <div className="skincare-flag skincare-flag-caution">
+      <p>{finding.message}</p>
+      {finding.strength_note && (
+        <p className="muted small">{finding.strength_note}</p>
+      )}
+      <ul className="effect-tags">
+        {finding.products.map((p) => (
+          <li key={p.product_id} className="effect-tag">
+            {p.name} ({p.kind === "schedule" ? "scheduled" : "logged today"})
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function CopyForPharmacist({ result }: { result: InteractionCheckResponse }) {
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +163,9 @@ function Results({ result }: { result: InteractionCheckResponse }) {
           ))}
         </ul>
       )}
+      {result.duplicate_ingredients.map((finding, i) => (
+        <DuplicateIngredientCard key={i} finding={finding} />
+      ))}
       {result.interactions.length === 0 ? (
         <p className="muted">{result.message}</p>
       ) : (

@@ -505,14 +505,39 @@ export interface Interaction {
   message: string;
 }
 
+/** One product's mention on a DuplicateIngredientFinding card. */
+export interface DuplicateIngredientProduct {
+  product_id: string;
+  name: string;
+  kind: "dose" | "schedule"; // logged in the last 24h, or on the schedule
+}
+
+/** "Same ingredient in more than one product": a lookup over the active
+ * regimen's own products, never a model -- no severity, no harm claim, and
+ * this never creates or feeds an alert. Only on the regimen (GET) response;
+ * always [] on a manual (POST) check, which has no product identity to
+ * compare. */
+export interface DuplicateIngredientFinding {
+  ingredient_name: string;
+  product_count: number; // >= 2; distinct products, deduped by product_id
+  products: DuplicateIngredientProduct[];
+  message: string;
+  // Set when any contributing product's per-unit strength isn't known --
+  // never computed from an assumed/guessed strength.
+  strength_note: string | null;
+}
+
 export interface InteractionCheckResponse {
   interactions: Interaction[];
   checked_pairs: number;
   // Never silently dropped: unresolved ingredient/substance names and an
   // unreachable openFDA are both surfaced here.
   unchecked_reason: string[];
-  // Set to the exact required sentence when `interactions` is empty, else null.
+  // The exact required sentence when checked_pairs is 0 (nothing could be
+  // paired at all), the exact "no documented interactions" sentence when
+  // pairs were checked but none were found, else null.
   message: string | null;
+  duplicate_ingredients: DuplicateIngredientFinding[];
 }
 
 // ---------------------------------------------------------------------------
