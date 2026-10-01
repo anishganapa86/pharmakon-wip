@@ -17,6 +17,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api import interactions, main
+from app.api import openfda as openfda_module
 from app.api.db import Base
 from app.registry.loader import load_registry
 
@@ -178,6 +179,34 @@ def test_label_text_not_mentioning_the_other_drug_is_not_flagged(client, openfda
     assert body["interactions"] == []
 
 
+def test_two_nonregistry_drugs_label_mention_produces_a_finding(client, openfda):
+    # Neither donepezil nor memantine is a registry substance -- each is
+    # still checked from its own FDA label, by its normalized, salt-stripped
+    # generic name ("Donepezil Hydrochloride" -> "donepezil").
+    openfda.labels["DONEPEZIL"] = (
+        "Memantine: concomitant administration of donepezil and memantine "
+        "did not affect the pharmacokinetics of either drug."
+    )
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    label_findings = [
+        f for f in body["interactions"] if f["source_type"] == "fda_label"
+    ]
+    assert len(label_findings) == 1
+    finding = label_findings[0]
+    assert finding["substance_a"]["id"] == "label:donepezil"
+    assert finding["substance_b"]["id"] == "label:memantine"
+    assert "Memantine" in finding["quoted_text"]
+    assert len(finding["quoted_text"]) <= 300
+    assert finding["verified"] is True
+    assert finding["severity"] is None
+    # A non-registry ingredient has no curated rules and no PK curve.
+    assert finding["effect"] is None
+    assert finding["recommendation"] is None
+    assert finding["overlap"] is None
+
+
 def test_class_word_match_uses_class_headline_wording(client, openfda):
     # loratadine + lisinopril: no curated rule covers this pair either, so a
     # qualifying class-word match (a combination-use sentence, no literal
@@ -262,13 +291,85 @@ def test_nonempty_result_has_no_top_level_message(client, openfda):
     assert body["message"] is None
 
 
+def test_zero_checked_pairs_replaces_empty_message(client, openfda):
+    # Only one substance (nothing to pair against) -- checked_pairs is 0,
+    # which is a different situation from "pairs were checked and came up
+    # clean", and must not read as though it were.
+    body = manual_check(client, ["ibuprofen"])
+
+    assert body["checked_pairs"] == 0
+    assert body["message"] == "We couldn't check any pairs for this regimen."
+
+
+def test_empty_regimen_also_gets_the_no_pairs_message(client, openfda):
+    body = client.get("/users/default/interaction-check").json()
+
+    assert body["checked_pairs"] == 0
+    assert body["message"] == "We couldn't check any pairs for this regimen."
+
+
+# --- Medications only: skincare/cosmetic products are excluded -----------------
+
+
+def test_skincare_product_logged_today_produces_no_unresolved_entries(client, openfda):
+    search_body = client.get("/products/search", params={"q": "TIRTIR"}).json()
+    product = next(
+        p for p in search_body["results"] if p["source"] == "skincare_catalog"
+    )
+    log(client, product["id"], hours_ago=1)
+
+    body = client.get("/users/default/interaction-check").json()
+
+    assert not any("wasn't recognized" in r for r in body["unchecked_reason"])
+    assert body["checked_pairs"] == 0
+
+
+def test_medication_product_with_unresolvable_ingredient_still_unchecked(
+    client, openfda
+):
+    # A name with no letters or digits at all reduces to nothing even after
+    # normalization -- genuinely unresolvable, not helped by the new
+    # label-by-generic-name fallback (task 2), unlike a real drug name.
+    openfda_module._discovered["fda_mystery"] = openfda_module.OpenFDAProduct(
+        id="fda_mystery",
+        brand_name="Mystery Pill",
+        ingredients=(openfda_module.OpenFDAIngredient("###"),),
+        route="ORAL",
+        matched_via="name",
+    )
+    log(client, "fda_mystery", hours_ago=1)
+
+    body = client.get("/users/default/interaction-check").json()
+
+    assert any("'###' wasn't recognized" in r for r in body["unchecked_reason"])
+
+
 # --- Unresolved ingredients ------------------------------------------------------
 
 
-def test_unrecognized_ingredient_appears_under_unchecked_reason(client, openfda):
+def test_unrecognized_ingredient_with_no_label_appears_under_unchecked_reason(
+    client, openfda
+):
+    # "Unobtainium" isn't a registry substance, but it's still checked from
+    # its own (normalized) FDA label now -- openfda has no label configured
+    # for it, so it surfaces as "no label found", not "wasn't recognized".
     body = manual_check(client, ["ibuprofen", "Unobtainium"])
 
-    assert any("Unobtainium" in reason for reason in body["unchecked_reason"])
+    assert any(
+        "no label found" in reason.lower() and "unobtainium" in reason.lower()
+        for reason in body["unchecked_reason"]
+    )
+
+
+def test_name_that_normalizes_to_nothing_is_wasnt_recognized(client, openfda):
+    # A name that reduces to nothing after normalization (no letters/digits
+    # at all) has no generic name to even look a label up by -- genuinely
+    # unresolved, not a "no label found" case.
+    body = manual_check(client, ["ibuprofen", "***"])
+
+    assert any(
+        "'***' wasn't recognized" in reason for reason in body["unchecked_reason"]
+    )
 
 
 # --- openFDA unreachable ---------------------------------------------------------
@@ -306,13 +407,21 @@ def test_overlap_absent_when_one_substance_is_unmodeled(client, openfda):
     # ethanol is zero-order kinetics (UnsupportedKinetics), so its
     # modelability is never "full" -- compute_overlap must refuse to guess a
     # window for it no matter what the other substance in the pair looks like.
+    #
+    # Metformin is logged as a real oral openFDA-discovered product here,
+    # not via POST /products/user-entered: that endpoint always marks
+    # whatever's entered as topical ("the skincare tooling"), which
+    # check_regimen now correctly excludes from interaction checks
+    # entirely -- it's not a valid way to log an oral medication anymore.
     log(client, "prod_example_beer", hours_ago=1)  # ethanol
-    r = client.post(
-        "/products/user-entered",
-        json={"name": "Metformin 500mg", "ingredients": ["Metformin"]},
+    openfda_module._discovered["fda_metformin"] = openfda_module.OpenFDAProduct(
+        id="fda_metformin",
+        brand_name="Metformin 500mg",
+        ingredients=(openfda_module.OpenFDAIngredient("Metformin"),),
+        route="ORAL",
+        matched_via="name",
     )
-    assert r.status_code == 201, r.text
-    log(client, r.json()["id"], hours_ago=1)
+    log(client, "fda_metformin", hours_ago=1)
 
     body = client.get("/users/default/interaction-check").json()
 
@@ -362,3 +471,90 @@ def test_get_interaction_check_ignores_doses_older_than_24h(client, openfda):
 def test_manual_check_requires_at_least_one_name(client, openfda):
     r = client.post("/interaction-check", json={"names": []})
     assert r.status_code == 422
+
+
+# --- "Same ingredient in more than one product" --------------------------------
+
+
+def _discover_oral(product_id, brand_name, ingredient_names):
+    openfda_module._discovered[product_id] = openfda_module.OpenFDAProduct(
+        id=product_id,
+        brand_name=brand_name,
+        ingredients=tuple(
+            openfda_module.OpenFDAIngredient(n) for n in ingredient_names
+        ),
+        route="ORAL",
+        matched_via="name",
+    )
+
+
+def test_duplicate_ingredient_across_three_products_yields_a_card_for_donepezil(
+    client, openfda
+):
+    _discover_oral("fda_donepezil", "Donepezil", ["Donepezil"])
+    _discover_oral(
+        "fda_memantine_donepezil",
+        "Memantine and Donepezil",
+        ["Memantine", "Donepezil"],
+    )
+    _discover_oral("fda_namzaric", "Namzaric", ["Memantine", "Donepezil"])
+    log(client, "fda_donepezil", hours_ago=1)
+    log(client, "fda_memantine_donepezil", hours_ago=1)
+    r = client.post(
+        "/users/default/schedule",
+        json={"product_id": "fda_namzaric", "frequency": "daily", "times": ["09:00"]},
+    )
+    assert r.status_code == 201, r.text
+
+    body = client.get("/users/default/interaction-check").json()
+
+    donepezil_cards = [
+        c for c in body["duplicate_ingredients"] if c["ingredient_name"] == "Donepezil"
+    ]
+    assert len(donepezil_cards) == 1
+    card = donepezil_cards[0]
+    assert card["product_count"] == 3
+    names_by_kind = {p["name"]: p["kind"] for p in card["products"]}
+    assert set(names_by_kind) == {"Donepezil", "Memantine and Donepezil", "Namzaric"}
+    assert names_by_kind["Namzaric"] == "schedule"
+    assert names_by_kind["Donepezil"] == "dose"
+    assert names_by_kind["Memantine and Donepezil"] == "dose"
+    assert card["message"] == (
+        "Donepezil appears in 3 of your products: Donepezil, Memantine and "
+        "Donepezil, Namzaric. Ask a pharmacist to confirm this is intended."
+    )
+    # openFDA ingredient strengths are always None (app/api/openfda.py never
+    # guesses one), so the strength-unknown caveat must be present.
+    assert card["strength_note"] == (
+        "The strength of each product isn't known here, so we can't add "
+        "up the total amount."
+    )
+    # No severity, no harm claim, and this never creates an alert.
+    assert "severity" not in card
+    assert client.get("/users/default/alerts").json() == []
+
+
+def test_two_unrelated_drugs_yield_no_duplicate_card(client, openfda):
+    log(client, "prod_advil_200", hours_ago=1)  # ibuprofen
+    log(client, "prod_zyrtec_10", hours_ago=1)  # cetirizine
+
+    body = client.get("/users/default/interaction-check").json()
+
+    assert body["duplicate_ingredients"] == []
+
+
+def test_same_product_scheduled_twice_is_one_product_not_a_duplicate(client, openfda):
+    for _ in range(2):
+        r = client.post(
+            "/users/default/schedule",
+            json={
+                "product_id": "prod_advil_200",
+                "frequency": "daily",
+                "times": ["09:00"],
+            },
+        )
+        assert r.status_code == 201, r.text
+
+    body = client.get("/users/default/interaction-check").json()
+
+    assert body["duplicate_ingredients"] == []
