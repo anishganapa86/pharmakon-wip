@@ -36,22 +36,27 @@ const EMPTY_ADD_DRAFT = {
 };
 
 interface Props {
-  userId: string;
   selected: ProductSearchResult | null;
   onSelect: (product: ProductSearchResult | null) => void;
   recent: RecentProduct[];
-  // Called once a new "My products" entry is saved -- the caller logs it
-  // right away rather than waiting for a separate submit.
-  onSavedProductLogged: (product: ProductSearchResult) => void;
+  // Both optional, and only together: when provided, a search with no
+  // results offers "Add this product with its ingredient list", saving to
+  // the user's own library and calling onSavedProductLogged right away.
+  // When either is omitted (e.g. the medication schedule's product pick),
+  // that option is hidden entirely and a no-results search just says so --
+  // this is a plain search pick, with no "log it right away" to make sense of.
+  userId?: string;
+  onSavedProductLogged?: (product: ProductSearchResult) => void;
 }
 
 export function ProductSearch({
-  userId,
   selected,
   onSelect,
   recent,
+  userId,
   onSavedProductLogged,
 }: Props) {
+  const canAddProduct = userId !== undefined && onSavedProductLogged !== undefined;
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProductSearchResult[]>([]);
   const [total, setTotal] = useState(0);
@@ -158,6 +163,7 @@ export function ProductSearch({
 
   async function saveAndLogProduct(e: React.FormEvent) {
     e.preventDefault();
+    if (!userId || !onSavedProductLogged) return;
     if (!addDraft.brand.trim() || !addDraft.name.trim() || addPreview.length === 0) {
       return;
     }
@@ -242,6 +248,8 @@ export function ProductSearch({
             <li className="search-status">
               {searching ? (
                 "Searching…"
+              ) : !canAddProduct ? (
+                "No products found. Try a brand or generic name."
               ) : (
                 <>
                   {`No products found for "${query.trim()}". Try searching by ` +
