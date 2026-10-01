@@ -29,6 +29,7 @@ from . import (
     food_guidance,
     interactions,
     logger,
+    my_products,
     openfda,
     schedule,
     service,
@@ -127,13 +128,21 @@ class DoseRequest(BaseModel):
     quantity: float = Field(gt=0)
 
 
-def _find_product(product_id: str):
-    """The synthetic catalog, a product discovered via openFDA search, or one
-    the user pasted an ingredient list for (app/api/skincare.py)."""
+def _find_product(product_id: str, session: Session, user_id: str):
+    """The synthetic catalog, a product discovered via openFDA search, a
+    curated skincare entry (app/api/alternatives.py), one the user saved to
+    their own library (app/api/my_products.py), or one they pasted an
+    ingredient list for in the search box (app/api/skincare.py)."""
     product = PRODUCTS.get(product_id)
     if product is not None:
         return product
     product = openfda.get_discovered(product_id)
+    if product is not None:
+        return product
+    product = alternatives.get_curated_product(product_id)
+    if product is not None:
+        return product
+    product = my_products.get_loggable(session, user_id, product_id)
     if product is not None:
         return product
     return skincare.get_user_product(product_id)
@@ -159,7 +168,7 @@ def log_dose(
     registry: Reg,
     now: Now,
 ) -> dict:
-    product = _find_product(body.product_id)
+    product = _find_product(body.product_id, session, user_id)
     if product is None:
         raise HTTPException(404, f"unknown product {body.product_id!r}")
 
@@ -243,7 +252,7 @@ def _get_schedule(session: Session, user_id: str, schedule_id: str):
 def create_schedule(
     body: ScheduleRequest, user_id: UserId, session: Db, registry: Reg, now: Now
 ) -> dict:
-    product = _find_product(body.product_id)
+    product = _find_product(body.product_id, session, user_id)
     if product is None:
         raise HTTPException(404, f"unknown product {body.product_id!r}")
     ingredients = decompose(product, registry)
@@ -443,19 +452,29 @@ def get_alerts(
 # --- 4. GET /products/search -------------------------------------------------------
 
 
+CURATED_SKINCARE_LABEL = "From our curated skincare set"
+CURATED_SKINCARE_UNVERIFIED_NOTE = (
+    "Ingredient list copied from packaging; not yet independently verified"
+)
+MY_PRODUCT_LABEL = "My product (entered by you)"
+
+
 @app.get("/products/search")
-def search_products(q: str, registry: Reg) -> dict:
-    """Synthetic catalog first, then openFDA by name, then by what it treats.
+def search_products(q: str, registry: Reg, session: Db) -> dict:
+    """Synthetic catalog first, then curated skincare entries, then the
+    user's own saved products, then openFDA by name, then by what it treats.
 
     People search for what they HAVE ("eczema"), not just what they TAKE
     ("hydrocortisone"), so a name-only search misses them. When the catalog
     and name search together return fewer than
     `openfda.MIN_RESULTS_BEFORE_CONDITION_FALLBACK` hits, this also searches
     the label's `indications_and_usage` and `purpose` fields. Every result
-    carries `source` ("catalog" | "openfda") so the UI can mark the synthetic
-    catalog's unverified strengths as distinct from real label data, and every
-    ingredient's `unmodeled_reason` already says whether it can be modeled or
-    is only logged (see docs/api-contract.md).
+    carries `source` ("catalog" | "skincare_catalog" | "my_product" |
+    "openfda") so the UI can mark the synthetic catalog's unverified
+    strengths, and a curated/saved product's own verification state,
+    distinctly from real label data, and every ingredient's
+    `unmodeled_reason` already says whether it can be modeled or is only
+    logged (see docs/api-contract.md).
 
     The response is capped at `openfda.RESULT_LIMIT` (10) results, with
     `total` carrying the full pre-cap count so the client can show "Showing X
@@ -467,7 +486,12 @@ def search_products(q: str, registry: Reg) -> dict:
     results: list[dict] = []
     seen: set[str] = set()
 
-    def add(product, source: str) -> None:
+    def add(
+        product,
+        source: str,
+        label: str | None = None,
+        verification_note: str | None = None,
+    ) -> None:
         key = product.brand_name.strip().lower()
         if key in seen:
             return
@@ -492,11 +516,33 @@ def search_products(q: str, registry: Reg) -> dict:
                 "source": source,
                 # The synthetic catalog doesn't track route.
                 "route": getattr(product, "route", None),
+                "label": label,
+                "verification_note": verification_note,
             }
         )
 
     for product in search(q, registry):
         add(product, "catalog")
+
+    for curated in alternatives.search_curated(q):
+        add(
+            curated,
+            "skincare_catalog",
+            label=CURATED_SKINCARE_LABEL,
+            verification_note=(
+                None if curated.verified else CURATED_SKINCARE_UNVERIFIED_NOTE
+            ),
+        )
+
+    for record in my_products.search(
+        my_products.list_for_user(session, DEFAULT_USER), q
+    ):
+        add(
+            my_products.as_loggable(record),
+            "my_product",
+            label=MY_PRODUCT_LABEL,
+            verification_note=my_products.UNVERIFIED_NOTE,
+        )
 
     try:
         for product in openfda.search_by_name(q):
@@ -899,3 +945,57 @@ def create_user_entered_product(body: UserEnteredProductRequest, registry: Reg) 
         "source": "user_entered",
         "route": "TOPICAL",
     }
+
+
+# --- "My products": a persistent per-user skincare library ----------------------
+#
+# See app/api/my_products.py. Distinct from POST /products/user-entered above:
+# that one is in-process-only and unscoped by user; these rows persist in the
+# DB, are searchable later, and are never offered to anyone -- including the
+# user who entered them -- as an alternative candidate (app/api/alternatives.py
+# reads only app/data/skincare_products.json).
+
+
+class MyProductRequest(BaseModel):
+    brand: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    category: Literal["cleanser", "toner", "serum", "moisturizer", "sunscreen", "other"]
+    raw_text: str = Field(min_length=1)
+
+
+@app.post("/users/{id}/my-products", status_code=201)
+def create_my_product(
+    body: MyProductRequest, user_id: UserId, session: Db, now: Now
+) -> dict:
+    try:
+        record = my_products.create(
+            session,
+            user_id,
+            brand=body.brand,
+            name=body.name,
+            category=body.category,
+            raw_text=body.raw_text,
+            created_at=now,
+        )
+    except my_products.EmptyIngredientListError:
+        return _error(
+            422,
+            "validation_error",
+            "raw_text: no ingredients found after splitting",
+        )
+    session.commit()
+    return my_products.product_json(record)
+
+
+@app.get("/users/{id}/my-products")
+def list_my_products(user_id: UserId, session: Db) -> list[dict]:
+    return [
+        my_products.product_json(r) for r in my_products.list_for_user(session, user_id)
+    ]
+
+
+@app.delete("/users/{id}/my-products/{product_id}", status_code=204)
+def delete_my_product(product_id: str, user_id: UserId, session: Db) -> None:
+    if not my_products.delete(session, user_id, product_id):
+        raise HTTPException(404, f"unknown product {product_id!r}")
+    session.commit()

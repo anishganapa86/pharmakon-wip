@@ -42,6 +42,7 @@ from urllib.parse import urlencode
 
 from ..registry.loader import Registry
 from . import skincare
+from .products import LabelIngredient
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "skincare_products.json"
 
@@ -130,6 +131,86 @@ def load_products(path: Path | None = None) -> tuple[CuratedProduct, ...]:
 
 def clear_cache() -> None:
     load_products.cache_clear()
+
+
+# --- Search / logging adapter ---------------------------------------------------
+#
+# A curated entry shown in product search or logged as a dose needs none of
+# the eligibility gating _is_candidate_eligible enforces -- that gate is only
+# about being offered to someone ELSE as a replacement, never about being
+# found or logged by the person searching for the product they already own.
+# "Include packaging-type entries here, since this is about logging, not
+# alternatives" (see app/data/skincare_products.json's own entries, all
+# source_type "packaging").
+
+_ID_SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _slug(s: str) -> str:
+    return _ID_SLUG_RE.sub("_", s.lower()).strip("_")
+
+
+def _curated_product_id(c: CuratedProduct) -> str:
+    return f"skincare_{_slug(c.brand)}_{_slug(c.name)}"
+
+
+@dataclass(frozen=True)
+class CuratedSkincareProduct:
+    """A curated entry (app/data/skincare_products.json), shaped so
+    app.api.products.decompose() and app.api.main's dose-logging path can
+    treat it like any other loggable product. Topical/unmodeled, never a PK
+    curve: registry.resolve() never matches a cosmetic ingredient name --
+    the same reason app.api.openfda.OpenFDAProduct's topical ingredients
+    never produce one (see app/registry/loader.py's alias list, which has
+    no skincare-adjacent names)."""
+
+    id: str
+    brand_name: str
+    ingredients: tuple[LabelIngredient, ...]
+    topical_ingredients: tuple[str, ...]
+    verified: bool
+    route: str = "TOPICAL"
+
+
+def as_loggable_product(c: CuratedProduct) -> CuratedSkincareProduct:
+    return CuratedSkincareProduct(
+        id=_curated_product_id(c),
+        brand_name=f"{c.brand} {c.name}".strip(),
+        ingredients=tuple(
+            LabelIngredient(name=n, strength_mg=None) for n in c.ingredients
+        ),
+        topical_ingredients=c.ingredients,
+        verified=c.verified,
+    )
+
+
+def search_curated(
+    q: str, curated: tuple[CuratedProduct, ...] | None = None
+) -> list[CuratedSkincareProduct]:
+    """Case-insensitive substring match on brand or name, every loaded
+    entry -- including an unverified packaging one. This is about finding
+    and logging a product the user already owns, not about offering it to
+    someone else as a replacement; see _is_candidate_eligible for that
+    separate, stricter gate."""
+    curated = load_products() if curated is None else curated
+    needle = q.strip().lower()
+    if not needle:
+        return []
+    return [
+        as_loggable_product(c)
+        for c in curated
+        if needle in c.brand.lower() or needle in c.name.lower()
+    ]
+
+
+def get_curated_product(
+    product_id: str, curated: tuple[CuratedProduct, ...] | None = None
+) -> CuratedSkincareProduct | None:
+    curated = load_products() if curated is None else curated
+    for c in curated:
+        if _curated_product_id(c) == product_id:
+            return as_loggable_product(c)
+    return None
 
 
 # --- Matching ------------------------------------------------------------------

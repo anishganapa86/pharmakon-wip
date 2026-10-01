@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api import main
+from app.api import alternatives, main
 from app.api.db import Base
 from app.registry.loader import Registry, load_registry
 
@@ -456,6 +456,8 @@ def test_search_matches_brand_name_case_insensitively(client):
         "ingredients",
         "has_unmodeled_ingredients",
         "source",
+        "label",
+        "verification_note",
         "route",
     }
     assert product["source"] == "catalog"
@@ -498,6 +500,92 @@ def test_blank_search_is_422(client, q):
     r = client.get("/products/search", params={"q": q})
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "validation_error"
+
+
+# --- Curated skincare products in search and logging -----------------------------
+#
+# app/data/skincare_products.json, via app/api/alternatives.search_curated --
+# the real file's committed TIRTIR entries (brand match, case-insensitive).
+
+
+def test_search_tirtir_returns_three_curated_entries(client):
+    body = client.get("/products/search", params={"q": "tirtir"}).json()
+    names = {
+        p["brand_name"] for p in body["results"] if p["source"] == "skincare_catalog"
+    }
+    assert names == {
+        "TIRTIR Milk Skin Toner",
+        "TIRTIR SOS Serum",
+        "TIRTIR Ceramic Cream",
+    }
+
+
+def test_curated_skincare_result_is_labeled_and_unverified(client):
+    body = client.get("/products/search", params={"q": "TIRTIR"}).json()
+    result = next(p for p in body["results"] if p["source"] == "skincare_catalog")
+    assert result["label"] == "From our curated skincare set"
+    assert result["verification_note"] == (
+        "Ingredient list copied from packaging; not yet independently verified"
+    )
+
+
+def test_curated_search_result_still_ineligible_as_an_alternative(client):
+    """Searchable/loggable (this feature) is independent of being offered
+    to someone else as an alternative candidate -- that's still gated by
+    verified + reference_url, unchanged (app/api/alternatives.py)."""
+    tirtir = next(c for c in alternatives.load_products() if c.brand == "TIRTIR")
+    assert tirtir.verified is False
+    assert alternatives._is_candidate_eligible(tirtir) is False
+
+
+def _find_curated(client, q, brand_name):
+    body = client.get("/products/search", params={"q": q}).json()
+    return next(
+        p
+        for p in body["results"]
+        if p["source"] == "skincare_catalog" and p["brand_name"] == brand_name
+    )
+
+
+def test_logging_a_curated_skincare_product_stores_its_ingredients(client):
+    product = _find_curated(client, "TIRTIR", "TIRTIR Milk Skin Toner")
+
+    r = client.post(
+        "/users/default/doses",
+        json={"product_id": product["id"], "taken_at": iso(0), "quantity": 1},
+    )
+    assert r.status_code == 201, r.text
+
+    (dose,) = client.get("/users/default/doses").json()
+    assert dose["product_name"] == "TIRTIR Milk Skin Toner"
+    assert len(dose["ingredients"]) == len(product["ingredients"])
+    # Cosmetic ingredient names never resolve against the PK registry --
+    # logged only, never modeled.
+    assert all(i["unmodeled_reason"] == "unmatched" for i in dose["ingredients"])
+
+
+def test_curated_skincare_dose_never_produces_a_curve(client):
+    product = _find_curated(client, "TIRTIR", "TIRTIR Milk Skin Toner")
+    client.post(
+        "/users/default/doses",
+        json={"product_id": product["id"], "taken_at": iso(0), "quantity": 1},
+    )
+
+    (dose,) = client.get("/users/default/doses").json()
+    # No substance_id at all on any ingredient -- there is nothing a curve
+    # could ever be requested for.
+    assert all(i["substance_id"] is None for i in dose["ingredients"])
+
+
+def test_logged_curated_skincare_product_appears_in_skincare_check(client):
+    product = _find_curated(client, "TIRTIR", "TIRTIR Milk Skin Toner")
+    client.post(
+        "/users/default/doses",
+        json={"product_id": product["id"], "taken_at": iso(0), "quantity": 1},
+    )
+
+    check = client.get("/users/default/skincare-check").json()
+    assert any(p["name"] == "TIRTIR Milk Skin Toner" for p in check["products"])
 
 
 # --- GET /users/{id}/doses -------------------------------------------------------

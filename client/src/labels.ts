@@ -48,9 +48,14 @@ export function notModeledReason(route: string | null | undefined): string {
     : "Logged — not yet in our database";
 }
 
-/** "Demo data, unverified" for the synthetic catalog; nothing for real openFDA data. */
-export function sourceLabel(p: Pick<ProductSearchResult, "source">): string | null {
-  return p.source === "catalog" ? "Demo data — unverified" : null;
+/** "Demo data, unverified" for the synthetic catalog; the server's own
+ * badge text for a curated-skincare or my-product result (see `label` on
+ * ProductSearchResult); nothing for real openFDA data. */
+export function sourceLabel(
+  p: Pick<ProductSearchResult, "source" | "label">,
+): string | null {
+  if (p.source === "catalog") return "Demo data — unverified";
+  return p.label;
 }
 
 // --- Daily log / timeline ----------------------------------------------------

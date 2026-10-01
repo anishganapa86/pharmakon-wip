@@ -18,13 +18,24 @@ from __future__ import annotations
 
 import hashlib
 import re
+import sys
 import time
 import urllib.robotparser
 from dataclasses import dataclass
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup, NavigableString, Tag
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from app.api.skincare import (  # noqa: E402
+    SplitResult,  # noqa: F401 -- re-exported for scripts/import_skincare_product.py
+    normalize_line_endings,
+    split_ingredients,
+    split_ingredients_detailed,  # noqa: F401 -- re-exported, see above
+)
 
 USER_AGENT = "PharmakonSkincareImporter/1.0 (non-commercial research tool)"
 REQUEST_TIMEOUT = 15.0
@@ -52,86 +63,8 @@ RECOGNIZED_CATEGORIES = frozenset(
 RECOGNIZED_SOURCE_TYPES = frozenset({"brand", "retailer", "packaging"})
 
 
-def normalize_line_endings(text: str) -> str:
-    """CRLF/CR -> LF, so stored strings never carry \\r regardless of the
-    platform a page or a pasted file came from."""
-    return text.replace("\r\n", "\n").replace("\r", "\n")
-
-
 def sha256_hex(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
-
-
-_TRAILING_CODE_RE = re.compile(r"\(\s*CODE\b[^)]*\)\s*$", re.IGNORECASE)
-
-
-@dataclass
-class SplitResult:
-    ingredients: list[str]
-    # The exact trailing batch-code parenthetical (e.g. "(CODE FIL:
-    # N70042172/1)"), if one was found and excluded from `ingredients`. It
-    # stays in the caller's raw_ingredient_text; only the parsed array drops
-    # it, since a batch code is packaging boilerplate, not an ingredient.
-    excluded_trailing_code: str | None
-
-
-def _split_top_level(text: str) -> list[str]:
-    """Split on commas, bullets (•), and newlines -- except a comma
-    inside parentheses ("Glycerin (Kosher, Vegetable)" is one ingredient),
-    or a comma with a digit immediately on both sides, which is part of a
-    chemical name ("1,2-Hexanediol") rather than a separator."""
-    parts: list[str] = []
-    current: list[str] = []
-    depth = 0
-    n = len(text)
-    for i, ch in enumerate(text):
-        if ch == "(":
-            depth += 1
-            current.append(ch)
-        elif ch == ")":
-            depth = max(0, depth - 1)
-            current.append(ch)
-        elif ch == "," and depth == 0:
-            prev_digit = i > 0 and text[i - 1].isdigit()
-            next_digit = i + 1 < n and text[i + 1].isdigit()
-            if prev_digit and next_digit:
-                current.append(ch)
-            else:
-                parts.append("".join(current))
-                current = []
-        elif ch in ("•", "\n") and depth == 0:
-            parts.append("".join(current))
-            current = []
-        else:
-            current.append(ch)
-    parts.append("".join(current))
-    return parts
-
-
-def split_ingredients_detailed(raw_text: str) -> SplitResult:
-    """Verbatim split: preserves source spelling, case, and order. Only
-    whitespace is collapsed and a trailing batch code / trailing period on
-    the last item are trimmed -- nothing is reworded, added, or reordered."""
-    text = normalize_line_endings(raw_text)
-    stripped = text.rstrip()
-    code_match = _TRAILING_CODE_RE.search(stripped)
-    excluded_code: str | None = None
-    working = text
-    if code_match:
-        excluded_code = code_match.group(0).strip()
-        working = stripped[: code_match.start()]
-
-    raw_parts = _split_top_level(working)
-    cleaned = [re.sub(r"\s+", " ", p).strip() for p in raw_parts]
-    cleaned = [p for p in cleaned if p]
-    if cleaned and cleaned[-1].endswith("."):
-        cleaned[-1] = cleaned[-1][:-1].rstrip()
-
-    return SplitResult(cleaned, excluded_code)
-
-
-def split_ingredients(raw_text: str) -> list[str]:
-    return split_ingredients_detailed(raw_text).ingredients
 
 
 class HostRateLimiter:

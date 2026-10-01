@@ -1,12 +1,17 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { createUserEnteredProduct, searchProducts } from "../api";
+import { createMyProduct, searchProducts } from "../api";
+import { splitIngredientsPreview } from "../ingredientSplit";
 import {
   ingredientLabel,
   productModelable,
   sourceLabel,
   truncateProductName,
 } from "../labels";
-import type { ProductSearchResult, RecentProduct } from "../types/contract";
+import type {
+  MyProductCategory,
+  ProductSearchResult,
+  RecentProduct,
+} from "../types/contract";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -14,13 +19,39 @@ function errorMessage(e: unknown): string {
 
 const DEBOUNCE_MS = 200;
 
+const CATEGORY_OPTIONS: MyProductCategory[] = [
+  "cleanser",
+  "toner",
+  "serum",
+  "moisturizer",
+  "sunscreen",
+  "other",
+];
+
+const EMPTY_ADD_DRAFT = {
+  brand: "",
+  name: "",
+  category: "other" as MyProductCategory,
+  rawText: "",
+};
+
 interface Props {
+  userId: string;
   selected: ProductSearchResult | null;
   onSelect: (product: ProductSearchResult | null) => void;
   recent: RecentProduct[];
+  // Called once a new "My products" entry is saved -- the caller logs it
+  // right away rather than waiting for a separate submit.
+  onSavedProductLogged: (product: ProductSearchResult) => void;
 }
 
-export function ProductSearch({ selected, onSelect, recent }: Props) {
+export function ProductSearch({
+  userId,
+  selected,
+  onSelect,
+  recent,
+  onSavedProductLogged,
+}: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProductSearchResult[]>([]);
   const [total, setTotal] = useState(0);
@@ -29,10 +60,10 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const [recentLoadingId, setRecentLoadingId] = useState<string | null>(null);
-  const [manualEntry, setManualEntry] = useState(false);
-  const [manualIngredients, setManualIngredients] = useState("");
-  const [manualSaving, setManualSaving] = useState(false);
-  const [manualError, setManualError] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addDraft, setAddDraft] = useState(EMPTY_ADD_DRAFT);
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
@@ -113,29 +144,48 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
     setTotal(0);
     setError(null);
     setOpen(false);
-    setManualEntry(false);
-    setManualIngredients("");
-    setManualError(null);
+    setAddOpen(false);
+    setAddDraft(EMPTY_ADD_DRAFT);
+    setAddError(null);
   }
 
-  async function saveManualProduct(e: React.FormEvent) {
+  const addPreview = splitIngredientsPreview(addDraft.rawText);
+
+  function openAddForm() {
+    setAddDraft((d) => ({ ...d, name: d.name || query.trim() }));
+    setAddOpen(true);
+  }
+
+  async function saveAndLogProduct(e: React.FormEvent) {
     e.preventDefault();
-    const ingredients = manualIngredients
-      .split(",")
-      .map((i) => i.trim())
-      .filter((i) => i.length > 0);
-    if (!query.trim() || ingredients.length === 0) return;
-    setManualSaving(true);
-    setManualError(null);
+    if (!addDraft.brand.trim() || !addDraft.name.trim() || addPreview.length === 0) {
+      return;
+    }
+    setAddSaving(true);
+    setAddError(null);
     try {
-      const product = await createUserEnteredProduct(query.trim(), ingredients);
-      choose(product);
-      setManualEntry(false);
-      setManualIngredients("");
+      const entry = await createMyProduct(userId, {
+        brand: addDraft.brand.trim(),
+        name: addDraft.name.trim(),
+        category: addDraft.category,
+        raw_text: addDraft.rawText,
+      });
+      // Re-search to get the product shaped exactly like any other search
+      // result (decomposed ingredients, labels), the same pattern
+      // chooseRecent uses for a recent product.
+      const found = (await searchProducts(`${entry.brand} ${entry.name}`)).results;
+      const product = found.find((p) => p.id === entry.id);
+      if (product) {
+        onSavedProductLogged(product);
+        setAddOpen(false);
+        setAddDraft(EMPTY_ADD_DRAFT);
+        setQuery("");
+        setOpen(false);
+      }
     } catch (err) {
-      setManualError(errorMessage(err));
+      setAddError(errorMessage(err));
     } finally {
-      setManualSaving(false);
+      setAddSaving(false);
     }
   }
 
@@ -196,40 +246,95 @@ export function ProductSearch({ selected, onSelect, recent }: Props) {
                 <>
                   {`No products found for "${query.trim()}". Try searching by ` +
                     "brand name (e.g. Tylenol) or generic name (e.g. acetaminophen)."}
-                  {!manualEntry ? (
+                  {!addOpen ? (
                     <div>
                       <button
                         type="button"
                         className="button-link"
-                        onClick={() => setManualEntry(true)}
+                        onClick={() => openAddForm()}
                       >
-                        Enter ingredients manually
+                        Add this product with its ingredient list
                       </button>
                     </div>
                   ) : (
-                    <form className="manual-entry" onSubmit={saveManualProduct}>
+                    <form className="manual-entry" onSubmit={saveAndLogProduct}>
                       <p className="muted small">
                         Most cosmetics aren't FDA-regulated drugs, so we don't
-                        have a label for "{query.trim()}". Paste its
-                        ingredient list from the packaging.
+                        have a label for this. Enter it once and it's saved to
+                        your own product library.
                       </p>
+                      <input
+                        className="control"
+                        type="text"
+                        placeholder="Brand (e.g. TIRTIR)"
+                        value={addDraft.brand}
+                        onChange={(e) =>
+                          setAddDraft((d) => ({ ...d, brand: e.target.value }))
+                        }
+                        aria-label="Brand"
+                      />
+                      <input
+                        className="control"
+                        type="text"
+                        placeholder="Product name (e.g. Milk Skin Toner)"
+                        value={addDraft.name}
+                        onChange={(e) =>
+                          setAddDraft((d) => ({ ...d, name: e.target.value }))
+                        }
+                        aria-label="Product name"
+                      />
+                      <select
+                        className="control"
+                        value={addDraft.category}
+                        onChange={(e) =>
+                          setAddDraft((d) => ({
+                            ...d,
+                            category: e.target.value as MyProductCategory,
+                          }))
+                        }
+                        aria-label="Category"
+                      >
+                        {CATEGORY_OPTIONS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
                       <textarea
                         className="control manual-entry-textarea"
-                        placeholder="Ingredients, comma-separated (e.g. Water, Glycerin, Fragrance)"
-                        value={manualIngredients}
-                        onChange={(e) => setManualIngredients(e.target.value)}
+                        placeholder="Paste the ingredient list from the packaging"
+                        value={addDraft.rawText}
+                        onChange={(e) =>
+                          setAddDraft((d) => ({ ...d, rawText: e.target.value }))
+                        }
                         aria-label="Ingredients"
-                        rows={3}
+                        rows={4}
                       />
-                      {manualError && (
-                        <p className="error small">Couldn't save: {manualError}</p>
+                      <p className="muted small">
+                        {addDraft.rawText.trim() === ""
+                          ? "No ingredients yet."
+                          : addPreview.length === 0
+                            ? "Couldn't find any ingredients in that text."
+                            : `Parsed ${addPreview.length} ingredient${
+                                addPreview.length === 1 ? "" : "s"
+                              }: ${addPreview.slice(0, 3).join(", ")}${
+                                addPreview.length > 3 ? ", …" : ""
+                              }. If that looks wrong, edit the text above.`}
+                      </p>
+                      {addError && (
+                        <p className="error small">Couldn't save: {addError}</p>
                       )}
                       <button
                         className="control button"
                         type="submit"
-                        disabled={!manualIngredients.trim() || manualSaving}
+                        disabled={
+                          !addDraft.brand.trim() ||
+                          !addDraft.name.trim() ||
+                          addPreview.length === 0 ||
+                          addSaving
+                        }
                       >
-                        {manualSaving ? "Saving…" : "Save and use this product"}
+                        {addSaving ? "Saving…" : "Save to My products"}
                       </button>
                     </form>
                   )}

@@ -181,7 +181,17 @@ export interface Ingredient {
  * so a fabricated-looking strength is never mistaken for verified data. */
 /** "user_entered" is a product the user pasted an ingredient list for
  * (POST /products/user-entered) -- for cosmetics openFDA has no label for. */
-export type ProductSource = "catalog" | "openfda" | "user_entered";
+/** "skincare_catalog" is a curated entry (app/data/skincare_products.json,
+ * via app/api/alternatives.py) matched by brand/name. "my_product" is one
+ * the user saved to their own persistent library (POST /users/{id}/my-products,
+ * app/api/my_products.py) -- distinct from "user_entered", which is
+ * in-process-only and never searchable again. */
+export type ProductSource =
+  | "catalog"
+  | "openfda"
+  | "user_entered"
+  | "skincare_catalog"
+  | "my_product";
 
 export interface ProductSearchResult {
   id: string; // use as product_id when logging
@@ -191,7 +201,15 @@ export interface ProductSearchResult {
   source: ProductSource;
   // As labelled by openFDA (e.g. "TOPICAL", "ORAL"); null for catalog
   // products (route isn't tracked there) or when openFDA didn't report one.
+  // "TOPICAL" for skincare_catalog/my_product (always topical, unmodeled).
   route: string | null;
+  // A short badge ("From our curated skincare set", "My product (entered
+  // by you)"); null for catalog/openfda/user_entered.
+  label: string | null;
+  // The specific "not yet verified"/"you entered this" sentence; null when
+  // there's nothing to caveat (catalog/openfda), or when a skincare_catalog
+  // entry has actually been verified.
+  verification_note: string | null;
 }
 
 /** `results` is capped at 10; `total` is the full count before that cap, so
@@ -395,6 +413,41 @@ export interface SkincareAlternativesGroup {
 export interface SkincareAlternativesResponse {
   results: SkincareAlternativesGroup[];
   disclaimer: string;
+}
+
+// ---------------------------------------------------------------------------
+// "My products": a persistent per-user skincare library (see
+// app/api/my_products.py). Never offered to anyone -- including the user
+// who saved it -- as an alternative candidate; app/api/alternatives.py
+// reads only app/data/skincare_products.json.
+// ---------------------------------------------------------------------------
+
+export type MyProductCategory =
+  | "cleanser"
+  | "toner"
+  | "serum"
+  | "moisturizer"
+  | "sunscreen"
+  | "other";
+
+export interface MyProductRequest {
+  brand: string;
+  name: string;
+  category: MyProductCategory;
+  // Pasted ingredient text; split server-side with the same hardened
+  // splitter the curated importer uses. Rejected (422) if nothing survives
+  // the split.
+  raw_text: string;
+}
+
+export interface MyProductEntry {
+  id: string; // use as product_id when logging
+  brand: string;
+  name: string;
+  category: MyProductCategory;
+  ingredients: string[]; // split from raw_text, verbatim
+  raw_text: string;
+  created_at: IsoTimestamp;
 }
 
 // ---------------------------------------------------------------------------
