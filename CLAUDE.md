@@ -75,6 +75,18 @@ of scope: topical-only substances (retinoids,
 AHAs, cleansers) — those are barrier-irritation problems, not pharmacokinetic
 ones. And no diagnosis, no medication recommendation, no efficacy prediction.
 
+## Decisions
+
+- **MedlinePlus drug monograph text is not to be copied or quoted.** The
+  monographs (the AHFS consumer drug information pages, including their
+  "special dietary instructions" sections) are ASHP-copyrighted, not NLM
+  public domain, and NLM's own terms allow linking to and displaying only
+  what MedlinePlus Connect itself returns (title, link, attribution) --
+  not reproducing page text. Food and drink guidance comes only from FDA
+  label text via openFDA, quoted verbatim under the quote-integrity rules
+  in `app/api/food_guidance.py`, or shown as a pointer when it can't be
+  safely quoted.
+
 ## Working style
 
 - Write the test first for anything in `app/pk/` or `app/detect/`. The suite is
