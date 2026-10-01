@@ -774,6 +774,13 @@ def _regimen_item_for_names(
 def _item_for_dose(
     ev: DoseEvent, registry: Registry
 ) -> tuple[RegimenItem | None, list[str]]:
+    # Skincare/cosmetic products (topical_ingredients set -- curated
+    # skincare entries, My products entries, or any openFDA product whose
+    # own label route is TOPICAL) are out of scope for food/drug guidance
+    # entirely: not checked, and their ingredients never show up as
+    # "wasn't recognized" either.
+    if ev.topical_ingredients:
+        return None, []
     substance_ids = [ing.substance_id for ing in ev.ingredients if ing.substance_id]
     unresolved = [ing.ingredient_name for ing in ev.ingredients if not ing.substance_id]
     return _regimen_item_for_names(ev.product_name, substance_ids, registry), unresolved
@@ -782,6 +789,8 @@ def _item_for_dose(
 def _item_for_schedule(
     s: ScheduledDose, registry: Registry
 ) -> tuple[RegimenItem | None, list[str]]:
+    if s.topical_ingredients:
+        return None, []
     substance_ids = [
         e["substance_id"] for e in s.substance_entries if e["substance_id"]
     ]
