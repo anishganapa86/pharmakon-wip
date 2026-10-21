@@ -201,7 +201,7 @@ def _trim_label(label: dict) -> dict:
 
 def _fetch_candidates_by(field: str, value: str) -> list[dict]:
     return label_cache.cached(
-        "food_guidance_labels",
+        "food_guidance_labels_v2",
         f"{field}:{value.upper()}",
         lambda: _request_candidates_by(field, value),
     )
