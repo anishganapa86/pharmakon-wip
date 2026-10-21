@@ -98,12 +98,19 @@ def delete(session: Session, user_id: str, product_id: str) -> bool:
 
 
 def search(records: list[UserProduct], q: str) -> list[UserProduct]:
-    """Case-insensitive substring match on brand or name, over an
-    already-scoped (one user's) list of records."""
+    """Case-insensitive substring match on brand, name, or the two together
+    ("brand name", as the product is displayed), over an already-scoped (one
+    user's) list of records."""
     needle = q.strip().lower()
     if not needle:
         return []
-    return [r for r in records if needle in r.brand.lower() or needle in r.name.lower()]
+    return [
+        r
+        for r in records
+        if needle in r.brand.lower()
+        or needle in r.name.lower()
+        or needle in f"{r.brand} {r.name}".lower()
+    ]
 
 
 def product_json(record: UserProduct) -> dict:
