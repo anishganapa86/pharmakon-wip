@@ -7,7 +7,7 @@ default -- it's a lookup, not a prediction. There are two sources:
      specific FDA label section; a rule with no source doesn't belong there
      (see the file's own `_README`), and `load_rules` refuses to load one
      that lacks one. Every rule is `verified: false` until a human opens the
-     cited source (CLAUDE.md invariant) -- never flip that here.
+     cited source (project notes invariant) -- never flip that here.
 
   B) Live openFDA label text: for a flagged pair, each substance's own
      `drug_interactions` label field is searched for the other substance's

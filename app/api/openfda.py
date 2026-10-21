@@ -10,7 +10,7 @@ describes what it treats.
 Every ingredient found here gets `strength_mg=None`. openFDA label text is
 unstructured free-form paragraphs, not a structured dose table, and a regex
 guess at a milligram value risks silently mis-attributing a dose -- exactly
-what CLAUDE.md's "refuse rather than guess" invariant exists to prevent.
+what project notes's "refuse rather than guess" invariant exists to prevent.
 Ingredients still resolve against the registry, so they come back
 `unknown_strength` when the substance is recognized and `unmatched` when it
 isn't: the same two honest outcomes `app/api/products.py` already produces
@@ -112,7 +112,7 @@ def _parse_ingredient_list(text: str) -> list[str]:
 
     Real label text ("Water, Glycerin, Fragrance...") is comma/semicolon
     delimited prose, not a structured list, so this is a delimiter split, not
-    a dose parse -- unlike a milligram value (CLAUDE.md: "refuse rather than
+    a dose parse -- unlike a milligram value (project notes: "refuse rather than
     guess"), a missed or extra token here can't misattribute a dose; the
     failure mode is a name the checker doesn't see, not a fabricated number.
     """

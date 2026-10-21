@@ -9,7 +9,7 @@ what that file says. Every rule in that file carries a source citation (see
 its `_README`); a rule with no source doesn't belong there, and this module
 adds none of its own.
 
-Topical ingredients are out of scope for app/pk/ (CLAUDE.md: "topical-only
+Topical ingredients are out of scope for app/pk/ (project notes: "topical-only
 substances... are barrier-irritation problems, not pharmacokinetic ones"),
 which is exactly why this checker exists as a separate, non-PK path.
 """

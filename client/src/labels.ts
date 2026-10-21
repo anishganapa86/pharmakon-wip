@@ -40,7 +40,7 @@ export function productModelable(p: Pick<ProductSearchResult, "ingredients">): b
 /**
  * Why a product with no modelable ingredient still shows no curve. A route
  * of "TOPICAL" is real label data, not a guess -- topical-only substances are
- * out of scope for the PK model (CLAUDE.md), not unsupported by accident.
+ * out of scope for the PK model (project notes), not unsupported by accident.
  */
 export function notModeledReason(route: string | null | undefined): string {
   return route === "TOPICAL"

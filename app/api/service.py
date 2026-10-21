@@ -268,7 +268,7 @@ def alert_json(record: AlertRecord, registry: Registry) -> dict:
             "display_name": entry["name"],
             # Why the threshold matters, shown as "Why this matters" next to
             # the alert. Null unless the registry documents one; never
-            # invented here (CLAUDE.md: never a plausible-looking coefficient
+            # invented here (project notes: never a plausible-looking coefficient
             # or claim without a source).
             "threshold_explanation": entry.get("threshold_explanation"),
             # Plain-language "what this is / does", from the registry field
