@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { checkInteractions, fetchInteractionCheck } from "../api";
 import type { Interaction, InteractionCheckResponse } from "../types/contract";
 import { LoadingNote } from "./LoadingNote";
+import { RulesNotice } from "./RulesNotice";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -214,6 +215,9 @@ export function Interactions({ userId }: Props) {
         references. They are not medical advice. Do not stop or change any
         medication without talking to your prescriber or pharmacist.
       </p>
+      <RulesNotice
+        notice={(regimenResult ?? manualResult)?.rules_awaiting_verification}
+      />
 
       <section className="panel">
         <h2>Your regimen</h2>

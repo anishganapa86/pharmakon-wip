@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 
 from ..pk.individualize import Patient
 from ..registry.loader import Registry
-from . import label_cache, products, schedule, service
+from . import label_cache, products, schedule, service, verification
 from .db import DoseEvent
 from .provenance import QUOTE_SOURCE_FDA_LABEL
 
@@ -158,6 +158,12 @@ def load_rules(path: Path | None = None) -> tuple[CuratedRule, ...]:
                 f"rule {e.get('substance_a')!r} + {e.get('substance_b')!r} "
                 "has no source; see drug_interactions.json's _README"
             )
+        missing = verification.missing_verification_fields(e)
+        if missing:
+            raise InvalidRule(
+                f"rule {e.get('substance_a')!r} + {e.get('substance_b')!r} "
+                f"is marked verified but is missing {', '.join(missing)}"
+            )
         rules.append(
             CuratedRule(
                 substance_a=e["substance_a"],
@@ -165,10 +171,21 @@ def load_rules(path: Path | None = None) -> tuple[CuratedRule, ...]:
                 effect=e["effect"],
                 recommendation=e["recommendation"],
                 source=source,
-                verified=e.get("verified", False),
+                verified=e.get("verified") is True,
             )
         )
     return tuple(rules)
+
+
+def active_rules() -> tuple[CuratedRule, ...]:
+    rules = load_rules()
+    if verification.show_unverified_rules():
+        return rules
+    return tuple(r for r in rules if r.verified)
+
+
+def unverified_rule_count() -> int:
+    return sum(1 for r in load_rules() if not r.verified)
 
 
 # --- B. FDA label text -----------------------------------------------------------
@@ -540,7 +557,7 @@ def check(
     `unresolved` names ingredients the caller couldn't map to a registry id --
     always surfaced in `unchecked_reason`, never dropped silently.
     """
-    rules = load_rules()
+    rules = active_rules()
     findings: list[dict] = []
     label_unavailable = False
     checked_pairs = 0
@@ -608,12 +625,13 @@ def check(
     if label_unavailable:
         unchecked_reason.append(LABEL_UNAVAILABLE_NOTE)
 
-    return {
+    body = {
         "interactions": findings,
         "checked_pairs": checked_pairs,
         "unchecked_reason": unchecked_reason,
         "message": EMPTY_MESSAGE if not findings else None,
     }
+    return verification.attach_notice(body, unverified_rule_count())
 
 
 # --- Entry points: regimen (GET) and manual (POST) -----------------------------

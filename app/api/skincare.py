@@ -23,11 +23,16 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from . import verification
 from .products import LabelIngredient
 
 DATA_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "ingredient_interactions.json"
 )
+
+
+class InvalidRule(ValueError):
+    pass
 
 
 _PERCENT_RE = re.compile(r"\d+(?:\.\d+)?\s*%")
@@ -56,6 +61,7 @@ class Incompatibility:
     effect: str
     recommendation: str
     source: str
+    verified: bool = False
 
     def matches_a(self, name: str) -> bool:
         return _matched_term(name, self.ingredient_a, self.aliases_a) is not None
@@ -76,6 +82,7 @@ class Irritant:
     aliases: tuple[str, ...]
     effect: str
     source: str
+    verified: bool = False
 
     def matches(self, name: str) -> bool:
         return _matched_term(name, self.ingredient, self.aliases) is not None
@@ -110,9 +117,23 @@ class Rules:
     known_irritants: tuple[Irritant, ...]
 
 
+def _reject_incomplete_verification(entry: dict, label: str) -> None:
+    missing = verification.missing_verification_fields(entry)
+    if missing:
+        raise InvalidRule(
+            f"{label} is marked verified but is missing {', '.join(missing)}"
+        )
+
+
 @lru_cache(maxsize=1)
 def load_rules(path: Path | None = None) -> Rules:
     data = json.loads((path or DATA_PATH).read_text())
+    for e in data["incompatibilities"]:
+        _reject_incomplete_verification(
+            e, f"incompatibility {e.get('ingredient_a')!r} + {e.get('ingredient_b')!r}"
+        )
+    for e in data["known_irritants"]:
+        _reject_incomplete_verification(e, f"irritant {e.get('ingredient')!r}")
     incompatibilities = tuple(
         Incompatibility(
             ingredient_a=e["ingredient_a"],
@@ -122,6 +143,7 @@ def load_rules(path: Path | None = None) -> Rules:
             effect=e["effect"],
             recommendation=e["recommendation"],
             source=e["source"],
+            verified=e.get("verified") is True,
         )
         for e in data["incompatibilities"]
     )
@@ -131,10 +153,27 @@ def load_rules(path: Path | None = None) -> Rules:
             aliases=tuple(e.get("aliases", [])),
             effect=e["effect"],
             source=e["source"],
+            verified=e.get("verified") is True,
         )
         for e in data["known_irritants"]
     )
     return Rules(incompatibilities=incompatibilities, known_irritants=known_irritants)
+
+
+def unverified_rule_count(rules: Rules | None = None) -> int:
+    rules = rules or load_rules()
+    every = (*rules.incompatibilities, *rules.known_irritants)
+    return sum(1 for r in every if not r.verified)
+
+
+def active_rules(rules: Rules | None = None) -> Rules:
+    rules = rules or load_rules()
+    if verification.show_unverified_rules():
+        return rules
+    return Rules(
+        incompatibilities=tuple(r for r in rules.incompatibilities if r.verified),
+        known_irritants=tuple(r for r in rules.known_irritants if r.verified),
+    )
 
 
 @dataclass(frozen=True)
@@ -160,7 +199,8 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
     alias -- that matched it), so a finding is traceable to the specific
     text that triggered it, not just "this rule fired somewhere."
     """
-    rules = rules or load_rules()
+    all_rules = rules or load_rules()
+    rules = active_rules(all_rules)
     entries = [(p.name, ing) for p in products for ing in p.ingredients]
 
     incompatibilities_found = []
@@ -238,7 +278,7 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
         seen_clear.add(key)
         clear.append({"ingredient": ing, "product": name})
 
-    return {
+    body = {
         "products": [
             {"name": p.name, "ingredients": list(p.ingredients)} for p in products
         ],
@@ -250,6 +290,7 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
         # among our M documented rules" instead of implying "no issues".
         "rules_checked": len(rules.incompatibilities) + len(rules.known_irritants),
     }
+    return verification.attach_notice(body, unverified_rule_count(all_rules))
 
 
 def annotate_eczema_context(result: dict, recent_skin_texts: list[str]) -> dict:

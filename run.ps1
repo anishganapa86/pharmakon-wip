@@ -14,6 +14,8 @@ if (-not (Test-Path client\node_modules)) {
     Pop-Location
 }
 
+if (-not $env:SHOW_UNVERIFIED_RULES) { $env:SHOW_UNVERIFIED_RULES = "1" }
+
 $uvicorn = Start-Process -FilePath python `
     -ArgumentList "-m", "uvicorn", "app.api.main:app", "--port", "8000", "--reload" `
     -NoNewWindow -PassThru

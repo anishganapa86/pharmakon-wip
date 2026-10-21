@@ -36,3 +36,8 @@ def _no_label_disk_cache():
     label_cache.set_cache_dir(None)
     yield
     label_cache.reset_cache_dir()
+
+
+@pytest.fixture(autouse=True)
+def _show_unverified_rules(monkeypatch):
+    monkeypatch.setenv("SHOW_UNVERIFIED_RULES", "1")

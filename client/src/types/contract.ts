@@ -356,6 +356,7 @@ export interface SkincareCheckResponse {
   // many matched -- lets the UI say "no matching rule among our M
   // documented rules" rather than implying a guarantee of safety.
   rules_checked: number;
+  rules_awaiting_verification?: RulesAwaitingVerification;
 }
 
 // ---------------------------------------------------------------------------
@@ -416,6 +417,11 @@ export interface InteractionCheckRequest {
 
 export type QuoteSource = "fda_label_verbatim";
 
+export interface RulesAwaitingVerification {
+  count: number;
+  message: string;
+}
+
 export type InteractionSourceType = "curated" | "fda_label";
 
 export interface InteractionSubstanceSource {
@@ -466,6 +472,7 @@ export interface InteractionCheckResponse {
   unchecked_reason: string[];
   // Set to the exact required sentence when `interactions` is empty, else null.
   message: string | null;
+  rules_awaiting_verification?: RulesAwaitingVerification;
 }
 
 // ---------------------------------------------------------------------------
@@ -551,6 +558,7 @@ export interface FoodGuidanceResponse {
   unchecked_reason: string[];
   // Set to the exact required sentence when `guidance` is empty, else null.
   message: string | null;
+  rules_awaiting_verification?: RulesAwaitingVerification;
 }
 
 // ---------------------------------------------------------------------------

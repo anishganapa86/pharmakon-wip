@@ -53,7 +53,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..registry.loader import Registry
-from . import label_cache, products, schedule, service
+from . import label_cache, products, schedule, service, verification
 from .db import DoseEvent, ScheduledDose
 from .provenance import QUOTE_SOURCE_FDA_LABEL
 
@@ -759,9 +759,20 @@ def _is_real_curated_entry(e: dict) -> bool:
     return bool((e.get("quote") or "").strip())
 
 
+class InvalidCuratedEntry(ValueError):
+    pass
+
+
 @lru_cache(maxsize=1)
 def load_curated(path: Path | None = None) -> tuple[CuratedGuidance, ...]:
     data = json.loads((path or DATA_PATH).read_text(encoding="utf-8"))
+    for e in data["entries"]:
+        missing = verification.missing_verification_fields(e)
+        if missing:
+            raise InvalidCuratedEntry(
+                f"entry {e.get('substance')!r} / {e.get('item')!r} is marked "
+                f"verified but is missing {', '.join(missing)}"
+            )
     return tuple(
         CuratedGuidance(
             substance=e["substance"],
@@ -770,7 +781,7 @@ def load_curated(path: Path | None = None) -> tuple[CuratedGuidance, ...]:
             label_field=e.get("label_field", ""),
             set_id=e.get("set_id"),
             date_fetched=e.get("date_fetched", ""),
-            verified=e.get("verified", False),
+            verified=e.get("verified") is True,
             product_name=e.get("product_name"),
             dosage_form=e.get("dosage_form"),
         )
@@ -781,6 +792,10 @@ def load_curated(path: Path | None = None) -> tuple[CuratedGuidance, ...]:
 
 def clear_curated_cache() -> None:
     load_curated.cache_clear()
+
+
+def unverified_curated_count() -> int:
+    return sum(1 for c in load_curated() if not c.verified)
 
 
 # --- Regimen assembly ------------------------------------------------------------
@@ -1022,6 +1037,8 @@ def _findings_for_item(
         for c in load_curated():
             if c.substance != item.key:
                 continue
+            if not (c.verified or verification.show_unverified_rules()):
+                continue
             match = QuoteMatch(c.quote, c.label_field, c.item)
             curated_findings.append(
                 _finding(
@@ -1141,6 +1158,7 @@ def _respond(items: list[RegimenItem], unresolved: list[str]) -> tuple[dict, dic
         "unchecked_reason": unchecked,
         "message": EMPTY_MESSAGE if not guidance else None,
     }
+    verification.attach_notice(body, unverified_curated_count())
     return body, guidance_by_key
 
 

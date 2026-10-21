@@ -8,6 +8,7 @@ import type {
   FoodGuidanceTimelineEntry,
 } from "../types/contract";
 import { LoadingNote } from "./LoadingNote";
+import { RulesNotice } from "./RulesNotice";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -230,6 +231,9 @@ export function FoodGuidance({ userId }: Props) {
         These are instructions quoted from FDA labels. They are not medical
         advice. Ask a pharmacist how they apply to you.
       </p>
+      <RulesNotice
+        notice={(regimenResult ?? manualResult)?.rules_awaiting_verification}
+      />
 
       <section className="panel">
         <h2>Your regimen</h2>
