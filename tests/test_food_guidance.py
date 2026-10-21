@@ -1286,3 +1286,114 @@ def test_food_pointer_says_which_label_was_used(client, openfda):
     assert finding["label_attribution"].startswith(
         "From the label for Advil, an ibuprofen product."
     )
+
+
+def _fallback_handler(calls, labels_by_search_kind):
+    def handler(request: httpx.Request) -> httpx.Response:
+        search = request.url.params["search"]
+        calls.append(search)
+        kind = "exact" if ".exact:" in search else "fallback"
+        labels = labels_by_search_kind.get(kind, [])
+        if not labels:
+            return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
+        return httpx.Response(200, json={"results": labels})
+
+    return handler
+
+
+def test_brand_name_with_a_suffix_is_found_by_the_fallback_search(monkeypatch):
+    calls: list[str] = []
+    labels = [
+        {
+            "openfda": {
+                "route": ["ORAL"],
+                "brand_name": ["DayQuil Cold and Flu w/VapoCOOL"],
+            },
+            "directions": ["Take with food."],
+        },
+        {
+            "openfda": {"route": ["ORAL"], "brand_name": ["Unrelated Night Syrup"]},
+            "directions": ["Take at bedtime."],
+        },
+    ]
+    monkeypatch.setattr(
+        food_guidance,
+        "_http",
+        httpx.Client(
+            transport=httpx.MockTransport(
+                _fallback_handler(calls, {"fallback": labels})
+            )
+        ),
+    )
+    food_guidance.clear_cache()
+
+    found = food_guidance.fetch_labels_for_product("DayQuil")
+
+    assert calls == [
+        'openfda.brand_name.exact:"DAYQUIL"',
+        'openfda.brand_name:"DAYQUIL"',
+    ]
+    assert [food_guidance.label_product_name(label) for label in found] == [
+        "DayQuil Cold and Flu w/VapoCOOL"
+    ]
+    food_guidance.clear_cache()
+
+
+def test_generic_name_stored_as_a_salt_form_is_found_by_the_fallback_search(
+    monkeypatch,
+):
+    calls: list[str] = []
+    labels = [
+        {
+            "openfda": {
+                "route": ["ORAL"],
+                "generic_name": ["DONEPEZIL HYDROCHLORIDE"],
+            },
+            "directions": ["Take at bedtime."],
+        },
+        {
+            "openfda": {
+                "route": ["ORAL"],
+                "generic_name": ["DONEPEZIL HYDROCHLORIDE", "MEMANTINE"],
+            },
+            "directions": ["Combination label."],
+        },
+    ]
+    monkeypatch.setattr(
+        food_guidance,
+        "_http",
+        httpx.Client(
+            transport=httpx.MockTransport(
+                _fallback_handler(calls, {"fallback": labels})
+            )
+        ),
+    )
+    food_guidance.clear_cache()
+
+    found = food_guidance.fetch_labels_for_substance("donepezil")
+
+    assert calls == [
+        'openfda.generic_name.exact:"DONEPEZIL"',
+        'openfda.generic_name:"DONEPEZIL"',
+    ]
+    assert [label["directions"] for label in found] == [["Take at bedtime."]]
+    food_guidance.clear_cache()
+
+
+def test_exact_match_is_used_without_any_fallback_request(monkeypatch):
+    calls: list[str] = []
+    exact = [{"openfda": {"route": ["ORAL"]}, "directions": ["Take with food."]}]
+    monkeypatch.setattr(
+        food_guidance,
+        "_http",
+        httpx.Client(
+            transport=httpx.MockTransport(_fallback_handler(calls, {"exact": exact}))
+        ),
+    )
+    food_guidance.clear_cache()
+
+    found = food_guidance.fetch_labels_for_substance("ibuprofen")
+
+    assert len(found) == 1
+    assert calls == ['openfda.generic_name.exact:"IBUPROFEN"']
+    food_guidance.clear_cache()

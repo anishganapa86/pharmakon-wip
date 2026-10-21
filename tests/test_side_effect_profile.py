@@ -184,7 +184,7 @@ def test_each_substances_label_is_requested_once_not_once_per_effect(client, ope
 
     profile(client)
 
-    assert len(openfda.calls) == 3
+    assert len([c for c in openfda.calls if ".exact:" in c]) == 3
 
 
 def test_labels_for_different_substances_are_fetched_concurrently(

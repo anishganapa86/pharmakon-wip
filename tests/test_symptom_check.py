@@ -300,3 +300,43 @@ def test_label_match_says_which_label_was_used(client, openfda):
         "Not necessarily the exact product you take."
     )
     assert match["dailymed_url"].endswith("setid=caf-123")
+
+
+def test_adverse_reactions_for_a_salt_form_generic_name_use_the_fallback_search(
+    monkeypatch,
+):
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        search = request.url.params["search"]
+        calls.append(search)
+        if ".exact:" in search:
+            return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "openfda": {"generic_name": ["DONEPEZIL HYDROCHLORIDE"]},
+                        "adverse_reactions": ["Nausea and diarrhea were reported."],
+                    },
+                    {
+                        "openfda": {
+                            "generic_name": ["DONEPEZIL HYDROCHLORIDE", "MEMANTINE"]
+                        },
+                        "adverse_reactions": ["Combination label text."],
+                    },
+                ]
+            },
+        )
+
+    monkeypatch.setattr(
+        side_effects, "_http", httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    side_effects.clear_cache()
+
+    sections = side_effects.fetch_adverse_reaction_sections("donepezil")
+
+    assert len(calls) == 2
+    assert [s["text"] for s in sections] == ["Nausea and diarrhea were reported."]
+    side_effects.clear_cache()

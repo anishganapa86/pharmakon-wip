@@ -295,23 +295,38 @@ def _request_drug_interaction_sections(generic_name: str) -> list[dict]:
     tell "no label" apart from "couldn't ask" (same contract as
     app/api/side_effects.py's fetch_adverse_reactions).
     """
-    search = (
+    results = _search_results(
         f'openfda.generic_name.exact:"{generic_name.upper()}"'
-        " AND _exists_:drug_interactions"
+        " AND _exists_:drug_interactions",
+        LABEL_LIMIT,
     )
-    try:
-        r = _http.get(
-            OPENFDA_LABEL_URL, params={"search": search, "limit": LABEL_LIMIT}
+    if not results:
+        candidates = _search_results(
+            label_source.fallback_search(
+                "generic_name", generic_name, "drug_interactions"
+            ),
+            label_source.FALLBACK_LIMIT,
         )
+        results = [
+            label
+            for label in candidates
+            if label_source.fallback_matches("generic_name", label, generic_name)
+        ][:LABEL_LIMIT]
+    return label_source.sections_from_results(
+        results, "drug_interactions", generic_name.lower()
+    )
+
+
+def _search_results(search: str, limit: int) -> list[dict]:
+    try:
+        r = _http.get(OPENFDA_LABEL_URL, params={"search": search, "limit": limit})
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
         return []
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
-    return label_source.sections_from_results(
-        r.json().get("results", []), "drug_interactions", generic_name.lower()
-    )
+    return r.json().get("results", [])
 
 
 def _label_text(substance_id: str, generic_name: str) -> str | None:

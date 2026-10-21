@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import re
+
+from ..registry.loader import normalize, strip_salt_tokens
+
 DAILYMED_URL = "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid={set_id}"
 
 NOT_EXACT_PRODUCT = "Not necessarily the exact product you take."
@@ -70,3 +74,27 @@ def source_fields(section: dict | None) -> dict:
         ),
         "dailymed_url": dailymed_url(section.get("set_id")),
     }
+
+
+FALLBACK_LIMIT = 25
+
+
+def fallback_search(field: str, name: str, exists_field: str | None = None) -> str:
+    search = f'openfda.{field}:"{name.upper()}"'
+    if exists_field:
+        search += f" AND _exists_:{exists_field}"
+    return search
+
+
+def _canonical_generic(name: str) -> str:
+    return strip_salt_tokens(normalize(name))
+
+
+def fallback_matches(field: str, label: dict, name: str) -> bool:
+    names = (label.get("openfda") or {}).get(field) or []
+    if field == "generic_name":
+        return len(names) == 1 and _canonical_generic(names[0]) == _canonical_generic(
+            name
+        )
+    pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
+    return any(pattern.search(n) for n in names)

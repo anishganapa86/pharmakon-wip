@@ -119,23 +119,38 @@ def _request_adverse_reaction_sections(generic_name: str) -> list[dict]:
     section. Raises OpenFDAUnavailable on network or server errors, so the
     caller can tell "no label" apart from "couldn't ask".
     """
-    search = (
+    results = _search_results(
         f'openfda.generic_name.exact:"{generic_name.upper()}"'
-        " AND _exists_:adverse_reactions"
+        " AND _exists_:adverse_reactions",
+        LABEL_LIMIT,
     )
-    try:
-        r = _http.get(
-            OPENFDA_LABEL_URL, params={"search": search, "limit": LABEL_LIMIT}
+    if not results:
+        candidates = _search_results(
+            label_source.fallback_search(
+                "generic_name", generic_name, "adverse_reactions"
+            ),
+            label_source.FALLBACK_LIMIT,
         )
+        results = [
+            label
+            for label in candidates
+            if label_source.fallback_matches("generic_name", label, generic_name)
+        ][:LABEL_LIMIT]
+    return label_source.sections_from_results(
+        results, "adverse_reactions", generic_name.lower()
+    )
+
+
+def _search_results(search: str, limit: int) -> list[dict]:
+    try:
+        r = _http.get(OPENFDA_LABEL_URL, params={"search": search, "limit": limit})
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
         return []
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
-    return label_source.sections_from_results(
-        r.json().get("results", []), "adverse_reactions", generic_name.lower()
-    )
+    return r.json().get("results", [])
 
 
 def section_mentioning(generic_name: str, symptom: str) -> dict | None:

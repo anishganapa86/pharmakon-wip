@@ -179,7 +179,13 @@ def clear_cache() -> None:
 # --- Fetching ------------------------------------------------------------------
 
 
-KEPT_OPENFDA_FIELDS = ("route", "substance_name", "product_type", "brand_name")
+KEPT_OPENFDA_FIELDS = (
+    "route",
+    "substance_name",
+    "product_type",
+    "brand_name",
+    "generic_name",
+)
 
 
 def _trim_label(label: dict) -> dict:
@@ -201,12 +207,9 @@ def _fetch_candidates_by(field: str, value: str) -> list[dict]:
     )
 
 
-def _request_candidates_by(field: str, value: str) -> list[dict]:
-    search = f'openfda.{field}.exact:"{value.upper()}"'
+def _search_labels(search: str, limit: int) -> list[dict]:
     try:
-        r = _http.get(
-            OPENFDA_LABEL_URL, params={"search": search, "limit": LABEL_SEARCH_LIMIT}
-        )
+        r = _http.get(OPENFDA_LABEL_URL, params={"search": search, "limit": limit})
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
@@ -214,6 +217,23 @@ def _request_candidates_by(field: str, value: str) -> list[dict]:
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
     return [_trim_label(label) for label in r.json().get("results", [])]
+
+
+def _request_candidates_by(field: str, value: str) -> list[dict]:
+    exact = _search_labels(
+        f'openfda.{field}.exact:"{value.upper()}"', LABEL_SEARCH_LIMIT
+    )
+    if exact:
+        return exact
+    candidates = _search_labels(
+        label_source.fallback_search(field, value), label_source.FALLBACK_LIMIT
+    )
+    matching = [
+        label
+        for label in candidates
+        if label_source.fallback_matches(field, label, value)
+    ]
+    return matching[:LABEL_SEARCH_LIMIT]
 
 
 def _is_single_ingredient(label: dict) -> bool:
