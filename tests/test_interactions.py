@@ -621,3 +621,135 @@ def test_same_product_scheduled_twice_is_one_product_not_a_duplicate(client, ope
     body = client.get("/users/default/interaction-check").json()
 
     assert body["duplicate_ingredients"] == []
+
+
+# --- Audit rules for the non-registry, same-ingredient and gated paths --------
+
+NONREGISTRY = ["Donepezil", "Memantine", "Rivastigmine"]
+
+
+def test_nonregistry_labels_are_fetched_concurrently(client, openfda, monkeypatch):
+    import threading
+
+    barrier = threading.Barrier(3, timeout=5)
+
+    def fake(generic_name):
+        barrier.wait()
+        return None
+
+    monkeypatch.setattr(interactions, "fetch_drug_interactions_text", fake)
+
+    body = manual_check(client, NONREGISTRY)
+
+    assert body["checked_pairs"] == 3
+
+
+def test_nonregistry_label_lookups_go_through_the_disk_cache(client, openfda, tmp_path):
+    from app.api import label_cache
+
+    label_cache.set_cache_dir(tmp_path)
+    openfda.labels["DONEPEZIL"] = "Memantine may be combined with donepezil."
+
+    manual_check(client, NONREGISTRY)
+    first_pass = len(openfda.calls)
+    interactions.clear_cache()
+    manual_check(client, NONREGISTRY)
+
+    assert first_pass == 3
+    assert len(openfda.calls) == first_pass
+
+
+def test_unreachable_openfda_is_tried_once_per_nonregistry_substance(client, openfda):
+    openfda.down = True
+
+    body = manual_check(client, NONREGISTRY)
+
+    assert len(openfda.calls) == 3
+    assert interactions.LABEL_UNAVAILABLE_NOTE in body["unchecked_reason"]
+
+
+def test_nonregistry_label_finding_is_never_verified(client, openfda):
+    openfda.labels["DONEPEZIL"] = "Memantine: concomitant use was studied."
+
+    body = manual_check(client, ["Donepezil", "Memantine"])
+
+    findings = body["interactions"]
+    assert findings
+    assert all(f["verified"] is False for f in findings)
+    assert all(f["quote_source"] == "fda_label_verbatim" for f in findings)
+
+
+def test_same_ingredient_card_is_not_gated_and_carries_no_verified_flag(
+    client, openfda, monkeypatch
+):
+    monkeypatch.delenv("SHOW_UNVERIFIED_RULES", raising=False)
+    _discover_oral("fda_donepezil", "Donepezil", ["Donepezil"])
+    _discover_oral("fda_namzaric", "Namzaric", ["Memantine", "Donepezil"])
+    log(client, "fda_donepezil", hours_ago=1)
+    log(client, "fda_namzaric", hours_ago=1)
+
+    body = client.get("/users/default/interaction-check").json()
+
+    cards = [
+        c for c in body["duplicate_ingredients"] if c["ingredient_name"] == "Donepezil"
+    ]
+    assert len(cards) == 1
+    assert cards[0]["product_count"] == 2
+    assert "verified" not in cards[0]
+    assert "source" not in cards[0]
+
+
+def test_gate_off_empty_result_still_carries_the_awaiting_notice(
+    client, openfda, monkeypatch
+):
+    monkeypatch.delenv("SHOW_UNVERIFIED_RULES", raising=False)
+
+    body = manual_check(client, ["ibuprofen", "warfarin"])
+
+    assert body["interactions"] == []
+    assert body["checked_pairs"] == 1
+    assert body["rules_awaiting_verification"]["count"] > 0
+    assert (
+        "awaiting verification and are not being applied"
+        in body["rules_awaiting_verification"]["message"]
+    )
+
+
+def test_gate_off_no_pairs_result_still_carries_the_awaiting_notice(
+    client, openfda, monkeypatch
+):
+    monkeypatch.delenv("SHOW_UNVERIFIED_RULES", raising=False)
+
+    body = manual_check(client, ["ibuprofen"])
+
+    assert body["checked_pairs"] == 0
+    assert body["message"] == interactions.NO_PAIRS_MESSAGE
+    assert body["rules_awaiting_verification"]["count"] > 0
+
+
+def test_gate_off_regimen_empty_result_carries_the_awaiting_notice(
+    client, openfda, monkeypatch
+):
+    monkeypatch.delenv("SHOW_UNVERIFIED_RULES", raising=False)
+    log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/interaction-check").json()
+
+    assert body["interactions"] == []
+    assert body["rules_awaiting_verification"]["count"] > 0
+
+
+def test_only_curated_findings_can_be_unverified_references(client, openfda):
+    openfda.labels["IBUPROFEN"] = "Warfarin: concomitant use raises bleeding risk."
+    openfda.labels["LORATADINE"] = "Famotidine: concomitant use was studied."
+
+    body = manual_check(client, ["ibuprofen", "warfarin", "loratadine", "famotidine"])
+
+    by_type = {f["source_type"] for f in body["interactions"]}
+    assert by_type == {"curated", "fda_label"}
+    for f in body["interactions"]:
+        if f["source_type"] == "fda_label":
+            assert f["verified"] is False
+            assert f["quote_source"] == "fda_label_verbatim"
+        else:
+            assert f["quote_source"] is None
