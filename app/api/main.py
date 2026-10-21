@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -726,7 +726,18 @@ def get_timeline(
 
 class SkincareProductRequest(BaseModel):
     name: str = Field(min_length=1)
-    ingredients: list[str] = Field(min_length=1)
+    ingredients: list[str] | None = None
+    ingredients_text: str | None = None
+
+    @model_validator(mode="after")
+    def _resolve_ingredients(self) -> SkincareProductRequest:
+        if (self.ingredients is None) == (self.ingredients_text is None):
+            raise ValueError("provide exactly one of ingredients or ingredients_text")
+        if self.ingredients_text is not None:
+            self.ingredients = skincare.split_ingredients(self.ingredients_text)
+        if not self.ingredients:
+            raise ValueError("no ingredients found")
+        return self
 
 
 class SkincareCheckRequest(BaseModel):

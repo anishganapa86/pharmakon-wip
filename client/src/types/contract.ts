@@ -327,7 +327,8 @@ export interface SideEffectProfileResponse {
 
 export interface SkincareProductRequest {
   name: string;
-  ingredients: string[];
+  ingredients?: string[];
+  ingredients_text?: string;
 }
 
 export interface SkincareCheckedProduct {

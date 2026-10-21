@@ -527,3 +527,70 @@ def test_same_ingredient_in_two_products_is_not_dropped_by_the_pair_dedupe():
 
     all_products = set(found["products_a"]) | set(found["products_b"])
     assert all_products == {"Toner", "Cleanser", "Vitamin C Serum"}
+
+
+SAMPLE_INGREDIENT_TEXT = "Water, Glycerin (Kosher, Vegetable), 1,2-Hexanediol, Retinol"
+
+
+def test_hardened_splitter_yields_exactly_four_for_the_sample():
+    assert skincare.split_ingredients(SAMPLE_INGREDIENT_TEXT) == [
+        "Water",
+        "Glycerin (Kosher, Vegetable)",
+        "1,2-Hexanediol",
+        "Retinol",
+    ]
+
+
+def test_skincare_check_accepts_raw_text_and_splits_it_with_the_hardened_splitter(
+    client,
+):
+    r = client.post(
+        "/skincare-check",
+        json={
+            "products": [
+                {"name": "Night Serum", "ingredients_text": SAMPLE_INGREDIENT_TEXT}
+            ]
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    (product,) = r.json()["products"]
+    assert len(product["ingredients"]) == 4
+    assert product["ingredients"][1] == "Glycerin (Kosher, Vegetable)"
+    assert product["ingredients"][2] == "1,2-Hexanediol"
+
+
+def test_skincare_check_still_accepts_a_prepared_ingredient_list(client):
+    r = client.post(
+        "/skincare-check",
+        json={"products": [{"name": "Serum", "ingredients": ["Water", "Retinol"]}]},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["products"][0]["ingredients"] == ["Water", "Retinol"]
+
+
+@pytest.mark.parametrize(
+    "product",
+    [
+        {"name": "Serum"},
+        {"name": "Serum", "ingredients": ["Water"], "ingredients_text": "Water"},
+        {"name": "Serum", "ingredients_text": " , ,"},
+        {"name": "Serum", "ingredients": []},
+    ],
+)
+def test_skincare_check_rejects_missing_ambiguous_or_empty_ingredients(client, product):
+    r = client.post("/skincare-check", json={"products": [product]})
+
+    assert r.status_code == 422
+
+
+def test_skincare_alternatives_accepts_raw_text(client):
+    r = client.post(
+        "/skincare-alternatives",
+        json={
+            "products": [{"name": "Serum", "ingredients_text": SAMPLE_INGREDIENT_TEXT}]
+        },
+    )
+
+    assert r.status_code == 200, r.text
