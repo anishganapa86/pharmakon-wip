@@ -175,6 +175,7 @@ def test_hidden_acetaminophen_across_products_triggers_duplication(client):
             "Risk increases with alcohol use or liver impairment."
         ),
         "description": "Pain reliever and fever reducer",
+        "verified": False,
     }
     assert alert["uncounted_doses"] == []
 

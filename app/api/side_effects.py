@@ -360,7 +360,7 @@ def _match(entry, symptom, source, level, recent, by_id) -> dict:
     message = (
         f"{symptom[:1].upper()}{symptom[1:]} is listed as an adverse reaction "
         f"of {entry['name']}, and your current level is {status} "
-        f"the recommended limit{detail}. "
+        f"the 24-hour limit in our reference data (unverified){detail}. "
         f"Source: {SOURCE_LABELS[source]}."
     )
     contributing = []

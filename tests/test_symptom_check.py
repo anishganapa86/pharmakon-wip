@@ -251,3 +251,15 @@ def test_symptom_match_is_never_verified(client, openfda):
 
     assert match["source"] == "openfda_label"
     assert match["verified"] is False
+
+
+def test_message_names_the_reference_data_limit_and_calls_it_unverified(
+    client, openfda
+):
+    openfda.labels["CAFFEINE"] = "Headache, dizziness, and nausea were reported."
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert "the 24-hour limit in our reference data (unverified)" in match["message"]
+    assert "recommended" not in match["message"].lower()

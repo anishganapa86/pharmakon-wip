@@ -274,6 +274,7 @@ def alert_json(record: AlertRecord, registry: Registry) -> dict:
             # Plain-language "what this is / does", from the registry field
             # of the same name. Null unless the registry documents one.
             "description": entry.get("description"),
+            "verified": bool(entry.get("verified", False)),
         }
     return {
         "id": record.id,

@@ -147,6 +147,7 @@ export interface AlertSubstanceRef extends SubstanceRef {
   // null unless the registry documents one -- never derived or invented.
   // Shown as "Why this matters" next to the alert.
   threshold_explanation: string | null;
+  verified: boolean;
 }
 
 export interface Alert {
