@@ -70,6 +70,7 @@ export interface ConcentrationPoint {
 export interface SubstanceCurve {
   substance: SubstanceRef;
   modelable: boolean;
+  parameters_verified: boolean;
   reason: string | null; // null when modelable is true
   unit: ConcentrationUnit;
   // "approximate" is a simplified decay curve in mg (see ConcentrationUnit);

@@ -343,6 +343,29 @@ def test_hepatic_substance_curve_has_empty_notes(client):
     assert curve(client).json()["notes"] == []
 
 
+def test_curve_reports_parameters_unverified_for_every_unverified_substance(client):
+    assert curve(client).json()["parameters_verified"] is False
+    assert curve(client, substance_id="ethanol").json()["parameters_verified"] is False
+
+
+def test_curve_reports_parameters_verified_only_when_the_registry_entry_is(client):
+    from app.registry.loader import Registry, load_registry
+
+    entries = [dict(e) for e in load_registry().all()]
+    for entry in entries:
+        if entry["id"] == "caffeine":
+            entry["verified"] = True
+    main.app.dependency_overrides[main.get_registry] = lambda: Registry(entries)
+    try:
+        assert curve(client).json()["parameters_verified"] is True
+        assert (
+            curve(client, substance_id="ibuprofen").json()["parameters_verified"]
+            is False
+        )
+    finally:
+        main.app.dependency_overrides.pop(main.get_registry, None)
+
+
 def test_unmodelable_curve_still_carries_notes(client):
     assert curve(client, substance_id="ethanol").json()["notes"] == []
 

@@ -408,6 +408,7 @@ def get_curve(
             "description": entry.get("description"),
         },
         "modelable": result.modelable,
+        "parameters_verified": bool(entry.get("verified", False)),
         "reason": result.reason,
         "unit": result.unit,
         # "full" is a concentration curve; "approximate" is the amount left in
