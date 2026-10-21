@@ -453,7 +453,7 @@ deduplicated by brand name across all four queries. **Every ingredient
 sourced from openFDA has `strength_mg: null` and `unmodeled_reason:
 "unknown_strength"` (or `"unmatched"` if the substance doesn't resolve) --
 openFDA label text is unstructured, so a parsed milligram value would be a
-guess, not a lookup (CLAUDE.md: "refuse rather than guess"). Only the
+guess, not a lookup (project notes: "refuse rather than guess"). Only the
 synthetic catalog carries a strength number.** A product found via openFDA is
 loggable exactly like a catalog product; the server remembers it by `id` for
 the lifetime of the process so a subsequent `POST /doses` can find it.
@@ -658,7 +658,7 @@ with `modelable: false`.
 
 ## Implementation follow-ups
 
-Contract-level decisions that need code. **Write the tests first** (CLAUDE.md).
+Contract-level decisions that need code. **Write the tests first** (project notes).
 
 - **`incomplete_data` detector, substance-level** (`app/detect/alerts.py`).
   Not implemented. Needs: an unmodeled-dose representation alongside
