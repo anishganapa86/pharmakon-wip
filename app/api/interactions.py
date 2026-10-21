@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 
 from ..pk.individualize import Patient
 from ..registry.loader import Registry
-from . import products, schedule, service
+from . import label_cache, products, schedule, service
 from .db import DoseEvent
 from .provenance import QUOTE_SOURCE_FDA_LABEL
 
@@ -175,6 +175,14 @@ def load_rules(path: Path | None = None) -> tuple[CuratedRule, ...]:
 
 
 def fetch_drug_interactions_text(generic_name: str) -> str | None:
+    return label_cache.cached(
+        "drug_interactions",
+        generic_name.upper(),
+        lambda: _request_drug_interactions_text(generic_name),
+    )
+
+
+def _request_drug_interactions_text(generic_name: str) -> str | None:
     """`drug_interactions` text from single-ingredient openFDA labels, or None.
 
     Raises OpenFDAUnavailable on network or server errors, so the caller can
@@ -210,6 +218,20 @@ def _label_text(substance_id: str, generic_name: str) -> str | None:
     text = fetch_drug_interactions_text(generic_name)  # may raise
     _label_cache[substance_id] = text
     return text
+
+
+def _prefetch_label_texts(substance_ids: list[str], registry: Registry) -> set[str]:
+    names = {sid: registry.get(sid)["name"] for sid in dict.fromkeys(substance_ids)}
+    results = label_cache.fetch_concurrently(
+        list(names), lambda sid: _label_text(sid, names[sid])
+    )
+    unavailable: set[str] = set()
+    for sid, outcome in results.items():
+        if isinstance(outcome, OpenFDAUnavailable):
+            unavailable.add(sid)
+        elif isinstance(outcome, Exception):
+            raise outcome
+    return unavailable
 
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
@@ -278,12 +300,19 @@ def _find_best_match(text: str, other_id: str, registry: Registry) -> LabelMatch
     return best
 
 
-def label_mention(self_id: str, other_id: str, registry: Registry) -> LabelMatch | None:
+def label_mention(
+    self_id: str,
+    other_id: str,
+    registry: Registry,
+    unavailable: set[str] | None = None,
+) -> LabelMatch | None:
     """The best sentence in self_id's own FDA label mentioning other_id (by
     literal name/alias, preferred, or drug class in a combination-use
     sentence), or None if self_id has no label or doesn't mention it. Raises
     OpenFDAUnavailable, never interpreted as "no mention".
     """
+    if unavailable is not None and self_id in unavailable:
+        raise OpenFDAUnavailable(self_id)
     entry = registry.get(self_id)
     text = _label_text(self_id, entry["name"])
     if text is None:
@@ -515,6 +544,7 @@ def check(
     findings: list[dict] = []
     label_unavailable = False
     checked_pairs = 0
+    unavailable = _prefetch_label_texts([s.substance_id for s in substances], registry)
 
     for a, b in combinations(sorted(substances, key=lambda s: s.substance_id), 2):
         checked_pairs += 1
@@ -532,11 +562,15 @@ def check(
 
         match_ab = match_ba = None
         try:
-            match_ab = label_mention(a.substance_id, b.substance_id, registry)
+            match_ab = label_mention(
+                a.substance_id, b.substance_id, registry, unavailable
+            )
         except OpenFDAUnavailable:
             label_unavailable = True
         try:
-            match_ba = label_mention(b.substance_id, a.substance_id, registry)
+            match_ba = label_mention(
+                b.substance_id, a.substance_id, registry, unavailable
+            )
         except OpenFDAUnavailable:
             label_unavailable = True
 

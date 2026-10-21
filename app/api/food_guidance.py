@@ -53,7 +53,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..registry.loader import Registry
-from . import products, schedule, service
+from . import label_cache, products, schedule, service
 from .db import DoseEvent, ScheduledDose
 from .provenance import QUOTE_SOURCE_FDA_LABEL
 
@@ -161,7 +161,29 @@ def clear_cache() -> None:
 # --- Fetching ------------------------------------------------------------------
 
 
+KEPT_OPENFDA_FIELDS = ("route", "substance_name", "product_type", "brand_name")
+
+
+def _trim_label(label: dict) -> dict:
+    kept = {
+        f: label[f]
+        for f in (*TEXT_FIELDS, *_DOSAGE_FORM_FIELDS, "set_id")
+        if f in label
+    }
+    openfda = label.get("openfda") or {}
+    kept["openfda"] = {k: openfda[k] for k in KEPT_OPENFDA_FIELDS if k in openfda}
+    return kept
+
+
 def _fetch_candidates_by(field: str, value: str) -> list[dict]:
+    return label_cache.cached(
+        "food_guidance_labels",
+        f"{field}:{value.upper()}",
+        lambda: _request_candidates_by(field, value),
+    )
+
+
+def _request_candidates_by(field: str, value: str) -> list[dict]:
     search = f'openfda.{field}.exact:"{value.upper()}"'
     try:
         r = _http.get(
@@ -173,7 +195,7 @@ def _fetch_candidates_by(field: str, value: str) -> list[dict]:
         return []
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
-    return r.json().get("results", [])
+    return [_trim_label(label) for label in r.json().get("results", [])]
 
 
 def _is_single_ingredient(label: dict) -> bool:
@@ -900,16 +922,34 @@ def _dedupe_against_curated(
     return live_findings + kept_curated
 
 
-def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
+def _labels_for(item: RegimenItem) -> list[dict]:
+    if item.is_product:
+        return fetch_labels_for_product(item.lookup_name)
+    return fetch_labels_for_substance(item.lookup_name)
+
+
+def _prefetch_labels(items: list[RegimenItem]) -> dict[str, list[dict] | Exception]:
+    by_key = {item.key: item for item in items}
+    return label_cache.fetch_concurrently(
+        list(by_key), lambda key: _labels_for(by_key[key])
+    )
+
+
+def _findings_for_item(
+    item: RegimenItem,
+    unchecked: list[str],
+    prefetched: list[dict] | Exception | None = None,
+) -> list[dict]:
     live_findings: list[dict] = []
     curated_findings: list[dict] = []
 
     try:
-        labels = (
-            fetch_labels_for_product(item.lookup_name)
-            if item.is_product
-            else fetch_labels_for_substance(item.lookup_name)
-        )
+        if prefetched is None:
+            labels = _labels_for(item)
+        elif isinstance(prefetched, Exception):
+            raise prefetched
+        else:
+            labels = prefetched
     except OpenFDAUnavailable:
         unchecked.append(
             f"openFDA was unreachable, so label checks could not run for "
@@ -1085,11 +1125,14 @@ def _respond(items: list[RegimenItem], unresolved: list[str]) -> tuple[dict, dic
     guidance_by_key: dict[str, list[dict]] = {}
     seen: set[str] = set()
 
+    unique = list({item.key: item for item in items}.values())
+    prefetched = _prefetch_labels(unique)
+
     for item in items:
         if item.key in seen:
             continue
         seen.add(item.key)
-        findings = _findings_for_item(item, unchecked)
+        findings = _findings_for_item(item, unchecked, prefetched[item.key])
         guidance_by_key[item.key] = findings
         guidance.extend(findings)
 

@@ -174,3 +174,52 @@ def test_no_side_effect_entry_is_verified(client, openfda):
     sources = {e["source"] for e in caffeine["side_effects"]}
     assert "openfda_label" in sources
     assert all(e["verified"] is False for e in caffeine["side_effects"])
+
+
+def test_each_substances_label_is_requested_once_not_once_per_effect(client, openfda):
+    log(client, "prod_nodoz_200", 2)
+    log(client, "prod_advil_200", 2)
+    log(client, "prod_tylenol_es_500", 2)
+
+    profile(client)
+
+    assert len(openfda.calls) == 3
+
+
+def test_labels_for_different_substances_are_fetched_concurrently(
+    client, openfda, monkeypatch
+):
+    import threading
+
+    barrier = threading.Barrier(2, timeout=5)
+
+    def fake(generic_name):
+        barrier.wait()
+        return "Nausea and headache were reported."
+
+    monkeypatch.setattr(side_effects, "fetch_adverse_reactions", fake)
+    log(client, "prod_nodoz_200", 2)
+    log(client, "prod_advil_200", 2)
+
+    body = profile(client)
+
+    assert len(body["substances"]) == 2
+
+
+def test_unreachable_openfda_is_reported_and_local_list_still_used(client, openfda):
+    openfda.down = True
+    log(client, "prod_nodoz_200", 2)
+
+    body = profile(client)
+
+    (reason,) = body["unchecked_reason"]
+    assert "openFDA was unreachable" in reason
+    assert "Caffeine" in reason
+    (caffeine,) = body["substances"]
+    assert all(e["source"] == "local_reference" for e in caffeine["side_effects"])
+
+
+def test_reachable_openfda_adds_no_unchecked_reason(client, openfda):
+    log(client, "prod_nodoz_200", 2)
+
+    assert "unchecked_reason" not in profile(client)

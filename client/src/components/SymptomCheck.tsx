@@ -2,6 +2,7 @@ import { useState } from "react";
 import { checkSymptom } from "../api";
 import { formatDateClock } from "../time";
 import type { SymptomCheckResponse } from "../types/contract";
+import { LoadingNote, UncheckedReasons } from "./LoadingNote";
 
 export function SymptomCheck() {
   const [symptom, setSymptom] = useState("");
@@ -44,9 +45,11 @@ export function SymptomCheck() {
           {checking ? "Checking…" : "Check"}
         </button>
       </form>
+      {checking && <LoadingNote label="Checking FDA labels…" />}
       {error && <p className="error">Couldn't check: {error}</p>}
       {result && (
         <div className="symptom-result">
+          <UncheckedReasons reasons={result.unchecked_reason} />
           <p className={result.matches.length ? "symptom-summary" : "muted"}>
             {result.message}
           </p>

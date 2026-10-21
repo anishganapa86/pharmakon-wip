@@ -397,3 +397,30 @@ def test_get_interaction_check_ignores_doses_older_than_24h(client, openfda):
 def test_manual_check_requires_at_least_one_name(client, openfda):
     r = client.post("/interaction-check", json={"names": []})
     assert r.status_code == 422
+
+
+def test_unreachable_openfda_is_tried_once_per_substance_not_once_per_pair(
+    client, openfda
+):
+    openfda.down = True
+
+    body = manual_check(client, ["ibuprofen", "warfarin", "loratadine"])
+
+    assert len(openfda.calls) == 3
+    assert interactions.LABEL_UNAVAILABLE_NOTE in body["unchecked_reason"]
+
+
+def test_substance_labels_are_fetched_concurrently(client, openfda, monkeypatch):
+    import threading
+
+    barrier = threading.Barrier(3, timeout=5)
+
+    def fake(generic_name):
+        barrier.wait()
+        return None
+
+    monkeypatch.setattr(interactions, "fetch_drug_interactions_text", fake)
+
+    body = manual_check(client, ["ibuprofen", "warfarin", "loratadine"])
+
+    assert body["checked_pairs"] == 3

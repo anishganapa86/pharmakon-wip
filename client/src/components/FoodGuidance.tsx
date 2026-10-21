@@ -7,6 +7,7 @@ import type {
   FoodGuidanceResponse,
   FoodGuidanceTimelineEntry,
 } from "../types/contract";
+import { LoadingNote } from "./LoadingNote";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -233,7 +234,7 @@ export function FoodGuidance({ userId }: Props) {
       <section className="panel">
         <h2>Your regimen</h2>
         {regimenLoading ? (
-          <p className="muted">Loading…</p>
+          <LoadingNote label="Reading FDA labels for your regimen…" />
         ) : regimenError ? (
           <p className="error">Couldn't check: {regimenError}</p>
         ) : (
@@ -262,6 +263,7 @@ export function FoodGuidance({ userId }: Props) {
             </button>
           </div>
         </form>
+        {checking && <LoadingNote label="Reading FDA labels…" />}
         {manualError && <p className="error">Couldn't check: {manualError}</p>}
       </section>
 

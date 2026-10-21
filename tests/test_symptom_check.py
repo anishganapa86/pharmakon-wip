@@ -263,3 +263,21 @@ def test_message_names_the_reference_data_limit_and_calls_it_unverified(
 
     assert "the 24-hour limit in our reference data (unverified)" in match["message"]
     assert "recommended" not in match["message"].lower()
+
+
+def test_unreachable_openfda_is_reported_with_the_symptom_result(client, openfda):
+    openfda.down = True
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    body = check(client, "headache")
+
+    (reason,) = body["unchecked_reason"]
+    assert "openFDA was unreachable" in reason
+    assert "Caffeine" in reason
+
+
+def test_reachable_openfda_adds_no_unchecked_reason_to_symptom_result(client, openfda):
+    openfda.labels["CAFFEINE"] = "Headache, dizziness, and nausea were reported."
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    assert "unchecked_reason" not in check(client, "headache")

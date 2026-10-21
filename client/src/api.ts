@@ -30,7 +30,16 @@ import type {
 const API_BASE = "http://localhost:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, init);
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") throw e;
+    throw new Error(
+      "Couldn't reach the Pharmakon server. Check that it is running, then try again.",
+      { cause: e },
+    );
+  }
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     try {

@@ -258,6 +258,7 @@ export interface SymptomMatch {
 export interface SymptomCheckResponse {
   matches: SymptomMatch[]; // empty when nothing qualifies
   message: string;
+  unchecked_reason?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +292,7 @@ export interface SubstanceSideEffectProfile {
 export interface SideEffectProfileResponse {
   substances: SubstanceSideEffectProfile[];
   shared_effects: string[];
+  unchecked_reason?: string[];
 }
 
 // ---------------------------------------------------------------------------

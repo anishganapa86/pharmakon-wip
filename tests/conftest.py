@@ -12,7 +12,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from app.api import openfda
+from app.api import label_cache, openfda
 
 
 def _no_matches(request: httpx.Request) -> httpx.Response:
@@ -29,3 +29,10 @@ def _stub_openfda(monkeypatch):
     openfda.clear_discovered()
     yield
     openfda.clear_discovered()
+
+
+@pytest.fixture(autouse=True)
+def _no_label_disk_cache():
+    label_cache.set_cache_dir(None)
+    yield
+    label_cache.reset_cache_dir()
