@@ -330,9 +330,15 @@ export interface SkincareCheckedProduct {
   ingredients: string[];
 }
 
+export type SkincareMatchQuality = "inci_name" | "common_name_only";
+
 export interface SkincareIncompatibility {
   ingredient_a: string;
   product_a: string;
+  products_a: string[];
+  appears_in_a: string | null;
+  match_quality_a: SkincareMatchQuality;
+  match_note_a: string | null;
   // matched_ingredient_a duplicates ingredient_a -- present so the UI can
   // pair "which string" with "which rule term" (matched_alias_a) without
   // knowing whether it's reading the a-side or b-side of a finding.
@@ -340,9 +346,14 @@ export interface SkincareIncompatibility {
   matched_alias_a: string; // the rule's canonical name or alias that hit
   ingredient_b: string;
   product_b: string;
+  products_b: string[];
+  appears_in_b: string | null;
+  match_quality_b: SkincareMatchQuality;
+  match_note_b: string | null;
   matched_ingredient_b: string;
   matched_alias_b: string;
   effect: string;
+  verified: boolean;
   // Rewritten when product_a === product_b: the source's timing advice
   // ("use at different times") doesn't apply when both ingredients are
   // already combined in one product.
@@ -355,8 +366,11 @@ export interface SkincareIrritant {
   product: string;
   matched_ingredient: string; // duplicates ingredient; see SkincareIncompatibility
   matched_alias: string; // the rule's canonical name or alias that hit
+  match_quality: SkincareMatchQuality;
+  match_note: string | null;
   effect: string;
   source: string;
+  verified: boolean;
   note?: string; // added only when relevant to something else the user logged
 }
 

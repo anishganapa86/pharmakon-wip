@@ -158,9 +158,14 @@ function SkincareResults({
           <p>
             <strong>{f.ingredient_a}</strong> ({f.product_a}) +{" "}
             <strong>{f.ingredient_b}</strong> ({f.product_b})
+            {!f.verified && <span className="tag">Unverified reference</span>}
           </p>
+          {f.appears_in_a && <p className="muted small">{f.appears_in_a}</p>}
+          {f.appears_in_b && <p className="muted small">{f.appears_in_b}</p>}
           <p>{f.effect}</p>
           <p className="muted small">{f.recommendation}</p>
+          {f.match_note_a && <p className="muted small">{f.match_note_a}</p>}
+          {f.match_note_b && <p className="muted small">{f.match_note_b}</p>}
           <p className="muted small">
             Matched on: '{f.matched_ingredient_a}' (rule term: '
             {f.matched_alias_a}') and '{f.matched_ingredient_b}' (rule term: '
@@ -183,8 +188,10 @@ function SkincareResults({
         <div key={`irritant-${i}`} className="skincare-flag skincare-flag-caution">
           <p>
             <strong>{f.ingredient}</strong> ({f.product})
+            {!f.verified && <span className="tag">Unverified reference</span>}
           </p>
           <p>{f.effect}</p>
+          {f.match_note && <p className="muted small">{f.match_note}</p>}
           {f.note && <p className="muted small">{f.note}</p>}
           <p className="muted small">
             Matched on: '{f.matched_ingredient}' (rule term: '{f.matched_alias}

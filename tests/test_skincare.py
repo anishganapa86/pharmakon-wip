@@ -238,8 +238,12 @@ def test_same_product_incompatibility_gets_pharmacist_recommendation():
         "Ask a pharmacist or dermatologist about this product."
         in (found["recommendation"])
     )
-    assert "The source says: " in found["recommendation"]
-    assert "Use on alternate nights." in found["recommendation"]
+    assert "The source says" not in found["recommendation"]
+    assert (
+        "The reference suggests: Use on alternate nights (unverified)."
+        in found["recommendation"]
+    )
+    assert ".." not in found["recommendation"]
     # Effect text is untouched -- only recommendation is rewritten.
     assert found["effect"] == (
         "Both cause dryness and exfoliation. Combined use increases risk of "
@@ -256,7 +260,10 @@ def test_two_product_incompatibility_keeps_original_recommendation():
     result = skincare.check_ingredients(products)
 
     (found,) = result["incompatibilities"]
-    assert found["recommendation"] == "Use on alternate nights."
+    assert found["recommendation"] == (
+        "Suggested timing from our unverified reference: Use on alternate nights."
+    )
+    assert found["verified"] is False
 
 
 # --- rules_checked ---------------------------------------------------------------
@@ -419,3 +426,104 @@ def test_products_without_stored_ingredients_are_skipped(client):
         "rules_checked": len(skincare.load_rules().incompatibilities)
         + len(skincare.load_rules().known_irritants),
     }
+
+
+def test_unverified_rule_recommendation_never_says_the_source_says_or_doubles_periods():
+    products = [
+        skincare.Product("Night Serum", ("Retinol",)),
+        skincare.Product("Morning Wash", ("Benzoyl Peroxide",)),
+    ]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["incompatibilities"]
+    assert "The source says" not in found["recommendation"]
+    assert found["recommendation"].startswith(
+        "Suggested timing from our unverified reference: "
+    )
+    assert ".." not in found["recommendation"]
+    assert found["verified"] is False
+
+
+def test_unverified_irritant_finding_carries_verified_false():
+    result = skincare.check_ingredients([skincare.Product("Cream", ("Parfum",))])
+
+    (found,) = result["irritants"]
+    assert found["verified"] is False
+
+
+def test_inci_name_match_is_inci_quality():
+    result = skincare.check_ingredients([skincare.Product("Cream", ("Parfum",))])
+
+    (found,) = result["irritants"]
+    assert found["match_quality"] == "inci_name"
+    assert found["match_note"] is None
+
+
+def test_match_only_inside_parentheses_is_common_name_only_and_not_suppressed():
+    result = skincare.check_ingredients(
+        [skincare.Product("Cream", ("Aroma Compound (Fragrance)",))]
+    )
+
+    (found,) = result["irritants"]
+    assert found["match_quality"] == "common_name_only"
+    assert found["match_note"] == (
+        "Matched on the label's common name only. The rule describes fragrance; "
+        "this ingredient may behave differently."
+    )
+
+
+def test_inci_match_wins_over_a_parenthetical_match():
+    result = skincare.check_ingredients(
+        [skincare.Product("Cream", ("Parfum (Fragrance)",))]
+    )
+
+    (found,) = result["irritants"]
+    assert found["match_quality"] == "inci_name"
+    assert found["matched_alias"] == "parfum"
+
+
+def test_incompatibility_side_matched_in_parentheses_is_common_name_only():
+    products = [
+        skincare.Product("Serum", ("Retinol",)),
+        skincare.Product("Toner", ("Hydroxy Complex (Glycolic Acid)",)),
+    ]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["incompatibilities"]
+    assert found["match_quality_a"] == "inci_name"
+    assert found["match_note_a"] is None
+    assert found["match_quality_b"] == "common_name_only"
+    assert found["match_note_b"].startswith("Matched on the label's common name only.")
+
+
+def test_cross_product_finding_is_one_card_listing_every_product_with_the_ingredient():
+    products = [
+        skincare.Product("Vitamin C Serum", ("Ascorbic Acid",)),
+        skincare.Product("Toner", ("Niacinamide",)),
+        skincare.Product("Cleanser", ("Niacinamide",)),
+    ]
+
+    result = skincare.check_ingredients(products)
+
+    (found,) = result["incompatibilities"]
+    sides = {
+        found["ingredient_a"]: found["appears_in_a"],
+        found["ingredient_b"]: found["appears_in_b"],
+    }
+    assert sides["Niacinamide"] == "Niacinamide appears in: Toner, Cleanser"
+    assert sides["Ascorbic Acid"] == "Ascorbic Acid appears in: Vitamin C Serum"
+
+
+def test_same_ingredient_in_two_products_is_not_dropped_by_the_pair_dedupe():
+    products = [
+        skincare.Product("Toner", ("Niacinamide",)),
+        skincare.Product("Cleanser", ("Niacinamide",)),
+        skincare.Product("Vitamin C Serum", ("Ascorbic Acid",)),
+    ]
+
+    (found,) = skincare.check_ingredients(products)["incompatibilities"]
+
+    all_products = set(found["products_a"]) | set(found["products_b"])
+    assert all_products == {"Toner", "Cleanser", "Vitamin C Serum"}
