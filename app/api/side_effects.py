@@ -258,6 +258,7 @@ def side_effect_profile(
                     "effect": effect,
                     "source": source,
                     "source_label": SOURCE_LABELS[source],
+                    "verified": False,
                 }
             )
             key = normalize_symptom(effect)
@@ -383,6 +384,7 @@ def _match(entry, symptom, source, level, recent, by_id) -> dict:
         "symptom": symptom,
         "source": source,
         "source_label": SOURCE_LABELS[source],
+        "verified": False,
         "current_level_mg_l": level["current_level_mg_l"],
         "total_24h_mg": level["total_24h_mg"],
         "threshold_24h_mg": level["threshold_24h_mg"],

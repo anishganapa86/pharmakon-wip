@@ -43,6 +43,7 @@ from ..pk.individualize import Patient
 from ..registry.loader import Registry
 from . import products, schedule, service
 from .db import DoseEvent
+from .provenance import QUOTE_SOURCE_FDA_LABEL
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "drug_interactions.json"
 
@@ -434,6 +435,7 @@ def _also_mentioned(self_entry: dict, match: LabelMatch) -> dict:
     return {
         "source": f"FDA label, {self_entry['name']}, Drug Interactions section",
         "quoted_text": match.sentence,
+        "quote_source": QUOTE_SOURCE_FDA_LABEL,
         "message": f"Also mentioned in the FDA label for {self_entry['name']}.",
     }
 
@@ -449,6 +451,7 @@ def _curated_finding(
         "source_type": "curated",
         "source": rule.source,
         "quoted_text": None,
+        "quote_source": None,
         "verified": rule.verified,
         "severity": None,  # never invented; no curated rule states one yet
         "overlap": overlap,
@@ -483,7 +486,8 @@ def _label_finding(
         "source_type": "fda_label",
         "source": f"FDA label, {self_entry['name']}, Drug Interactions section",
         "quoted_text": match.sentence,
-        "verified": True,  # quoted verbatim from the live FDA label, not a guess
+        "quote_source": QUOTE_SOURCE_FDA_LABEL,
+        "verified": False,
         "severity": None,  # never interpreted from label prose
         "overlap": overlap,
         "message": message,

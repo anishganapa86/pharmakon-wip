@@ -79,12 +79,19 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
       )}
       <p className="muted small">
         <SourceTag interaction={interaction} /> Source: {interaction.source}
-        {!interaction.verified && (
-          <>
-            {" · "}
-            <span className="tag">Unverified reference</span>
-          </>
-        )}
+        {interaction.source_type === "fda_label"
+          ? interaction.quote_source !== null && (
+              <>
+                {" · "}
+                <span className="tag">Quoted from FDA label</span>
+              </>
+            )
+          : !interaction.verified && (
+              <>
+                {" · "}
+                <span className="tag">Unverified reference</span>
+              </>
+            )}
       </p>
       <div className="pharmacist-questions">
         <p className="muted small">Questions for your pharmacist:</p>

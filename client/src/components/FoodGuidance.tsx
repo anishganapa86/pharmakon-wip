@@ -83,12 +83,19 @@ function FindingCard({ finding }: { finding: FoodGuidanceFinding }) {
         </span>
         {" · "}
         {finding.label_field}
-        {!finding.verified && (
-          <>
-            {" · "}
-            <span className="tag">Unverified reference</span>
-          </>
-        )}
+        {finding.source_type === "fda_label"
+          ? finding.quote_source !== null && (
+              <>
+                {" · "}
+                <span className="tag">Quoted from FDA label</span>
+              </>
+            )
+          : !finding.verified && (
+              <>
+                {" · "}
+                <span className="tag">Unverified reference</span>
+              </>
+            )}
       </p>
     </div>
   );

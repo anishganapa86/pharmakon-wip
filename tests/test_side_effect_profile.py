@@ -163,3 +163,14 @@ def test_substance_with_no_documented_side_effects_still_appears(client, openfda
     (naproxen,) = profile(client)["substances"]
     assert naproxen["substance"]["id"] == "naproxen"
     assert naproxen["side_effects"] == []
+
+
+def test_no_side_effect_entry_is_verified(client, openfda):
+    openfda.labels["CAFFEINE"] = "Nausea, headache, and jitteriness were reported."
+    log(client, "prod_nodoz_200", 2)
+
+    (caffeine,) = profile(client)["substances"]
+
+    sources = {e["source"] for e in caffeine["side_effects"]}
+    assert "openfda_label" in sources
+    assert all(e["verified"] is False for e in caffeine["side_effects"])

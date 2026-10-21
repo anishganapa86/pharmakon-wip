@@ -1002,3 +1002,84 @@ def test_timeline_never_derived_from_concentrations(client, openfda, monkeypatch
 def test_timeline_empty_regimen_gives_empty_timeline(client):
     body = client.get("/users/default/food-guidance").json()
     assert body["timeline"] == []
+
+
+# --- Provenance: live label findings are never "verified" -------------------------
+
+
+def _ibuprofen_item():
+    return food_guidance.RegimenItem("ibuprofen", "Ibuprofen", False, "Ibuprofen")
+
+
+def test_live_quote_finding_is_unverified_with_quote_source(monkeypatch, tmp_path):
+    monkeypatch.setattr(food_guidance, "DATA_PATH", write_curated(tmp_path, []))
+    food_guidance.clear_curated_cache()
+    label = oral_label(directions=["Take with food to reduce stomach upset."])
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: [label]
+    )
+
+    findings = food_guidance._findings_for_item(_ibuprofen_item(), [])
+    food_guidance.clear_curated_cache()
+
+    (finding,) = [f for f in findings if f["quote"] is not None]
+    assert finding["source_type"] == "fda_label"
+    assert finding["verified"] is False
+    assert finding["quote_source"] == "fda_label_verbatim"
+
+
+def test_live_pointer_finding_is_unverified_and_has_no_quote_source():
+    pointer = food_guidance.PointerMatch("warnings", "alcohol")
+
+    finding = food_guidance._pointer_finding(
+        _ibuprofen_item(), "alcohol", pointer, "Ibuprofen", "tablet", "abc-123"
+    )
+
+    assert finding["quote"] is None
+    assert finding["verified"] is False
+    assert finding["quote_source"] is None
+
+
+def test_curated_finding_keeps_its_own_verified_flag_and_has_no_quote_source(
+    monkeypatch, tmp_path
+):
+    path = write_curated(
+        tmp_path,
+        [
+            {
+                "substance": "warfarin",
+                "item": "vitamin k",
+                "quote": "Maintain a consistent vitamin K intake while on warfarin.",
+                "label_field": "information_for_patients",
+                "date_fetched": "2026-01-01",
+                "verified": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(food_guidance, "DATA_PATH", path)
+    food_guidance.clear_curated_cache()
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: []
+    )
+    item = food_guidance.RegimenItem("warfarin", "Warfarin", False, "Warfarin")
+
+    findings = food_guidance._findings_for_item(item, [])
+    food_guidance.clear_curated_cache()
+
+    (finding,) = findings
+    assert finding["source_type"] == "curated"
+    assert finding["verified"] is False
+    assert finding["quote_source"] is None
+
+
+def test_no_live_finding_in_an_http_response_is_verified(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        directions=["Take with food to reduce stomach upset."],
+        warnings=["2 DOSAGE AND ADMINISTRATION avoid alcohol with this product"],
+    )
+
+    body = manual_check(client, ["ibuprofen"])
+
+    live = [f for f in body["guidance"] if f["source_type"] == "fda_label"]
+    assert live
+    assert all(f["verified"] is False for f in live)

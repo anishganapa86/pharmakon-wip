@@ -245,6 +245,7 @@ export interface SymptomMatch {
   symptom: string;
   source: AssociationSource;
   source_label: string; // human-readable source, e.g. "FDA drug label"
+  verified: false;
   current_level_mg_l: number | null; // null when the substance can't be modeled
   total_24h_mg: number;
   threshold_24h_mg: number | null;
@@ -271,6 +272,7 @@ export interface SideEffectEntry {
   effect: string;
   source: AssociationSource;
   source_label: string;
+  verified: false;
 }
 
 export interface SubstanceSideEffectProfile {
@@ -409,6 +411,8 @@ export interface InteractionCheckRequest {
   names: string[]; // product or substance names, as typed
 }
 
+export type QuoteSource = "fda_label_verbatim";
+
 export type InteractionSourceType = "curated" | "fda_label";
 
 export interface InteractionSubstanceSource {
@@ -444,8 +448,7 @@ export interface Interaction {
   source_type: InteractionSourceType;
   source: string; // citation (curated) or "FDA label, <drug>, ..." (fda_label)
   quoted_text: string | null; // fda_label only, <=300 chars, verbatim
-  // Curated: false until a human opens the cited source. fda_label: true --
-  // quoted verbatim from the live FDA label, not a curated guess.
+  quote_source: QuoteSource | null;
   verified: boolean;
   severity: string | null; // null unless the source itself states one
   overlap: OverlapWindow[] | null; // null when either substance isn't modeled
@@ -508,8 +511,7 @@ export interface FoodGuidanceFinding {
   pointer: string | null;
   source_type: FoodGuidanceSourceType;
   label_field: string; // e.g. "dosage_and_administration"
-  // Curated: false until a human opens the cited source. fda_label: true --
-  // quoted verbatim from the live FDA label, not a curated guess.
+  quote_source: QuoteSource | null;
   verified: boolean;
   window: FoodGuidanceWindow | null;
   // True when a curated entry quoted the same sentence (exact, or after

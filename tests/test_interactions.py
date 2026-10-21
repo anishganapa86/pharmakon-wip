@@ -162,11 +162,46 @@ def test_label_text_mentioning_the_other_drug_is_flagged_with_quote(client, open
     assert finding["substance_b"]["id"] == "warfarin"
     assert "Warfarin" in finding["quoted_text"]
     assert len(finding["quoted_text"]) <= 300
-    assert finding["verified"] is True
+    assert finding["verified"] is False
+    assert finding["quote_source"] == "fda_label_verbatim"
     assert finding["message"] == (
         "The FDA label for Loratadine mentions Warfarin in its drug "
         "interactions section."
     )
+
+
+def test_no_live_label_interaction_finding_is_ever_verified(client, openfda):
+    openfda.labels["LORATADINE"] = "Warfarin: no interaction was observed."
+    openfda.labels["IBUPROFEN"] = "Naproxen should not be taken with ibuprofen."
+
+    body = manual_check(client, ["loratadine", "warfarin", "ibuprofen", "naproxen"])
+
+    label_findings = [
+        f for f in body["interactions"] if f["source_type"] == "fda_label"
+    ]
+    assert label_findings
+    for finding in label_findings:
+        assert finding["verified"] is False
+        assert finding["quote_source"] == "fda_label_verbatim"
+        assert finding["quoted_text"]
+
+
+def test_curated_interaction_finding_has_no_quote_source(client, openfda):
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    (curated,) = [f for f in body["interactions"] if f["source_type"] == "curated"]
+    assert curated["quote_source"] is None
+    assert curated["verified"] is False
+
+
+def test_label_mention_folded_into_curated_card_names_its_quote_source(client, openfda):
+    openfda.labels["IBUPROFEN"] = "Do not use naproxen together with ibuprofen."
+
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    (curated,) = [f for f in body["interactions"] if f["source_type"] == "curated"]
+    (mention,) = curated["also_mentioned_in_label"]
+    assert mention["quote_source"] == "fda_label_verbatim"
 
 
 def test_label_text_not_mentioning_the_other_drug_is_not_flagged(client, openfda):

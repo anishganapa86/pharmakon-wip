@@ -55,6 +55,7 @@ from sqlalchemy.orm import Session
 from ..registry.loader import Registry
 from . import products, schedule, service
 from .db import DoseEvent, ScheduledDose
+from .provenance import QUOTE_SOURCE_FDA_LABEL
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "food_drug_guidance.json"
 
@@ -813,6 +814,7 @@ def _finding(
     verified: bool,
     product_name: str | None = None,
     dosage_form: str | None = None,
+    quote_source: str | None = None,
 ) -> dict:
     return {
         "name": item.display_name,
@@ -824,6 +826,7 @@ def _finding(
         "source_type": source_type,
         "label_field": match.field,
         "verified": verified,
+        "quote_source": quote_source,
         "window": _window_json(parse_window(match.quote)),
         # True only when a curated entry quoting the same sentence was
         # folded into this (live) finding -- see _dedupe_against_curated.
@@ -859,7 +862,8 @@ def _pointer_finding(
         "pointer": pointer_text(display_product, item_term, pointer.field, set_id),
         "source_type": "fda_label",
         "label_field": pointer.field,
-        "verified": True,
+        "verified": False,
+        "quote_source": None,
         "window": None,
         "also_in_curated": False,
         "product_name": product_name,
@@ -950,9 +954,10 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
                                     item_term,
                                     match,
                                     "fda_label",
-                                    True,
+                                    False,
                                     product_name,
                                     dosage_form,
+                                    QUOTE_SOURCE_FDA_LABEL,
                                 )
                             )
                         for p in pointers:

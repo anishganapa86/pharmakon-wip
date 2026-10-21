@@ -241,3 +241,13 @@ def test_blank_or_trivial_symptom_is_422(client, openfda, symptom):
 )
 def test_mentions(text, symptom, expected):
     assert side_effects.mentions(text, symptom) is expected
+
+
+def test_symptom_match_is_never_verified(client, openfda):
+    openfda.labels["CAFFEINE"] = "Headache, dizziness, and nausea were reported."
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["source"] == "openfda_label"
+    assert match["verified"] is False
