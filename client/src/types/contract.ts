@@ -242,6 +242,7 @@ export interface LoggedDoseEvent {
   product_name: string;
   taken_at: IsoTimestamp;
   quantity: number;
+  topical: boolean;
   ingredients: LoggedIngredient[];
 }
 
@@ -720,6 +721,7 @@ export interface TimelineDoseEntry {
   product_id: string;
   product_name: string;
   quantity: number;
+  topical: boolean;
   ingredients: LoggedIngredient[];
 }
 

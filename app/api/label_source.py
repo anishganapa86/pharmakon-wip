@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 
 from ..registry.loader import normalize, strip_salt_tokens
+from .names import display_product_name
 
 DAILYMED_URL = "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid={set_id}"
 
@@ -40,7 +41,7 @@ def sections_from_results(
         for text in label.get(field) or []:
             out.append(
                 {
-                    "product_name": brands[0] if brands else None,
+                    "product_name": display_product_name(brands[0]) if brands else None,
                     "active_ingredient": active_ingredient,
                     "set_id": label.get("set_id"),
                     "text": text,

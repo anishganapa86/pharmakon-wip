@@ -25,6 +25,7 @@ import { SideEffectProfile } from "./components/SideEffectProfile";
 import { Skincare } from "./components/Skincare";
 import { SymptomCheck } from "./components/SymptomCheck";
 import { Timeline } from "./components/Timeline";
+import { TopicalIngredients } from "./components/TopicalIngredients";
 import {
   ingredientLabel,
   loggedIngredientLabel,
@@ -496,17 +497,20 @@ function App() {
                         <span className="muted">
                           {formatDateClock(new Date(d.taken_at).getTime())}
                         </span>
-                        <span className="muted small">
-                          {d.ingredients.map(loggedIngredientLabel).join(" · ")}
-                        </span>
+                        {!d.topical && (
+                          <span className="muted small">
+                            {d.ingredients.map(loggedIngredientLabel).join(" · ")}
+                          </span>
+                        )}
                       </div>
+                      {d.topical && <TopicalIngredients ingredients={d.ingredients} />}
                       {modeled ? (
                         <span className="tag tag-modelable">Modeled</span>
                       ) : (
-                        // Route isn't tracked on a logged dose, only at search
-                        // time, so history uses the generic honest phrasing.
                         <span className="tag tag-logged-only">
-                          {notModeledReason(null)}
+                          {d.topical
+                            ? notModeledReason("TOPICAL")
+                            : notModeledReason(null)}
                         </span>
                       )}
                     </li>

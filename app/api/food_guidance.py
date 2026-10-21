@@ -63,6 +63,7 @@ from . import (
     verification,
 )
 from .db import DoseEvent, ScheduledDose
+from .names import display_product_name
 from .provenance import QUOTE_SOURCE_FDA_LABEL
 from .quote_text import (
     has_cross_reference,
@@ -642,7 +643,7 @@ def label_dosage_form(label: dict) -> str | None:
 
 def label_product_name(label: dict) -> str | None:
     names = label.get("openfda", {}).get("brand_name") or []
-    return names[0] if names else None
+    return display_product_name(names[0]) if names else None
 
 
 # --- Pointer text (DailyMed) ------------------------------------------------------

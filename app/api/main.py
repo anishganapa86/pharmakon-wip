@@ -205,6 +205,7 @@ def list_doses(user_id: UserId, session: Db, registry: Reg) -> list[dict]:
             "product_name": ev.product_name,
             "taken_at": ev.taken_at,
             "quantity": ev.quantity,
+            "topical": bool(ev.topical_ingredients),
             "ingredients": [
                 service.ingredient_json(ing, registry) for ing in ev.ingredients
             ],
@@ -689,6 +690,7 @@ def get_timeline(
                 "product_id": ev.product_id,
                 "product_name": ev.product_name,
                 "quantity": ev.quantity,
+                "topical": bool(ev.topical_ingredients),
                 "ingredients": [
                     service.ingredient_json(ing, registry) for ing in ev.ingredients
                 ],

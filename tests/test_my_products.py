@@ -291,3 +291,34 @@ def test_saved_product_can_be_found_logged_and_checked_end_to_end(client):
     assert check["products"] == [
         {"name": "Test Test Cream", "ingredients": saved["ingredients"]}
     ]
+
+
+def test_dose_history_and_timeline_mark_a_topical_dose(client):
+    saved = create_product(client, raw_text=FLOW_TEXT).json()
+    client.post(
+        "/users/default/doses",
+        json={"product_id": saved["id"], "taken_at": NOW.isoformat(), "quantity": 1},
+    )
+    client.post(
+        "/users/default/doses",
+        json={
+            "product_id": "prod_tylenol_es_500",
+            "taken_at": NOW.isoformat(),
+            "quantity": 1,
+        },
+    )
+
+    history = {d["product_id"]: d for d in client.get("/users/default/doses").json()}
+    timeline = {
+        e["product_id"]: e
+        for e in client.get("/users/default/timeline").json()
+        if e["type"] == "dose"
+    }
+
+    assert history[saved["id"]]["topical"] is True
+    assert history["prod_tylenol_es_500"]["topical"] is False
+    assert timeline[saved["id"]]["topical"] is True
+    assert timeline["prod_tylenol_es_500"]["topical"] is False
+    assert [i["name"] for i in history[saved["id"]]["ingredients"]] == saved[
+        "ingredients"
+    ]

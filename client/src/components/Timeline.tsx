@@ -3,11 +3,13 @@ import { deleteLog, fetchTimeline } from "../api";
 import {
   categoryColor,
   loggedIngredientLabel,
+  notModeledReason,
   TIMELINE_DOSE_NOT_MODELED,
 } from "../labels";
 import { dayKey, formatClock, formatDateHeader } from "../time";
 import type { TimelineDoseEntry, TimelineEntry } from "../types/contract";
 import { ProductName } from "./ProductName";
+import { TopicalIngredients } from "./TopicalIngredients";
 
 const PAGE_MS = 30 * 24 * 60 * 60 * 1000; // matches the API's default range
 
@@ -30,10 +32,20 @@ function DoseCard({ entry }: { entry: TimelineDoseEntry }) {
         </strong>
         <span className="muted timeline-time">{formatClock(entryMs(entry))}</span>
       </div>
-      <p className="timeline-detail">
-        {entry.quantity} × {entry.ingredients.map(loggedIngredientLabel).join(" · ")}
-      </p>
-      {!modeled && <p className="muted small">{TIMELINE_DOSE_NOT_MODELED}</p>}
+      {entry.topical ? (
+        <>
+          <p className="muted small">{TIMELINE_DOSE_NOT_MODELED}</p>
+          <TopicalIngredients ingredients={entry.ingredients} />
+        </>
+      ) : (
+        <>
+          <p className="timeline-detail">
+            {entry.quantity} ×{" "}
+            {entry.ingredients.map(loggedIngredientLabel).join(" · ")}
+          </p>
+          {!modeled && <p className="muted small">{notModeledReason(null)}</p>}
+        </>
+      )}
     </li>
   );
 }
