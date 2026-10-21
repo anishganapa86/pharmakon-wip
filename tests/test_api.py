@@ -212,6 +212,47 @@ def test_breaching_the_limit_triggers_urgent_and_resolves_the_caution(client):
     assert inactive[0]["resolved_at"] is not None
 
 
+def test_breach_severity_is_caution_unless_the_registry_says_urgent(client):
+    r = log(client, "prod_advil_200", 1, quantity=7)  # 1400 of 1200
+    (alert,) = r["triggered_alerts"]
+    assert alert["substance"]["id"] == "ibuprofen"
+    assert "exceeds" in alert["message"]
+    assert alert["severity"] == "caution"
+
+
+def test_approaching_the_limit_stays_caution_for_every_substance(client):
+    r = log(client, "prod_advil_200", 1, quantity=5)  # 1000 of 1200
+    (alert,) = r["triggered_alerts"]
+    assert alert["severity"] == "caution"
+    assert "approaching" in alert["message"]
+
+
+def test_severity_on_breach_defaults_to_caution_and_is_urgent_only_for_acetaminophen():
+    from app.registry.loader import load_registry
+
+    registry = load_registry()
+    urgent = [
+        e["id"]
+        for e in registry.all()
+        if registry.severity_on_breach(e["id"]) == "urgent"
+    ]
+    assert urgent == ["acetaminophen"]
+    assert registry.severity_on_breach("ibuprofen") == "caution"
+
+
+def test_registry_rejects_an_unknown_severity_on_breach():
+    from app.registry.loader import Registry
+
+    entry = {
+        "id": "x",
+        "name": "X",
+        "threshold_concentration_mg_per_l": None,
+        "severity_on_breach": "dire",
+    }
+    with pytest.raises(ValueError):
+        Registry([entry])
+
+
 def test_zero_order_substance_surfaces_as_unmodelable(client):
     r = log(client, "prod_example_beer", 1)
     kinds = [(a["kind"], a["severity"]) for a in r["triggered_alerts"]]
