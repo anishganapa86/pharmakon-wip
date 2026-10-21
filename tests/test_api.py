@@ -330,6 +330,18 @@ def test_zero_order_substance_is_200_with_modelable_false(client):
     assert body["unit"] == "mg/L"
 
 
+def test_unmodelable_curve_has_null_fidelity(client):
+    body = curve(client, substance_id="ethanol").json()
+    assert body["modelable"] is False
+    assert body["fidelity"] is None
+
+
+def test_modelable_curve_still_reports_full_fidelity(client):
+    body = curve(client).json()
+    assert body["modelable"] is True
+    assert body["fidelity"] == "full"
+
+
 def test_current_is_null_when_now_is_outside_the_window(client):
     log(client, "prod_nodoz_200", 10)
     body = curve(client, from_h=12, to_h=4).json()

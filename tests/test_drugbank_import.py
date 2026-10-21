@@ -427,6 +427,13 @@ def test_a_substance_with_no_parameters_is_logged_but_never_charted(client):
     assert body["points"] == []
 
 
+def test_a_substance_with_no_parameters_has_null_fidelity(client):
+    log(client, "prod_none", 1)
+    body = curve(client, "nulldrug")
+    assert body["modelable"] is False
+    assert body["fidelity"] is None
+
+
 def test_search_names_the_unmodeled_reason_for_a_substance_with_no_parameters(client):
     results = client.get("/products/search", params={"q": "Nulldrug"}).json()
     ingredient = results["results"][0]["ingredients"][0]

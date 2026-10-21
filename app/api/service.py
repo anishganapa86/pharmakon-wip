@@ -307,7 +307,7 @@ class CurveResult:
     # "mg/L" for a full curve. An approximate curve (see registry.Modelability)
     # is the amount remaining in the body, in mg: no Vd, so no concentration.
     unit: str = "mg/L"
-    fidelity: str = "full"  # "full" | "approximate"
+    fidelity: str | None = "full"
     # The same curve with future scheduled doses added, from `now` on; empty
     # when no schedule contributes. A projection, never merged into `points`.
     projected_points: list[dict] | None = None
@@ -378,7 +378,7 @@ def compute_curve(
     try:
         params.check_modelable()
     except UnsupportedKinetics as exc:
-        return CurveResult(False, str(exc), [], None, None, [])
+        return CurveResult(False, str(exc), [], None, None, [], fidelity=None)
 
     entry = registry.get(substance_id)
     tier = registry.modelability(substance_id)
@@ -391,6 +391,7 @@ def compute_curve(
             None,
             None,
             [],
+            fidelity=None,
         )
 
     ke, notes = adjusted_ke(params, patient)

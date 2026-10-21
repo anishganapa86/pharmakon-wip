@@ -74,7 +74,7 @@ export interface SubstanceCurve {
   unit: ConcentrationUnit;
   // "approximate" is a simplified decay curve in mg (see ConcentrationUnit);
   // its `notes` say what is missing.
-  fidelity: "full" | "approximate";
+  fidelity: "full" | "approximate" | null;
   points: ConcentrationPoint[]; // ordered by t ascending; empty if !modelable
   // Published plasma concentration from the registry. Never derived from a
   // dose threshold. null for every substance at launch — the Curves screen
