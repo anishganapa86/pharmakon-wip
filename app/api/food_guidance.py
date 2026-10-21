@@ -24,9 +24,10 @@ Like app/api/interactions.py, there are two sources:
      created, and the loader here rejects one if it somehow existed.
 
 Every quote is verbatim, <=300 chars, never paraphrased into "safe" or
-"will cause". A finding is classified (take_with_food, take_on_empty_stomach,
-avoid_item, separate_from, other) by simple keyword rules for display, but
-the classification is never shown as more than a tag next to its quote.
+"will cause". A finding is classified (take_with_food, take_with_food_if_upset,
+take_on_empty_stomach, avoid_item, separate_from, other) by simple keyword
+rules for display, but the classification is never shown as more than a tag
+next to its quote.
 
 Oral only: a substance whose own label declares a non-oral route (or no
 route at all) produces no guidance and is reported under unchecked_reason
@@ -666,6 +667,12 @@ _CLAUSE_BREAK_RE = re.compile(r"[.;:]")
 TAKE_WITH_FOOD_PHRASES = ("with food", "with meals", "with milk", "after eating")
 # "with the evening meal", "with the morning meal", etc.
 _WITH_THE_MEAL_RE = re.compile(r"\bwith the \w+ meal\b")
+_CONDITIONAL_RES = (
+    re.compile(r"\bif\b"),
+    re.compile(r"\bwhen\b.*\boccurs?\b"),
+    re.compile(r"\bshould\b.*\boccur\b"),
+    re.compile(r"\bin case of\b"),
+)
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
@@ -688,6 +695,12 @@ def _avoid_cue_governs_item(lowered: str, variants: tuple[str, ...]) -> bool:
     return False
 
 
+def _is_conditional(lowered: str) -> bool:
+    return any(
+        rx.search(clause) for clause in lowered.split(";") for rx in _CONDITIONAL_RES
+    )
+
+
 def classify(quote: str, item: str) -> str:
     lowered = quote.lower()
     variants = ITEM_VARIANTS.get(item, (item.lower(),))
@@ -702,6 +715,8 @@ def classify(quote: str, item: str) -> str:
     if any(
         _phrase_in(lowered, p) for p in TAKE_WITH_FOOD_PHRASES
     ) or _WITH_THE_MEAL_RE.search(lowered):
+        if _is_conditional(lowered):
+            return "take_with_food_if_upset"
         return "take_with_food"
     return "other"
 
@@ -1077,11 +1092,16 @@ def _timeline_entries(
 ) -> list[dict]:
     entries: list[dict] = []
     ongoing_emitted: set[str] = set()
+    markers_emitted: set[tuple[str, str, str]] = set()
 
     def emit(key: str, display_name: str, at: datetime, marker_source: str) -> None:
         for f in guidance_by_key.get(key, []):
             cls = f["class"]
             if cls in ("take_with_food", "take_on_empty_stomach"):
+                marker_key = (at.isoformat(), key, cls)
+                if marker_key in markers_emitted:
+                    continue
+                markers_emitted.add(marker_key)
                 entries.append(
                     {
                         "type": "dose_marker",

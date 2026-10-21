@@ -569,6 +569,7 @@ export interface FoodGuidanceRequest {
 
 export type FoodGuidanceClass =
   | "take_with_food"
+  | "take_with_food_if_upset"
   | "take_on_empty_stomach"
   | "avoid_item"
   | "separate_from"

@@ -23,6 +23,7 @@ function parseNames(text: string): string[] {
 
 const CLASS_LABELS: Record<FoodGuidanceClass, string> = {
   take_with_food: "Take with food",
+  take_with_food_if_upset: "With food if stomach upset occurs",
   take_on_empty_stomach: "Take on an empty stomach",
   avoid_item: "Avoid",
   separate_from: "Keep apart",
@@ -119,13 +120,22 @@ function timelineSortKey(entry: FoodGuidanceTimelineEntry): string {
 }
 
 function TimelineStrip({ entries }: { entries: FoodGuidanceTimelineEntry[] }) {
-  const timed = entries.filter((e) => e.type !== "ongoing");
-  const ongoing = entries.filter((e) => e.type === "ongoing");
+  const seenMarkers = new Set<string>();
+  const drawn = entries.filter((e) => {
+    if (e.type !== "dose_marker") return true;
+    if (e.class === "take_with_food_if_upset") return false;
+    const key = `${e.at}|${e.name}|${e.class}`;
+    if (seenMarkers.has(key)) return false;
+    seenMarkers.add(key);
+    return true;
+  });
+  const timed = drawn.filter((e) => e.type !== "ongoing");
+  const ongoing = drawn.filter((e) => e.type === "ongoing");
   const sorted = [...timed].sort((a, b) =>
     timelineSortKey(a).localeCompare(timelineSortKey(b)),
   );
 
-  if (entries.length === 0) return null;
+  if (drawn.length === 0) return null;
 
   return (
     <div className="timeline-strip">

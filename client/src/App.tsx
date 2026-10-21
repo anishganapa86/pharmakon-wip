@@ -20,7 +20,7 @@ import { Interactions } from "./components/Interactions";
 import { LogForm } from "./components/LogForm";
 import { ProductName } from "./components/ProductName";
 import { ProductSearch } from "./components/ProductSearch";
-import { Schedule } from "./components/Schedule";
+import { Schedule, type FoodChip } from "./components/Schedule";
 import { SideEffectProfile } from "./components/SideEffectProfile";
 import { Skincare } from "./components/Skincare";
 import { SymptomCheck } from "./components/SymptomCheck";
@@ -173,9 +173,12 @@ function App() {
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
   const [interactionsNotice, setInteractionsNotice] = useState(false);
-  // Lowercased names/product names with a quoted take_with_food finding --
-  // drives the small "With food" chip on each Schedule card.
-  const [withFoodNames, setWithFoodNames] = useState<Set<string>>(new Set());
+  // Lowercased names/product names with a quoted take_with_food or
+  // take_with_food_if_upset finding -- drives the small food chip on each
+  // Schedule card. An unconditional finding wins over a conditional one.
+  const [withFoodNames, setWithFoodNames] = useState<Map<string, FoodChip>>(
+    new Map(),
+  );
 
   // State is set only in promise callbacks, so this is safe to run from an
   // effect. Callers that re-load set `loading` themselves.
@@ -226,13 +229,14 @@ function App() {
   async function refreshFoodGuidanceChips() {
     try {
       const check = await fetchFoodGuidance(USER_ID);
-      setWithFoodNames(
-        new Set(
-          check.guidance
-            .filter((f) => f.class === "take_with_food")
-            .map((f) => f.name.trim().toLowerCase()),
-        ),
-      );
+      const chips = new Map<string, FoodChip>();
+      for (const f of check.guidance) {
+        if (f.class !== "take_with_food" && f.class !== "take_with_food_if_upset")
+          continue;
+        const name = f.name.trim().toLowerCase();
+        if (f.class === "take_with_food" || !chips.has(name)) chips.set(name, f.class);
+      }
+      setWithFoodNames(chips);
     } catch {
       // Leave the existing chip state as-is.
     }

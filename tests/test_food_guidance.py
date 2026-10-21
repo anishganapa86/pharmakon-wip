@@ -137,7 +137,7 @@ def test_take_with_food_sentence_is_found_and_classified_pure():
     matches = food_guidance.qualifying_matches(label, "food")
     assert len(matches) == 1
     assert "food" in matches[0].quote.lower()
-    assert food_guidance.classify(matches[0].quote, "food") == "take_with_food"
+    assert food_guidance.classify(matches[0].quote, "food") == "take_with_food_if_upset"
 
 
 def test_item_term_without_instruction_cue_is_excluded():
@@ -432,7 +432,7 @@ def test_avoid_grapefruit_juice_is_avoid_item():
 
 
 def test_take_with_food_or_milk_is_take_with_food():
-    quote = "Take with food or milk if stomach upset occurs."
+    quote = "Take with food or milk to reduce stomach upset."
     assert food_guidance.classify(quote, "food") == "take_with_food"
 
 
@@ -941,7 +941,7 @@ def test_food_guidance_never_creates_an_alert(client, openfda):
 
 def test_timeline_take_with_food_marker_logged_and_scheduled(client, openfda):
     openfda.labels["IBUPROFEN"] = oral_label(
-        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+        dosage_and_administration=["Take with food or milk to reduce stomach upset."]
     )
     register_and_log(client, "prod_advil_200", hours_ago=1)
     add_schedule(client, "prod_advil_200", times=["08:00"])
@@ -956,6 +956,57 @@ def test_timeline_take_with_food_marker_logged_and_scheduled(client, openfda):
     sources = {m["source"] for m in markers}
     assert sources == {"logged", "scheduled"}
     assert all(m["name"] == "Ibuprofen" for m in markers)
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "When using this product take with food or milk if stomach upset occurs.",
+        "If gastrointestinal complaints occur, administer ibuprofen tablets with "
+        "meals or milk.",
+        "Take with food or milk should stomach upset occur.",
+        "Take with food in case of stomach upset.",
+    ],
+)
+def test_conditional_with_food_sentence_is_take_with_food_if_upset(quote):
+    assert food_guidance.classify(quote, "food") == "take_with_food_if_upset"
+
+
+@pytest.mark.parametrize(
+    "quote", ["Take with food.", "Take this medicine with meals or milk."]
+)
+def test_unconditional_with_food_sentence_stays_take_with_food(quote):
+    assert food_guidance.classify(quote, "food") == "take_with_food"
+
+
+def test_conditional_with_food_gets_no_timeline_marker(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    assert any(f["class"] == "take_with_food_if_upset" for f in body["guidance"])
+    assert [e for e in body["timeline"] if e["type"] == "dose_marker"] == []
+
+
+def test_timeline_marker_is_one_per_dose_time_substance_and_class(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        dosage_and_administration=["Take with food."],
+        directions=["Take with meals."],
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    markers = [
+        e
+        for e in body["timeline"]
+        if e["type"] == "dose_marker" and e["class"] == "take_with_food"
+    ]
+    assert len(body["guidance"]) >= 2
+    assert len(markers) == 1
 
 
 def test_timeline_separate_from_window_drawn_around_dose(client, openfda):
@@ -1011,7 +1062,7 @@ def test_timeline_as_needed_schedule_has_no_scheduled_markers(client, openfda):
 
 def test_timeline_never_derived_from_concentrations(client, openfda, monkeypatch):
     openfda.labels["IBUPROFEN"] = oral_label(
-        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+        dosage_and_administration=["Take with food or milk to reduce stomach upset."]
     )
     # Schedule creation's own response legitimately calls compute_curve (to
     # show current concentration) -- set up the regimen before patching it
