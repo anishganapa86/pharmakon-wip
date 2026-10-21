@@ -44,6 +44,11 @@ from ..registry.loader import Registry, normalize, strip_salt_tokens
 from . import label_cache, products, schedule, service, verification
 from .db import DoseEvent
 from .provenance import QUOTE_SOURCE_FDA_LABEL
+from .quote_text import (
+    has_cross_reference,
+    has_section_number_noise,
+    separate_section_heading,
+)
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "drug_interactions.json"
 
@@ -403,31 +408,40 @@ def _match_in_sentence(
 
 def _find_best_match(
     text: str, other_id: str, registry: Registry, shadow: dict[str, dict]
-) -> tuple[LabelMatch | None, bool]:
-    """(match, rejected_class_mention). At most one match: the first literal
+) -> tuple[LabelMatch | None, str | None]:
+    """(match, rejection_reason). At most one match: the first literal
     name/alias hit if any sentence has one, else the first qualifying
-    class-word hit. Literal always beats class. rejected_class_mention is
-    True when a class keyword was found but no sentence passed the
-    use-together check."""
+    class-word hit. Literal always beats class. rejection_reason is "class"
+    when a class keyword was found but no sentence passed the use-together
+    check, and "unquotable" when a matching sentence carried a cross-reference
+    or an unseparable section heading and so could not be quoted cleanly."""
     best: LabelMatch | None = None
-    rejected = False
+    rejected: str | None = None
     for raw_sentence in _SENTENCE_SPLIT.split(text):
         sentence = raw_sentence.strip()
         if not sentence:
             continue
-        found = _match_in_sentence(sentence, other_id, registry, shadow)
+        body = separate_section_heading(sentence)
+        unquotable = (
+            body is None or has_cross_reference(body) or has_section_number_noise(body)
+        )
+        candidate = sentence if body is None else body
+        found = _match_in_sentence(candidate, other_id, registry, shadow)
         if found is None:
             continue
+        if unquotable:
+            rejected = rejected or "unquotable"
+            continue
         if found is REJECTED_CLASS_MATCH:
-            rejected = True
+            rejected = rejected or "class"
             continue
         term, is_literal, cls = found
-        match = LabelMatch(sentence[:300], term, is_literal, cls)
+        match = LabelMatch(candidate[:300], term, is_literal, cls)
         if is_literal:
-            return match, False
+            return match, None
         if best is None:
             best = match
-    return best, rejected and best is None
+    return best, (rejected if best is None else None)
 
 
 def label_mention(
@@ -446,7 +460,7 @@ def label_mention_detail(
     registry: Registry,
     unavailable: set[str] | None = None,
     shadow: dict[str, dict] | None = None,
-) -> tuple[LabelMatch | None, bool]:
+) -> tuple[LabelMatch | None, str | None]:
     """The best sentence in self_id's own FDA label mentioning other_id (by
     literal name/alias, preferred, or drug class in a combination-use
     sentence), or None if self_id has no label or doesn't mention it. Raises
@@ -463,7 +477,7 @@ def label_mention_detail(
     entry = _entry(self_id, registry, shadow)
     text = _label_text(self_id, entry["name"])
     if text is None:
-        return None, False
+        return None, None
     match, rejected = _find_best_match(text, other_id, registry, shadow)
     if match is None:
         return None, rejected
@@ -471,8 +485,8 @@ def label_mention_detail(
         # Safety net: never show a quote that doesn't literally contain
         # whatever we claim matched it. Should be unreachable given how
         # `match` was built above; drop rather than trust it if it ever isn't.
-        return None, False
-    return match, False
+        return None, None
+    return match, None
 
 
 # --- Concentration overlap (the only place this module touches app.pk) --------
@@ -671,7 +685,13 @@ def _label_finding(
     }
 
 
-def _rejected_class_note(self_entry: dict, other_entry: dict) -> str:
+def _rejected_note(self_entry: dict, other_entry: dict, reason: str) -> str:
+    if reason == "unquotable":
+        return (
+            f"The FDA label for {self_entry['name']} mentions "
+            f"{other_entry['name']} in a sentence we could not quote cleanly, "
+            "so it was not shown as an interaction."
+        )
     return (
         f"The FDA label for {self_entry['name']} mentions a drug class that "
         f"{other_entry['name']} belongs to, but not in a sentence about using "
@@ -752,7 +772,7 @@ def check(
                 a.substance_id, b.substance_id, registry, unavailable, shadow
             )
             if rejected_ab:
-                rejected_notes.append(_rejected_class_note(entry_a, entry_b))
+                rejected_notes.append(_rejected_note(entry_a, entry_b, rejected_ab))
         except OpenFDAUnavailable:
             label_unavailable = True
         try:
@@ -760,7 +780,7 @@ def check(
                 b.substance_id, a.substance_id, registry, unavailable, shadow
             )
             if rejected_ba:
-                rejected_notes.append(_rejected_class_note(entry_b, entry_a))
+                rejected_notes.append(_rejected_note(entry_b, entry_a, rejected_ba))
         except OpenFDAUnavailable:
             label_unavailable = True
 

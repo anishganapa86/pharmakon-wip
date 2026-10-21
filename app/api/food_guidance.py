@@ -57,6 +57,11 @@ from ..registry.loader import Registry
 from . import label_cache, products, schedule, service, verification
 from .db import DoseEvent, ScheduledDose
 from .provenance import QUOTE_SOURCE_FDA_LABEL
+from .quote_text import (
+    has_cross_reference,
+    has_section_number_noise,
+    separate_section_heading,
+)
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "food_drug_guidance.json"
 
@@ -123,9 +128,14 @@ INSTRUCTION_CUES = (
     "before",
     "after",
     "hours",
-    "with",
     "without",
     "separate",
+    "with food",
+    "with meals",
+    "with milk",
+    "after eating",
+    "on an empty stomach",
+    "before meals",
 )
 
 EMPTY_MESSAGE = (
@@ -318,12 +328,14 @@ _LIST_BULLET = "•"
 # A numbered ALL-CAPS section heading that leaked into extracted text, e.g.
 # "2 DOSAGE AND ADMINISTRATION" or "17 PATIENT COUNSELING INFORMATION".
 _HEADING_RE = re.compile(r"\b\d{1,2}(?:\.\d+)?\s+[A-Z]{2,}(?:\s+[A-Z]{2,}){1,}")
-# A cross-reference to another label section, e.g. "( 2.1 )" or "( 7.1 , 12.3 )".
-_XREF_RE = re.compile(r"\(\s*\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*\s*\)")
 
 
 def _has_heading_or_xref_noise(text: str) -> bool:
-    return bool(_HEADING_RE.search(text) or _XREF_RE.search(text))
+    return bool(
+        _HEADING_RE.search(text)
+        or has_cross_reference(text)
+        or has_section_number_noise(text)
+    )
 
 
 def _split_sentences(chunk: str, block_end: str) -> list[tuple[str, bool]]:
@@ -469,6 +481,9 @@ def _label_units(label: dict) -> list[tuple[str, str, int, bool, bool]]:
     for idx, field in enumerate(TEXT_FIELDS):
         for block in label.get(field) or []:
             for text, is_list_item, ends_properly in _units_from_block(block):
+                body = separate_section_heading(text)
+                if body is not None:
+                    text = body
                 out.append((text, field, idx, is_list_item, ends_properly))
     return out
 
@@ -613,6 +628,12 @@ FIELD_DISPLAY_NAMES = {
 
 def _field_display(field: str) -> str:
     return FIELD_DISPLAY_NAMES.get(field, field.replace("_", " ").title())
+
+
+def _join_items(items: list[str]) -> str:
+    if len(items) <= 1:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 def pointer_text(product_name: str, item: str, field: str, set_id: str | None) -> str:
@@ -881,6 +902,7 @@ def _finding(
         "name": item.display_name,
         "is_product": item.is_product,
         "item": item_term,
+        "items": [item_term],
         "class": classify(match.quote, item_term),
         "quote": match.quote,
         "pointer": None,
@@ -910,19 +932,34 @@ def _pointer_finding(
     dosage_form: str | None,
     set_id: str | None,
 ) -> dict:
+    return _collapsed_pointer_finding(
+        item, [item_term], pointer.field, product_name, dosage_form, set_id
+    )
+
+
+def _collapsed_pointer_finding(
+    item: RegimenItem,
+    item_terms: list[str],
+    field: str,
+    product_name: str | None,
+    dosage_form: str | None,
+    set_id: str | None,
+) -> dict:
     """A unit qualified by item + instruction cue but failed the quote
     integrity rules -- reported anyway, as a citation with no quote, rather
     than silently dropped."""
     display_product = product_name or item.display_name
+    joined = _join_items(item_terms)
     return {
         "name": item.display_name,
         "is_product": item.is_product,
-        "item": item_term,
+        "item": joined,
+        "items": item_terms,
         "class": "other",
         "quote": None,
-        "pointer": pointer_text(display_product, item_term, pointer.field, set_id),
+        "pointer": pointer_text(display_product, joined, field, set_id),
         "source_type": "fda_label",
-        "label_field": pointer.field,
+        "label_field": field,
         "verified": False,
         "quote_source": None,
         "window": None,
@@ -1020,6 +1057,7 @@ def _findings_for_item(
                     product_name = label_product_name(label)
                     dosage_form = label_dosage_form(label)
                     set_id = label.get("set_id")
+                    pointer_items: dict[str, list[str]] = {}
                     for item_term in ITEM_TERMS:
                         quotes, pointers = label_matches(label, item_term)
                         for match in quotes:
@@ -1044,16 +1082,18 @@ def _findings_for_item(
                             if key in seen_pointers:
                                 continue
                             seen_pointers.add(key)
-                            live_findings.append(
-                                _pointer_finding(
-                                    item,
-                                    item_term,
-                                    p,
-                                    product_name,
-                                    dosage_form,
-                                    set_id,
-                                )
+                            pointer_items.setdefault(p.field, []).append(p.item)
+                    for field, terms in pointer_items.items():
+                        live_findings.append(
+                            _collapsed_pointer_finding(
+                                item,
+                                terms,
+                                field,
+                                product_name,
+                                dosage_form,
+                                set_id,
                             )
+                        )
 
     # Source B, curated: single-ingredient only -- a combination product's
     # guidance belongs to the product (Source A), never one ingredient.

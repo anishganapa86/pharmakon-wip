@@ -34,16 +34,16 @@ const CLASS_LABELS: Record<FoodGuidanceClass, string> = {
 // a DailyMed link appended when a set_id was available. Rendered as a
 // clickable link rather than plain URL text when that link is present.
 function PointerText({ pointer }: { pointer: string }) {
-  const marker = "DailyMed: ";
+  const marker = "Read the full section on DailyMed: ";
   const idx = pointer.indexOf(marker);
   if (idx === -1) return <>{pointer}</>;
-  const before = pointer.slice(0, idx + marker.length);
+  const before = pointer.slice(0, idx).trimEnd();
   const url = pointer.slice(idx + marker.length);
   return (
     <>
-      {before}
+      {before}{" "}
       <a href={url} target="_blank" rel="noreferrer">
-        {url}
+        Read on DailyMed
       </a>
     </>
   );

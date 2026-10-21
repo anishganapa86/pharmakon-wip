@@ -602,6 +602,7 @@ export interface FoodGuidanceFinding {
   name: string; // substance display name, or the product name for a combo
   is_product: boolean; // true when `name` is a combination product
   item: string; // e.g. "food", "grapefruit", "vitamin k"
+  items: string[];
   class: FoodGuidanceClass;
   // <=300 chars, verbatim from the label -- only when the underlying
   // sentence passed the quote-integrity rules (true sentence start/end, no

@@ -294,7 +294,7 @@ def test_class_only_sentence_about_another_party_is_rejected(sentence, openfda):
         "ibuprofen", "naproxen", load_registry()
     )
     assert match is None
-    assert rejected is True
+    assert rejected == "class"
 
 
 def test_rejected_class_match_goes_to_unchecked_notice_not_a_card(client, openfda):
@@ -799,3 +799,42 @@ def test_only_curated_findings_can_be_unverified_references(client, openfda):
             assert f["quote_source"] == "fda_label_verbatim"
         else:
             assert f["quote_source"] is None
+
+
+def test_quote_after_a_section_number_heading_is_only_the_sentence(client, openfda):
+    openfda.labels["DONEPEZIL"] = (
+        "7.2 Use with Other N-methyl-D-aspartate (NMDA) Antagonists The combined "
+        "use of memantine with other NMDA antagonists has not been "
+        "systematically evaluated."
+    )
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    (finding,) = [f for f in body["interactions"] if f["source_type"] == "fda_label"]
+    assert finding["quoted_text"] == (
+        "The combined use of memantine with other NMDA antagonists has not been "
+        "systematically evaluated."
+    )
+
+
+def test_unseparable_section_heading_is_not_quoted_and_is_noted(client, openfda):
+    openfda.labels["DONEPEZIL"] = (
+        "7.2 Drug Interactions Memantine may be used with other medicines."
+    )
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    assert [f for f in body["interactions"] if f["source_type"] == "fda_label"] == []
+    assert any("could not quote cleanly" in r for r in body["unchecked_reason"])
+
+
+def test_sentence_with_a_cross_reference_is_not_quoted(client, openfda):
+    openfda.labels["DONEPEZIL"] = (
+        "Memantine has been coadministered with donepezil (see Clinical "
+        "Pharmacology 12.3)."
+    )
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    assert [f for f in body["interactions"] if f["source_type"] == "fda_label"] == []
+    assert any("could not quote cleanly" in r for r in body["unchecked_reason"])

@@ -1166,3 +1166,89 @@ def test_no_live_finding_in_an_http_response_is_verified(client, openfda):
     live = [f for f in body["guidance"] if f["source_type"] == "fda_label"]
     assert live
     assert all(f["verified"] is False for f in live)
+
+
+def test_bare_with_is_not_an_instruction_cue():
+    label = oral_label(
+        dosage_and_administration=[
+            "A linear blood level doseresponse relationship exists with single "
+            "doses up to 800 mg (See CLINICAL PHARMACOLOGY for effects of food "
+            "on rate of absorption)."
+        ]
+    )
+
+    quotes, pointers = food_guidance.label_matches(label, "food")
+
+    assert quotes == []
+    assert pointers == []
+
+
+def test_with_food_phrase_is_still_an_instruction_cue():
+    label = oral_label(directions=["Swallow tablets with food."])
+
+    quotes, _pointers = food_guidance.label_matches(label, "food")
+
+    assert [q.quote for q in quotes] == ["Swallow tablets with food."]
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Take with food (See CLINICAL PHARMACOLOGY).",
+        "Take with food ( 2.1 ).",
+        "Take with food [see Dosage and Administration].",
+    ],
+)
+def test_sentence_with_a_cross_reference_is_never_quoted(sentence):
+    label = oral_label(dosage_and_administration=[sentence])
+
+    quotes, pointers = food_guidance.label_matches(label, "food")
+
+    assert quotes == []
+    assert [p.field for p in pointers] == ["dosage_and_administration"]
+
+
+def test_quote_after_a_section_number_heading_is_only_the_sentence():
+    label = oral_label(
+        drug_interactions=[
+            "7.2 Administration Instructions The tablets should be taken with food."
+        ]
+    )
+
+    quotes, _pointers = food_guidance.label_matches(label, "food")
+
+    assert [q.quote for q in quotes] == ["The tablets should be taken with food."]
+
+
+def test_unseparable_section_heading_becomes_a_pointer_not_a_quote():
+    label = oral_label(
+        drug_interactions=["7.2 Use Take with food to reduce stomach upset."]
+    )
+
+    quotes, pointers = food_guidance.label_matches(label, "food")
+
+    assert quotes == []
+    assert [p.field for p in pointers] == ["drug_interactions"]
+
+
+def test_pointers_sharing_a_label_and_field_collapse_into_one_finding(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        set_id="abc-123",
+        openfda={"route": ["ORAL"], "brand_name": ["Advil"]},
+        warnings=[
+            "Take with food (See Dosage). Take with milk (See Dosage). "
+            "Avoid alcohol (See Dosage)."
+        ],
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    pointers = [f for f in body["guidance"] if f["quote"] is None]
+    assert len(pointers) == 1
+    assert pointers[0]["items"] == ["food", "milk", "alcohol"]
+    assert pointers[0]["pointer"].startswith(
+        "The FDA label for Advil mentions food, milk and alcohol in its Warnings "
+        "section."
+    )
+    assert "dailymed.nlm.nih.gov" in pointers[0]["pointer"]
