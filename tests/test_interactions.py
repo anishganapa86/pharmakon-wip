@@ -275,6 +275,52 @@ def test_class_word_match_without_combination_context_is_not_flagged(client, ope
     assert interactions.label_mention("ibuprofen", "naproxen", load_registry()) is None
 
 
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "This interaction should be given consideration in patients taking "
+        "NSAIDs concomitantly with ACE-inhibitors.",
+        "Case-control and cohort epidemiological studies showed that "
+        "concomitant use of drugs that interfere with serotonin reuptake and "
+        "an NSAID may potentiate the risk of bleeding more than an NSAID alone.",
+        "These drugs should not be given together with NSAIDs.",
+    ],
+)
+def test_class_only_sentence_about_another_party_is_rejected(sentence, openfda):
+    openfda.labels["IBUPROFEN"] = sentence
+
+    assert interactions.label_mention("ibuprofen", "naproxen", load_registry()) is None
+    match, rejected = interactions.label_mention_detail(
+        "ibuprofen", "naproxen", load_registry()
+    )
+    assert match is None
+    assert rejected is True
+
+
+def test_rejected_class_match_goes_to_unchecked_notice_not_a_card(client, openfda):
+    openfda.labels["IBUPROFEN"] = (
+        "This interaction should be given consideration in patients taking "
+        "NSAIDs concomitantly with ACE-inhibitors."
+    )
+    openfda.labels["NAPROXEN"] = "Take with water."
+
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    assert [f for f in body["interactions"] if f["source_type"] == "fda_label"] == []
+    assert any("not in a sentence about using" in r for r in body["unchecked_reason"])
+
+
+def test_class_only_sentence_about_using_other_nsaids_together_is_kept(openfda):
+    openfda.labels["IBUPROFEN"] = "Do not use with other NSAIDs."
+
+    match = interactions.label_mention("ibuprofen", "naproxen", load_registry())
+
+    assert match is not None
+    assert match.sentence == "Do not use with other NSAIDs."
+    assert match.is_literal is False
+    assert match.other_class == "NSAID"
+
+
 def test_naproxen_ssri_bleeding_text_does_not_match_ibuprofen(openfda):
     # This sentence is about SSRIs and bleeding risk, not about combining
     # naproxen with another NSAID -- "NSAID" here names naproxen itself, not
