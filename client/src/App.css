@@ -789,6 +789,15 @@
   color: var(--text-h);
 }
 
+.timeline-item-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+
 .category-tag {
   padding: 1px 10px;
   border-radius: 999px;

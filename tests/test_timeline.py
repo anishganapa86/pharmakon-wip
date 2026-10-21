@@ -150,3 +150,35 @@ def test_default_range_is_last_30_days(client):
 
     result = timeline(client)
     assert [e["id"] for e in result] == [recent["id"]]
+
+
+def test_timeline_log_entry_id_is_the_id_the_delete_endpoint_takes(client):
+    keep = log_entry(client, 3, value="keep")
+    drop = log_entry(client, 2, value="drop")
+    entries = timeline(client)
+    drop_id = next(
+        e["id"] for e in entries if e["type"] == "log" and e["value"] == "drop"
+    )
+    assert drop_id == drop["id"]
+
+    r = client.delete(f"/users/default/log/{drop_id}")
+
+    assert r.status_code == 204
+    remaining = [e["id"] for e in timeline(client) if e["type"] == "log"]
+    assert remaining == [keep["id"]]
+
+
+def test_deleting_a_log_entry_leaves_doses_on_the_timeline(client):
+    log_dose(client, 4)
+    entry = log_entry(client, 2)
+
+    assert client.delete(f"/users/default/log/{entry['id']}").status_code == 204
+
+    assert [e["type"] for e in timeline(client)] == ["dose"]
+
+
+def test_deleting_an_unknown_log_entry_is_a_404_not_a_silent_success(client):
+    r = client.delete("/users/default/log/log_missing")
+
+    assert r.status_code == 404
+    assert r.json()["error"]["code"] == "not_found"
