@@ -40,7 +40,7 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..pk.individualize import Patient
-from ..registry.loader import Registry
+from ..registry.loader import Registry, normalize, strip_salt_tokens
 from . import label_cache, products, schedule, service, verification
 from .db import DoseEvent
 from .provenance import QUOTE_SOURCE_FDA_LABEL
@@ -97,6 +97,11 @@ EMPTY_MESSAGE = (
     "none exist. Ask a pharmacist to review your full medication list."
 )
 
+# Shown instead of EMPTY_MESSAGE when checked_pairs is 0 -- "no interactions
+# found" implies pairs were actually checked and came up clean, which isn't
+# true when there was nothing (or only one substance) to pair at all.
+NO_PAIRS_MESSAGE = "We couldn't check any pairs for this regimen."
+
 LABEL_UNAVAILABLE_NOTE = (
     "openFDA was unreachable, so FDA label checks could not run for some "
     "pairs. Curated reference checks still ran."
@@ -105,8 +110,17 @@ LABEL_UNAVAILABLE_NOTE = (
 # Replaced with a mock-transport client in tests.
 _http = httpx.Client(timeout=5.0)
 
-# substance_id -> drug_interactions label text, or None if no label has one.
+# substance_id (a registry id, or a NONREGISTRY_PREFIX-ed key) -> that
+# substance's own drug_interactions label text, or None if it has no label
+# (or no such field). One fetch per ingredient, cached here, so repeated
+# pairs in the same regimen never re-fetch.
 _label_cache: dict[str, str | None] = {}
+
+# Key prefix for an oral ingredient that doesn't resolve against the PK
+# registry but is still checked from its own FDA label, by its normalized,
+# salt-stripped generic name (see resolve_for_label_check). Prefixed so it
+# can never collide with a real registry id, which never contains ":".
+NONREGISTRY_PREFIX = "label:"
 
 
 class OpenFDAUnavailable(Exception):
@@ -191,6 +205,44 @@ def unverified_rule_count() -> int:
 # --- B. FDA label text -----------------------------------------------------------
 
 
+def resolve_for_label_check(
+    raw_name: str, registry: Registry
+) -> tuple[str, dict] | None:
+    """(key, entry) for an oral ingredient that doesn't resolve against the
+    PK registry, keyed by its normalized, salt-stripped generic name (the
+    same normalization Registry.resolve already uses) -- e.g. "DONEPEZIL
+    HYDROCHLORIDE" looks up "donepezil". `entry` is shaped like a registry
+    entry (id/name/aliases/description) so the rest of this module can
+    treat it uniformly via _entry() -- except it carries no curated rules
+    (no curated rule's substance_a/b ever equals this synthetic key) and no
+    PK curve (registry.modelability has no row for it, so callers must
+    check _is_registry_key before asking for one; see check()).
+
+    None only when the name reduces to nothing after normalization (e.g. an
+    empty string) -- there's nothing to look up by.
+    """
+    key_name = strip_salt_tokens(normalize(raw_name))
+    if not key_name:
+        return None
+    key = f"{NONREGISTRY_PREFIX}{key_name}"
+    entry = {"id": key, "name": key_name, "aliases": (), "description": None}
+    return key, entry
+
+
+def _is_registry_key(key: str) -> bool:
+    return not key.startswith(NONREGISTRY_PREFIX)
+
+
+def _entry(key: str, registry: Registry, shadow: dict[str, dict]) -> dict:
+    """registry.get(key) for a real substance id, or the synthetic entry a
+    non-registry oral ingredient was resolved to (resolve_for_label_check),
+    looked up from `shadow` -- shaped identically (id/name/aliases/
+    description) so every caller below can treat the two uniformly."""
+    if _is_registry_key(key):
+        return registry.get(key)
+    return shadow[key]
+
+
 def fetch_drug_interactions_text(generic_name: str) -> str | None:
     return label_cache.cached(
         "drug_interactions",
@@ -237,8 +289,13 @@ def _label_text(substance_id: str, generic_name: str) -> str | None:
     return text
 
 
-def _prefetch_label_texts(substance_ids: list[str], registry: Registry) -> set[str]:
-    names = {sid: registry.get(sid)["name"] for sid in dict.fromkeys(substance_ids)}
+def _prefetch_label_texts(
+    substance_ids: list[str], registry: Registry, shadow: dict[str, dict]
+) -> set[str]:
+    names = {
+        sid: _entry(sid, registry, shadow)["name"]
+        for sid in dict.fromkeys(substance_ids)
+    }
     results = label_cache.fetch_concurrently(
         list(names), lambda sid: _label_text(sid, names[sid])
     )
@@ -276,16 +333,20 @@ class LabelMatch:
 
 
 def _match_in_sentence(
-    sentence: str, other_id: str, registry: Registry
+    sentence: str, other_id: str, registry: Registry, shadow: dict[str, dict]
 ) -> tuple[str, bool, str | None] | None:
     """(matched_term, is_literal, class) for this one sentence, or None.
 
     A literal hit (the other drug's own name or alias) always wins. A class
     keyword ("NSAIDs") only counts when the sentence also reads like it's
     about combining drugs -- otherwise a passing mention (e.g. aspirin-allergy
-    cross-reactivity) would falsely read as a combination warning.
+    cross-reactivity) would falsely read as a combination warning. A
+    non-registry other_id has no class membership (SUBSTANCE_CLASSES has no
+    row for it), so it can only ever be matched by its own literal name here
+    -- never an inferred class, since nothing is known about what class an
+    unregistered drug belongs to.
     """
-    entry = registry.get(other_id)
+    entry = _entry(other_id, registry, shadow)
     for term in (entry["name"], *entry.get("aliases", [])):
         if _mentions(sentence, term):
             return term, True, None
@@ -297,7 +358,9 @@ def _match_in_sentence(
     return None
 
 
-def _find_best_match(text: str, other_id: str, registry: Registry) -> LabelMatch | None:
+def _find_best_match(
+    text: str, other_id: str, registry: Registry, shadow: dict[str, dict]
+) -> LabelMatch | None:
     """At most one match: the first literal name/alias hit if any sentence has
     one, else the first qualifying class-word hit. Literal always beats class."""
     best: LabelMatch | None = None
@@ -305,7 +368,7 @@ def _find_best_match(text: str, other_id: str, registry: Registry) -> LabelMatch
         sentence = raw_sentence.strip()
         if not sentence:
             continue
-        found = _match_in_sentence(sentence, other_id, registry)
+        found = _match_in_sentence(sentence, other_id, registry, shadow)
         if found is None:
             continue
         term, is_literal, cls = found
@@ -322,19 +385,26 @@ def label_mention(
     other_id: str,
     registry: Registry,
     unavailable: set[str] | None = None,
+    shadow: dict[str, dict] | None = None,
 ) -> LabelMatch | None:
     """The best sentence in self_id's own FDA label mentioning other_id (by
     literal name/alias, preferred, or drug class in a combination-use
     sentence), or None if self_id has no label or doesn't mention it. Raises
     OpenFDAUnavailable, never interpreted as "no mention".
+
+    self_id/other_id may be a registry substance id or a non-registry
+    label-check key (resolve_for_label_check); `shadow` carries the
+    synthetic entries for the latter -- omit it when both ids are real
+    registry ids (every existing caller/test does).
     """
     if unavailable is not None and self_id in unavailable:
         raise OpenFDAUnavailable(self_id)
-    entry = registry.get(self_id)
+    shadow = shadow or {}
+    entry = _entry(self_id, registry, shadow)
     text = _label_text(self_id, entry["name"])
     if text is None:
         return None
-    match = _find_best_match(text, other_id, registry)
+    match = _find_best_match(text, other_id, registry, shadow)
     if match is None:
         return None
     if not _mentions(match.sentence, match.matched_term):
@@ -548,27 +618,57 @@ def check(
     events: list[DoseEvent] | None = None,
     patient: Patient = service.DEFAULT_PATIENT,
     unresolved: list[str] = (),  # noqa: B006 (never mutated)
+    shadow: dict[str, dict] | None = None,
 ) -> dict:
     """Every pair of distinct substances against both sources.
 
     `events` enables the concentration-overlap estimate (GET .../interaction-check,
     where doses are actually logged); it's None for the manual check, where
     nothing has necessarily been taken yet and no timing exists to estimate.
-    `unresolved` names ingredients the caller couldn't map to a registry id --
+    `unresolved` names ingredients the caller couldn't map to anything at
+    all (not a registry id, not even a label-checkable generic name) --
     always surfaced in `unchecked_reason`, never dropped silently.
+    `shadow` carries the synthetic entries for any non-registry substance
+    (resolve_for_label_check) among `substances`.
     """
+    shadow = shadow or {}
     rules = active_rules()
     findings: list[dict] = []
     label_unavailable = False
     checked_pairs = 0
-    unavailable = _prefetch_label_texts([s.substance_id for s in substances], registry)
+    unavailable = _prefetch_label_texts(
+        [s.substance_id for s in substances], registry, shadow
+    )
+
+    # Fetch each substance's own label exactly once, before any pairwise
+    # work -- "cache label fetches, one fetch per ingredient, then check
+    # pairs in memory." _label_text already caches by key, so this pass
+    # adds no extra fetches for substances that DO get paired below; its
+    # purpose is to also catch a non-registry substance with no partner to
+    # pair against at all (no curated rules ever apply to one, so a label
+    # is the only possible source -- if it has none, that's reportable
+    # even standing alone).
+    no_label_names: list[str] = []
+    for s in substances:
+        entry = _entry(s.substance_id, registry, shadow)
+        if s.substance_id in unavailable:
+            label_unavailable = True
+            continue
+        text = _label_text(s.substance_id, entry["name"])
+        if text is None and not _is_registry_key(s.substance_id):
+            no_label_names.append(entry["name"])
 
     for a, b in combinations(sorted(substances, key=lambda s: s.substance_id), 2):
         checked_pairs += 1
-        entry_a, entry_b = registry.get(a.substance_id), registry.get(b.substance_id)
+        entry_a = _entry(a.substance_id, registry, shadow)
+        entry_b = _entry(b.substance_id, registry, shadow)
 
         overlap = None
-        if events is not None:
+        if (
+            events is not None
+            and _is_registry_key(a.substance_id)
+            and _is_registry_key(b.substance_id)
+        ):
             overlap = compute_overlap(
                 a.substance_id, b.substance_id, registry, events, now, patient
             )
@@ -580,13 +680,13 @@ def check(
         match_ab = match_ba = None
         try:
             match_ab = label_mention(
-                a.substance_id, b.substance_id, registry, unavailable
+                a.substance_id, b.substance_id, registry, unavailable, shadow
             )
         except OpenFDAUnavailable:
             label_unavailable = True
         try:
             match_ba = label_mention(
-                b.substance_id, a.substance_id, registry, unavailable
+                b.substance_id, a.substance_id, registry, unavailable, shadow
             )
         except OpenFDAUnavailable:
             label_unavailable = True
@@ -622,16 +722,100 @@ def check(
         "could not be checked."
         for name in unresolved
     ]
+    unchecked_reason += [
+        f"No label found for {name!r}, so interactions involving it "
+        "could not be checked from its label."
+        for name in no_label_names
+    ]
     if label_unavailable:
         unchecked_reason.append(LABEL_UNAVAILABLE_NOTE)
+
+    if checked_pairs == 0:
+        message = NO_PAIRS_MESSAGE
+    elif not findings:
+        message = EMPTY_MESSAGE
+    else:
+        message = None
 
     body = {
         "interactions": findings,
         "checked_pairs": checked_pairs,
         "unchecked_reason": unchecked_reason,
-        "message": EMPTY_MESSAGE if not findings else None,
+        "message": message,
     }
     return verification.attach_notice(body, unverified_rule_count())
+
+
+# --- "Same ingredient in more than one product" ---------------------------------
+#
+# A lookup over the regimen's own products, never a model: no severity, no
+# harm claim, and this never creates or feeds an app.detect alert -- those
+# stay tied to logged doses and app/detect/alerts.py's own duplication
+# detector (which works in mg, off DoseIngredient.amount_mg, not this).
+
+
+def _duplicate_ingredient_findings(
+    occurrences: list[tuple[str, RegimenSource, bool]],
+    registry: Registry,
+    shadow: dict[str, dict],
+) -> list[dict]:
+    """A card per ingredient key that shows up in 2+ distinct products in
+    the regimen. The same product scheduled (or logged) more than once is
+    one product, not a duplicate -- occurrences are deduped by product_id
+    first; when a product shows up both scheduled and logged, "logged" wins
+    for display (it's the more concrete fact)."""
+    # key -> product_id -> (best source seen for that product, strength known)
+    by_key: dict[str, dict[str, tuple[RegimenSource, bool]]] = {}
+    for key, source, strength_known in occurrences:
+        products = by_key.setdefault(key, {})
+        existing = products.get(source.product_id)
+        if existing is None:
+            products[source.product_id] = (source, strength_known)
+        else:
+            existing_source, existing_known = existing
+            best = (
+                source
+                if existing_source.kind == "schedule" and source.kind == "dose"
+                else existing_source
+            )
+            products[source.product_id] = (best, existing_known or strength_known)
+
+    findings: list[dict] = []
+    for key, products_by_id in by_key.items():
+        if len(products_by_id) < 2:
+            continue
+        entry = _entry(key, registry, shadow)
+        display_name = entry["name"].capitalize()
+        by_name = sorted(products_by_id.values(), key=lambda p: p[0].label)
+        names = [source.label for source, _known in by_name]
+        findings.append(
+            {
+                "ingredient_name": display_name,
+                "product_count": len(by_name),
+                "products": [
+                    {
+                        "product_id": source.product_id,
+                        "name": source.label,
+                        "kind": source.kind,  # "dose" (logged) | "schedule"
+                    }
+                    for source, _known in by_name
+                ],
+                "message": (
+                    f"{display_name} appears in {len(by_name)} of your "
+                    f"products: {', '.join(names)}. Ask a pharmacist to "
+                    "confirm this is intended."
+                ),
+                "strength_note": (
+                    None
+                    if all(known for _source, known in by_name)
+                    else (
+                        "The strength of each product isn't known here, so "
+                        "we can't add up the total amount."
+                    )
+                ),
+            }
+        )
+    return sorted(findings, key=lambda f: f["ingredient_name"])
 
 
 # --- Entry points: regimen (GET) and manual (POST) -----------------------------
@@ -648,12 +832,26 @@ def check_regimen(
     now: datetime,
     patient: Patient = service.DEFAULT_PATIENT,
 ) -> dict:
-    """Active scheduled medications plus doses logged in the last 24h."""
+    """Active scheduled medications plus doses logged in the last 24h --
+    oral medication products only. A skincare/cosmetic product (its own
+    topical_ingredients is set -- a curated skincare entry, a My products
+    entry, or any openFDA product whose own label route is TOPICAL) is
+    skipped entirely: not checked, and its ingredients never show up as
+    "wasn't recognized" either, since this checker's whole domain is
+    systemic medications.
+    """
     events = service.load_doses(session, user_id)
     entries: list[tuple[str, RegimenSource]] = []
     unresolved: list[str] = []
+    shadow: dict[str, dict] = {}
+    # Parallel to `entries`: (key, source, strength_known) for every
+    # successfully-identified ingredient, regardless of registry vs.
+    # label-only -- feeds _duplicate_ingredient_findings below.
+    occurrences: list[tuple[str, RegimenSource, bool]] = []
 
     for ev in events:
+        if ev.topical_ingredients:
+            continue
         taken_at = datetime.fromisoformat(ev.taken_at)
         if not (-REGIMEN_LOOKBACK_HOURS <= service.hours_since(taken_at, now) <= 0.0):
             continue
@@ -667,10 +865,22 @@ def check_regimen(
             )
             if ing.substance_id is not None:
                 entries.append((ing.substance_id, source))
-            else:
+                occurrences.append(
+                    (ing.substance_id, source, ing.amount_mg is not None)
+                )
+                continue
+            resolved = resolve_for_label_check(ing.ingredient_name, registry)
+            if resolved is None:
                 unresolved.append(ing.ingredient_name)
+                continue
+            key, entry = resolved
+            shadow[key] = entry
+            entries.append((key, source))
+            occurrences.append((key, source, ing.amount_mg is not None))
 
     for s in schedule.list_for_user(session, user_id):
+        if s.topical_ingredients:
+            continue
         for e in s.substance_entries:
             source = RegimenSource(
                 kind="schedule",
@@ -680,22 +890,48 @@ def check_regimen(
             )
             if e["substance_id"] is not None:
                 entries.append((e["substance_id"], source))
-            else:
+                occurrences.append(
+                    (e["substance_id"], source, e.get("amount_mg") is not None)
+                )
+                continue
+            resolved = resolve_for_label_check(e["name"], registry)
+            if resolved is None:
                 unresolved.append(e["name"])
+                continue
+            key, entry = resolved
+            shadow[key] = entry
+            entries.append((key, source))
+            occurrences.append((key, source, e.get("amount_mg") is not None))
 
     substances = _merge(entries)
-    return check(
-        substances, registry, now, events=events, patient=patient, unresolved=unresolved
+    result = check(
+        substances,
+        registry,
+        now,
+        events=events,
+        patient=patient,
+        unresolved=unresolved,
+        shadow=shadow,
     )
+    result["duplicate_ingredients"] = _duplicate_ingredient_findings(
+        occurrences, registry, shadow
+    )
+    return result
 
 
 def check_manual(names: list[str], registry: Registry, now: datetime) -> dict:
     """A user-typed list of substance or product names, checked against each
     other -- for someone considering a new medication before starting it.
     No dose events exist for these, so no concentration-overlap estimate.
+
+    The synthetic catalog (app/api/products.py) carries oral OTC medications
+    only, so a product match here is always oral; there is nothing
+    skincare/cosmetic to exclude in this path (unlike check_regimen, which
+    reads back real logged products, including topical ones).
     """
     entries: list[tuple[str, RegimenSource]] = []
     unresolved: list[str] = []
+    shadow: dict[str, dict] = {}
 
     for name in names:
         source = RegimenSource(kind="manual", label=name)
@@ -705,15 +941,36 @@ def check_manual(names: list[str], registry: Registry, now: datetime) -> dict:
             continue
         matched_product = next(iter(products.search(name, registry)), None)
         if matched_product is None:
-            unresolved.append(name)
+            resolved = resolve_for_label_check(name, registry)
+            if resolved is None:
+                unresolved.append(name)
+                continue
+            key, entry = resolved
+            shadow[key] = entry
+            entries.append((key, source))
             continue
         found_any = False
         for ing in products.decompose(matched_product, registry):
             if ing.substance_id is not None:
                 entries.append((ing.substance_id, source))
                 found_any = True
+                continue
+            resolved = resolve_for_label_check(ing.name, registry)
+            if resolved is not None:
+                key, entry = resolved
+                shadow[key] = entry
+                entries.append((key, source))
+                found_any = True
         if not found_any:
             unresolved.append(name)
 
     substances = _merge(entries)
-    return check(substances, registry, now, events=None, unresolved=unresolved)
+    result = check(
+        substances, registry, now, events=None, unresolved=unresolved, shadow=shadow
+    )
+    # No product identity exists for typed names (no dose/schedule to be
+    # "the same product" or not), so the duplicate-ingredient-across-
+    # products card -- scoped to the logged/scheduled regimen -- never
+    # applies here; included for a consistent response shape.
+    result["duplicate_ingredients"] = []
+    return result

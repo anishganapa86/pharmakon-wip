@@ -4,7 +4,7 @@ import {
   daysLabel,
   DEFAULT_TIMES,
   FREQUENCY_LABELS,
-  notModeledReason,
+  NOT_MODELED_NO_PK_DATA,
   STATUS_LABELS,
   timeOfDayLabel,
   WEEKDAYS,
@@ -105,14 +105,7 @@ function Card({
           <li key={`${s.name}-${i}`} className="small">
             <span className="muted">{s.display_name ?? s.name}: </span>
             {s.current_concentration === null ? (
-              <span
-                className="muted"
-                title={
-                  s.unmodeled_reason ? notModeledReason(null) : "Can't be modeled"
-                }
-              >
-                —
-              </span>
+              <span className="muted small">{NOT_MODELED_NO_PK_DATA}</span>
             ) : (
               <strong>
                 {s.current_concentration.toFixed(2)} {s.unit}

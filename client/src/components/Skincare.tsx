@@ -2,9 +2,12 @@ import { useEffect, useState } from "react";
 import {
   checkSkincare,
   checkSkincareAlternatives,
+  deleteMyProduct,
+  fetchMyProducts,
   fetchSkincareCheck,
 } from "../api";
 import type {
+  MyProductEntry,
   SkincareAlternativesGroup,
   SkincareAlternativesResponse,
   SkincareCheckResponse,
@@ -234,6 +237,10 @@ export function Skincare({ userId }: Props) {
   const [autoAlternatives, setAutoAlternatives] =
     useState<SkincareAlternativesResponse | null>(null);
 
+  const [myProducts, setMyProducts] = useState<MyProductEntry[]>([]);
+  const [myProductsLoading, setMyProductsLoading] = useState(true);
+  const [myProductsError, setMyProductsError] = useState<string | null>(null);
+
   const [drafts, setDrafts] = useState<DraftProduct[]>([{ ...EMPTY_DRAFT }]);
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<SkincareCheckResponse | null>(null);
@@ -269,6 +276,26 @@ export function Skincare({ userId }: Props) {
       cancelled = true;
     };
   }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchMyProducts(userId)
+      .then((r) => !cancelled && setMyProducts(r))
+      .catch((e: unknown) => !cancelled && setMyProductsError(errorMessage(e)))
+      .finally(() => !cancelled && setMyProductsLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  async function handleDeleteMyProduct(id: string) {
+    try {
+      await deleteMyProduct(userId, id);
+      setMyProducts((prev) => prev.filter((p) => p.id !== id));
+    } catch (e) {
+      setMyProductsError(errorMessage(e));
+    }
+  }
 
   function updateDraft(i: number, patch: Partial<DraftProduct>) {
     setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
@@ -340,6 +367,46 @@ export function Skincare({ userId }: Props) {
               <SkincareResults result={autoResult} alternatives={autoAlternatives} />
             </div>
           </>
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>My products</h2>
+        {myProductsLoading ? (
+          <p className="muted">Loading…</p>
+        ) : myProductsError ? (
+          <p className="error">Couldn't load: {myProductsError}</p>
+        ) : myProducts.length === 0 ? (
+          <p className="muted">
+            When a product search turns up nothing, you can add it with its
+            ingredient list; it's saved here so you don't have to re-type it.
+          </p>
+        ) : (
+          <ul className="history">
+            {myProducts.map((p) => (
+              <li key={p.id} className="history-item">
+                <div className="history-head">
+                  <strong>
+                    {p.brand} {p.name}
+                  </strong>
+                  <span className="muted small">({p.category})</span>
+                  <button
+                    type="button"
+                    className="button-link"
+                    onClick={() => void handleDeleteMyProduct(p.id)}
+                    aria-label={`Delete ${p.brand} ${p.name}`}
+                  >
+                    Delete
+                  </button>
+                </div>
+                <span className="muted small">{p.ingredients.join(", ")}</span>
+                <p className="muted small">
+                  You entered this list. We haven't verified it. Check it
+                  against your packaging.
+                </p>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

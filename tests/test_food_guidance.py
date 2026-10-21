@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api import food_guidance, main, service
+from app.api import openfda as openfda_module
 from app.api.db import Base
 
 NOW = datetime.fromisoformat("2026-09-13T18:00:00-07:00")
@@ -889,6 +890,37 @@ def test_get_food_guidance_regimen_endpoint(client, openfda):
     assert r.status_code == 200, r.text
     body = r.json()
     assert any(f["item"] == "food" for f in body["guidance"])
+
+
+# --- Medications only: skincare/cosmetic products are excluded ------------------
+
+
+def test_skincare_product_logged_today_produces_no_unresolved_entries(client):
+    search_body = client.get("/products/search", params={"q": "TIRTIR"}).json()
+    product = next(
+        p for p in search_body["results"] if p["source"] == "skincare_catalog"
+    )
+    register_and_log(client, product["id"], hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    assert not any("wasn't recognized" in u for u in body["unchecked_reason"])
+    assert body["guidance"] == []
+
+
+def test_medication_product_with_unresolved_ingredient_still_unchecked(client):
+    openfda_module._discovered["fda_mystery"] = openfda_module.OpenFDAProduct(
+        id="fda_mystery",
+        brand_name="Mystery Pill",
+        ingredients=(openfda_module.OpenFDAIngredient("Xyzalotine"),),
+        route="ORAL",
+        matched_via="name",
+    )
+    register_and_log(client, "fda_mystery", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    assert any("wasn't recognized" in u for u in body["unchecked_reason"])
 
 
 def test_food_guidance_never_creates_an_alert(client, openfda):

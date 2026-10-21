@@ -253,19 +253,17 @@ function App() {
   const qty = Number(quantity);
   const qtyValid = quantity.trim() !== "" && Number.isFinite(qty) && qty > 0;
 
-  async function handleLogDose(e: React.FormEvent) {
-    e.preventDefault();
-    if (!product || !qtyValid) return;
+  async function logProduct(p: ProductSearchResult, qtyToLog: number) {
     setLogging(true);
     setLogError(null);
     setLogged(null);
     try {
       await logDose(USER_ID, {
-        product_id: product.id,
+        product_id: p.id,
         taken_at: new Date().toISOString(),
-        quantity: qty,
+        quantity: qtyToLog,
       });
-      setLogged(`Logged ${qty} × ${product.brand_name}.`);
+      setLogged(`Logged ${qtyToLog} × ${p.brand_name}.`);
       setProduct(null);
       setQuantity("1");
       setSearchKey((k) => k + 1);
@@ -281,6 +279,12 @@ function App() {
     } finally {
       setLogging(false);
     }
+  }
+
+  async function handleLogDose(e: React.FormEvent) {
+    e.preventDefault();
+    if (!product || !qtyValid) return;
+    await logProduct(product, qty);
   }
 
   return (
@@ -304,12 +308,14 @@ function App() {
         <form className="log-row" onSubmit={handleLogDose}>
           <ProductSearch
             key={searchKey}
+            userId={USER_ID}
             selected={product}
             onSelect={(p) => {
               setProduct(p);
               setLogged(null);
             }}
             recent={dashboard?.recent ?? []}
+            onSavedProductLogged={(p) => void logProduct(p, 1)}
           />
           <input
             className="control qty-input"

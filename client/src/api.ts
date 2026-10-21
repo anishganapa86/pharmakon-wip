@@ -12,6 +12,8 @@ import type {
   FoodGuidanceResponse,
   InteractionCheckResponse,
   LoggedDoseEvent,
+  MyProductEntry,
+  MyProductRequest,
   ProductSearchResponse,
   ProductSearchResult,
   ScheduledMedication,
@@ -164,6 +166,33 @@ export function createUserEnteredProduct(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, ingredients }),
   });
+}
+
+// --- "My products" --------------------------------------------------------------
+
+export function createMyProduct(
+  userId: string,
+  body: MyProductRequest,
+): Promise<MyProductEntry> {
+  return request(`/users/${encodeURIComponent(userId)}/my-products`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchMyProducts(userId: string): Promise<MyProductEntry[]> {
+  return request(`/users/${encodeURIComponent(userId)}/my-products`);
+}
+
+export function deleteMyProduct(
+  userId: string,
+  productId: string,
+): Promise<void> {
+  return request(
+    `/users/${encodeURIComponent(userId)}/my-products/${encodeURIComponent(productId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export function fetchTimeline(

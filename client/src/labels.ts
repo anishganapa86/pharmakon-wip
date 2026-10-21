@@ -48,9 +48,21 @@ export function notModeledReason(route: string | null | undefined): string {
     : "Logged — not yet in our database";
 }
 
-/** "Demo data, unverified" for the synthetic catalog; nothing for real openFDA data. */
-export function sourceLabel(p: Pick<ProductSearchResult, "source">): string | null {
-  return p.source === "catalog" ? "Demo data — unverified" : null;
+/** Shown on a medication card in place of a current-concentration reading
+ * when the substance has no PK parameters at all -- spelled out rather
+ * than left as a bare dash, which reads as "no data yet" rather than "this
+ * substance can't be charted here." */
+export const NOT_MODELED_NO_PK_DATA =
+  "Not modeled: no pharmacokinetic data for this substance in our database.";
+
+/** "Demo data, unverified" for the synthetic catalog; the server's own
+ * badge text for a curated-skincare or my-product result (see `label` on
+ * ProductSearchResult); nothing for real openFDA data. */
+export function sourceLabel(
+  p: Pick<ProductSearchResult, "source" | "label">,
+): string | null {
+  if (p.source === "catalog") return "Demo data — unverified";
+  return p.label;
 }
 
 // --- Daily log / timeline ----------------------------------------------------
