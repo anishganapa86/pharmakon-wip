@@ -104,7 +104,6 @@ ITEM_VARIANTS: dict[str, tuple[str, ...]] = {
     "caffeine": ("caffeine",),
     "antacid": ("antacid",),
     "empty stomach": ("empty stomach",),
-    "water": ("water",),
     "vitamin k": ("vitamin k",),
     "supplement": ("supplement",),
     "calcium": ("calcium",),
@@ -614,8 +613,33 @@ def pointer_text(product_name: str, item: str, field: str, set_id: str | None) -
 # somewhere unrelated (e.g. "avoid drastic diet changes" in a sentence
 # that's really about keeping vitamin K intake *consistent*) must not read
 # as "avoid this item".
-AVOID_PHRASES = ("avoid", "do not", "should not", "not recommended")
-AVOID_WORD_WINDOW = 8
+AVOID_PHRASES = ("avoid", "do not", "should not", "not recommended", "must not")
+AVOID_MAX_GAP_WORDS = 4
+CUE_GOVERNED_VERBS = frozenset(
+    {
+        "crush",
+        "crushing",
+        "chew",
+        "chewing",
+        "split",
+        "splitting",
+        "break",
+        "breaking",
+        "dissolve",
+        "dissolving",
+        "swallow",
+        "swallowing",
+        "cut",
+        "cutting",
+        "open",
+        "opening",
+        "divide",
+        "dividing",
+        "exceed",
+        "exceeding",
+    }
+)
+_CLAUSE_BREAK_RE = re.compile(r"[.;:]")
 TAKE_WITH_FOOD_PHRASES = ("with food", "with meals", "with milk", "after eating")
 # "with the evening meal", "with the morning meal", etc.
 _WITH_THE_MEAL_RE = re.compile(r"\bwith the \w+ meal\b")
@@ -623,28 +647,21 @@ _WITH_THE_MEAL_RE = re.compile(r"\bwith the \w+ meal\b")
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
 
-def _word_index_at(words: list[re.Match], char_pos: int) -> int:
-    for i, w in enumerate(words):
-        if w.start() <= char_pos < w.end():
-            return i
-    return min(range(len(words)), key=lambda i: abs(words[i].start() - char_pos))
-
-
-def _within_words(lowered: str, phrase: str, item: str, max_words: int) -> bool:
-    """True if `phrase` and `item` each appear as whole-word/phrase matches
-    within `max_words` words of each other, anywhere in the text."""
-    phrase_hits = [m.start() for m in re.finditer(rf"\b{re.escape(phrase)}\b", lowered)]
-    item_hits = [m.start() for m in re.finditer(rf"\b{re.escape(item)}\b", lowered)]
-    if not phrase_hits or not item_hits:
-        return False
-    words = list(_WORD_RE.finditer(lowered))
-    if not words:
-        return False
-    for p in phrase_hits:
-        pi = _word_index_at(words, p)
-        for it in item_hits:
-            if abs(pi - _word_index_at(words, it)) <= max_words:
-                return True
+def _avoid_cue_governs_item(lowered: str, variants: tuple[str, ...]) -> bool:
+    for phrase in AVOID_PHRASES:
+        for cue in re.finditer(rf"\b{re.escape(phrase)}\b", lowered):
+            tail = lowered[cue.end() :]
+            for variant in variants:
+                for hit in re.finditer(rf"\b{re.escape(variant)}\b", tail):
+                    gap = tail[: hit.start()]
+                    if _CLAUSE_BREAK_RE.search(gap):
+                        continue
+                    gap_words = _WORD_RE.findall(gap)
+                    if len(gap_words) > AVOID_MAX_GAP_WORDS:
+                        continue
+                    if CUE_GOVERNED_VERBS.intersection(gap_words):
+                        continue
+                    return True
     return False
 
 
@@ -653,11 +670,7 @@ def classify(quote: str, item: str) -> str:
     variants = ITEM_VARIANTS.get(item, (item.lower(),))
     if _phrase_in(lowered, "empty stomach"):
         return "take_on_empty_stomach"
-    if any(
-        _within_words(lowered, phrase, variant, AVOID_WORD_WINDOW)
-        for phrase in AVOID_PHRASES
-        for variant in variants
-    ):
+    if _avoid_cue_governs_item(lowered, variants):
         return "avoid_item"
     if re.search(r"\bhours?\s+(before|after)\b", lowered) or _phrase_in(
         lowered, "separate"
