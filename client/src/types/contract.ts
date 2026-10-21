@@ -540,8 +540,8 @@ export interface Interaction {
   severity: string | null; // null unless the source itself states one
   overlap: OverlapWindow[] | null; // null when either substance isn't modeled
   message: string;
-  label_product_name: string | null; // fda_label only
-  label_attribution: string | null; // "From the label for ..." (fda_label only)
+  label_product_name: string | null;
+  label_attribution: string | null;
   dailymed_url: string | null;
 }
 

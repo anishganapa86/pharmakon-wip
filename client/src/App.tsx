@@ -174,9 +174,6 @@ function App() {
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
   const [interactionsNotice, setInteractionsNotice] = useState(false);
-  // Lowercased names/product names with a quoted take_with_food or
-  // take_with_food_if_upset finding -- drives the small food chip on each
-  // Schedule card. An unconditional finding wins over a conditional one.
   const [withFoodNames, setWithFoodNames] = useState<Map<string, FoodChip>>(
     new Map(),
   );

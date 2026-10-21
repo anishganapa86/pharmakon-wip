@@ -236,8 +236,6 @@ def test_my_product_never_appears_as_an_alternative_candidate(client):
         assert "WouldBeGreatAlternative" not in brands
 
 
-# --- The add-a-product flow end to end ------------------------------------------
-
 FLOW_TEXT = "Water, Glycerin (Kosher, Vegetable), 1,2-Hexanediol, Retinol"
 
 

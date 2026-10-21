@@ -91,9 +91,6 @@ CONTEXT_KEYWORDS = (
     "another nsaid",
 )
 
-# Terms that name a different interacting party than the drug's own class.
-# A class-only match is dropped when the sentence is about the class meeting
-# one of these, since that is a different pair of drugs than the one checked.
 GENERIC_INTERACTING_PARTY_TERMS = (
     "anticoagulant",
     "antiplatelet",

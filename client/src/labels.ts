@@ -129,8 +129,6 @@ export function showsBodyLocation(category: string): boolean {
  * honest framing as notModeledReason, worded for the timeline card. */
 export const TIMELINE_DOSE_NOT_MODELED = "Logged — not modeled (topical)";
 
-/** The name to show for a logged ingredient: the registry's canonical name
- * when resolved, else the name exactly as stored. */
 export function ingredientDisplayName(i: LoggedIngredient): string {
   return i.display_name ?? i.name;
 }
