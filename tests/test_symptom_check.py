@@ -340,3 +340,54 @@ def test_adverse_reactions_for_a_salt_form_generic_name_use_the_fallback_search(
     assert len(calls) == 2
     assert [s["text"] for s in sections] == ["Nausea and diarrhea were reported."]
     side_effects.clear_cache()
+
+
+def test_label_match_shows_the_verbatim_sentence_and_dailymed_link(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "adverse_reactions": [
+            "Insomnia was common. Headache, dizziness, and nausea were reported."
+        ],
+        "set_id": "caf-123",
+        "openfda": {"brand_name": ["NoDoz"]},
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["matched_sentence"] == (
+        "Headache, dizziness, and nausea were reported."
+    )
+    assert match["quote_source"] == "fda_label_verbatim"
+    assert match["label_pointer"] is None
+    assert match["dailymed_url"].endswith("setid=caf-123")
+
+
+def test_sentence_with_a_cross_reference_is_not_quoted_but_still_linked(
+    client, openfda
+):
+    openfda.labels["CAFFEINE"] = {
+        "adverse_reactions": ["Headache was reported (See WARNINGS)."],
+        "set_id": "caf-123",
+        "openfda": {"brand_name": ["NoDoz"]},
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["matched_sentence"] is None
+    assert match["quote_source"] is None
+    assert match["label_pointer"] == (
+        "The FDA label for NoDoz mentions headache in its Adverse Reactions section."
+    )
+    assert match["dailymed_url"].endswith("setid=caf-123")
+
+
+def test_local_reference_match_has_no_sentence_or_dailymed_link(client, openfda):
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["source"] == "local_reference"
+    assert match["matched_sentence"] is None
+    assert match["label_pointer"] is None
+    assert match["dailymed_url"] is None

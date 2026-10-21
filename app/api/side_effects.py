@@ -35,7 +35,8 @@ from ..detect.alerts import APPROACH_FRACTION, HEPATIC_THRESHOLD_FACTOR
 from ..pk.engine import UnsupportedKinetics, superpose
 from ..pk.individualize import Patient, adjusted_ke
 from ..registry.loader import Registry
-from . import label_cache, label_source
+from . import food_guidance, label_cache, label_source
+from .provenance import QUOTE_SOURCE_FDA_LABEL
 from .service import DEFAULT_PATIENT, load_doses, logged_doses
 
 OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
@@ -158,6 +159,43 @@ def section_mentioning(generic_name: str, symptom: str) -> dict | None:
         if mentions(section["text"], symptom):
             return section
     return None
+
+
+def label_evidence(entry: dict, symptom: str, source: str) -> dict:
+    evidence = {
+        **label_source.source_fields(None),
+        "matched_sentence": None,
+        "quote_source": None,
+        "label_pointer": None,
+    }
+    if source != OPENFDA_SOURCE:
+        return evidence
+    sections = [
+        section
+        for section in _sections_cache.get(entry["name"].upper(), [])
+        if mentions(section["text"], symptom)
+    ]
+    for section in sections:
+        for sentence in food_guidance.quotable_sentences(section["text"]):
+            if mentions(sentence, symptom):
+                return {
+                    **evidence,
+                    **label_source.source_fields(section),
+                    "matched_sentence": sentence,
+                    "quote_source": QUOTE_SOURCE_FDA_LABEL,
+                }
+    if sections:
+        first = sections[0]
+        who = first.get("product_name") or entry["name"]
+        return {
+            **evidence,
+            **label_source.source_fields(first),
+            "label_pointer": (
+                f"The FDA label for {who} mentions {symptom} in its Adverse "
+                "Reactions section."
+            ),
+        }
+    return evidence
 
 
 def label_source_fields(entry: dict, symptom: str, source: str) -> dict:
@@ -508,5 +546,5 @@ def _match(entry, symptom, source, level, recent, by_id) -> dict:
         "threshold_status": status,
         "contributing_doses": contributing,
         "message": message,
-        **label_source_fields(entry, symptom, source),
+        **label_evidence(entry, symptom, source),
     }

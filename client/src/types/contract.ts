@@ -274,6 +274,9 @@ export interface SymptomMatch {
   label_product_name: string | null;
   label_attribution: string | null;
   dailymed_url: string | null;
+  matched_sentence: string | null;
+  quote_source: QuoteSource | null;
+  label_pointer: string | null;
 }
 
 export interface SymptomCheckResponse {

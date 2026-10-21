@@ -469,6 +469,17 @@ def _quote_ok(text: str, is_list_item: bool, ends_properly: bool) -> bool:
     return ends_properly
 
 
+def quotable_sentences(block: str) -> list[str]:
+    out = []
+    for text, is_list_item, ends_properly in _units_from_block(block):
+        body = separate_section_heading(text)
+        if body is not None:
+            text = body
+        if _quote_ok(text, is_list_item, ends_properly):
+            out.append(text)
+    return out
+
+
 def _phrase_in(text_lower: str, phrase: str) -> bool:
     return re.search(rf"\b{re.escape(phrase)}\b", text_lower) is not None
 

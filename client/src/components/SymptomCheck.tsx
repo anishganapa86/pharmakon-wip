@@ -61,7 +61,12 @@ export function SymptomCheck() {
                     <span
                       className={`badge badge-${m.threshold_status === "above" ? "urgent" : "caution"}`}
                     >
-                      {m.threshold_status}
+                      {m.threshold_status === "above"
+                        ? "Over 24-hour limit"
+                        : "Approaching 24-hour limit"}
+                    </span>
+                    <span className="muted small">
+                      {m.total_24h_mg} mg in the last 24 hours
                     </span>
                     <span className="alert-substance">
                       {m.substance.display_name}
@@ -71,8 +76,24 @@ export function SymptomCheck() {
                     </span>
                   </div>
                   <p>{m.message}</p>
+                  {m.matched_sentence && (
+                    <p className="muted small">
+                      "{m.matched_sentence}"{" "}
+                      <span className="tag">Quoted from FDA label</span>
+                    </p>
+                  )}
+                  {!m.matched_sentence && m.label_pointer && (
+                    <p className="muted small">{m.label_pointer}</p>
+                  )}
                   {m.label_attribution && (
                     <p className="muted small">{m.label_attribution}</p>
+                  )}
+                  {m.dailymed_url && (
+                    <p className="muted small">
+                      <a href={m.dailymed_url} target="_blank" rel="noreferrer">
+                        Read on DailyMed
+                      </a>
+                    </p>
                   )}
                   {m.current_level_mg_l !== null && (
                     <p className="muted small">
