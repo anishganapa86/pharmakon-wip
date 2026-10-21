@@ -55,9 +55,10 @@ class FakeOpenFDA:
             raise httpx.ConnectError("unreachable", request=request)
         for name, text in self.labels.items():
             if f'"{name}"' in search:
-                return httpx.Response(
-                    200, json={"results": [{"adverse_reactions": [text]}]}
+                label = (
+                    text if isinstance(text, dict) else {"adverse_reactions": [text]}
                 )
+                return httpx.Response(200, json={"results": [label]})
         return httpx.Response(
             404, json={"error": {"code": "NOT_FOUND", "message": "No matches"}}
         )
@@ -281,3 +282,21 @@ def test_reachable_openfda_adds_no_unchecked_reason_to_symptom_result(client, op
     log(client, "prod_nodoz_200", 2, quantity=2)
 
     assert "unchecked_reason" not in check(client, "headache")
+
+
+def test_label_match_says_which_label_was_used(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "adverse_reactions": ["Headache, dizziness, and nausea were reported."],
+        "set_id": "caf-123",
+        "openfda": {"brand_name": ["NoDoz"]},
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["label_product_name"] == "NoDoz"
+    assert match["label_attribution"] == (
+        "From the label for NoDoz, a caffeine product. "
+        "Not necessarily the exact product you take."
+    )
+    assert match["dailymed_url"].endswith("setid=caf-123")

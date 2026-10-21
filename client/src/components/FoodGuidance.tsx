@@ -69,6 +69,9 @@ function FindingCard({ finding }: { finding: FoodGuidanceFinding }) {
           </p>
         )
       )}
+      {finding.label_attribution && (
+        <p className="muted small">{finding.label_attribution}</p>
+      )}
       {(finding.product_name || finding.dosage_form) && (
         <p className="muted small">
           {[finding.product_name, finding.dosage_form].filter(Boolean).join(" — ")}

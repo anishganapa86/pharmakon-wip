@@ -59,9 +59,10 @@ class FakeOpenFDA:
             raise httpx.ConnectError("unreachable", request=request)
         for name, text in self.labels.items():
             if f'"{name}"' in search:
-                return httpx.Response(
-                    200, json={"results": [{"drug_interactions": [text]}]}
+                label = (
+                    text if isinstance(text, dict) else {"drug_interactions": [text]}
                 )
+                return httpx.Response(200, json={"results": [label]})
         return httpx.Response(
             404, json={"error": {"code": "NOT_FOUND", "message": "No matches"}}
         )
@@ -838,3 +839,32 @@ def test_sentence_with_a_cross_reference_is_not_quoted(client, openfda):
 
     assert [f for f in body["interactions"] if f["source_type"] == "fda_label"] == []
     assert any("could not quote cleanly" in r for r in body["unchecked_reason"])
+
+
+def test_label_finding_says_which_label_was_used(client, openfda):
+    openfda.labels["DONEPEZIL"] = {
+        "drug_interactions": [
+            "Memantine: concomitant administration of donepezil and memantine "
+            "did not affect the pharmacokinetics of either drug."
+        ],
+        "set_id": "don-123",
+        "openfda": {"brand_name": ["Aricept"]},
+    }
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    (finding,) = [f for f in body["interactions"] if f["source_type"] == "fda_label"]
+    assert finding["label_product_name"] == "Aricept"
+    assert finding["label_attribution"] == (
+        "From the label for Aricept, a donepezil product. "
+        "Not necessarily the exact product you take."
+    )
+    assert finding["dailymed_url"].endswith("setid=don-123")
+
+
+def test_curated_card_has_no_label_attribution(client, openfda):
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    (finding,) = body["interactions"]
+    assert finding["source_type"] == "curated"
+    assert finding["label_attribution"] is None

@@ -1252,3 +1252,37 @@ def test_pointers_sharing_a_label_and_field_collapse_into_one_finding(client, op
         "section."
     )
     assert "dailymed.nlm.nih.gov" in pointers[0]["pointer"]
+
+
+def test_food_finding_says_which_label_was_used(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        set_id="adv-123",
+        openfda={"route": ["ORAL"], "brand_name": ["Advil"]},
+        directions=["Take with food."],
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    (finding,) = [f for f in body["guidance"] if f["source_type"] == "fda_label"]
+    assert finding["label_attribution"] == (
+        "From the label for Advil, an ibuprofen product. "
+        "Not necessarily the exact product you take."
+    )
+    assert finding["dailymed_url"].endswith("setid=adv-123")
+
+
+def test_food_pointer_says_which_label_was_used(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        set_id="adv-123",
+        openfda={"route": ["ORAL"], "brand_name": ["Advil"]},
+        warnings=["Take with food (See Dosage)."],
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    (finding,) = [f for f in body["guidance"] if f["quote"] is None]
+    assert finding["label_attribution"].startswith(
+        "From the label for Advil, an ibuprofen product."
+    )

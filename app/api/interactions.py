@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from functools import lru_cache
 from itertools import combinations
@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 
 from ..pk.individualize import Patient
 from ..registry.loader import Registry, normalize, strip_salt_tokens
-from . import label_cache, products, schedule, service, verification
+from . import label_cache, label_source, products, schedule, service, verification
 from .db import DoseEvent
 from .provenance import QUOTE_SOURCE_FDA_LABEL
 from .quote_text import (
@@ -143,6 +143,8 @@ _http = httpx.Client(timeout=5.0)
 # pairs in the same regimen never re-fetch.
 _label_cache: dict[str, str | None] = {}
 
+_sections_cache: dict[str, list[dict]] = {}
+
 # Key prefix for an oral ingredient that doesn't resolve against the PK
 # registry but is still checked from its own FDA label, by its normalized,
 # salt-stripped generic name (see resolve_for_label_check). Prefixed so it
@@ -160,6 +162,7 @@ class InvalidRule(ValueError):
 
 def clear_cache() -> None:
     _label_cache.clear()
+    _sections_cache.clear()
 
 
 # --- A. Curated rules ----------------------------------------------------------
@@ -270,16 +273,23 @@ def _entry(key: str, registry: Registry, shadow: dict[str, dict]) -> dict:
     return shadow[key]
 
 
-def fetch_drug_interactions_text(generic_name: str) -> str | None:
-    return label_cache.cached(
-        "drug_interactions",
+def fetch_drug_interaction_sections(generic_name: str) -> list[dict]:
+    sections = label_cache.cached(
+        "drug_interaction_sections",
         generic_name.upper(),
-        lambda: _request_drug_interactions_text(generic_name),
+        lambda: _request_drug_interaction_sections(generic_name),
     )
+    _sections_cache[generic_name.upper()] = sections
+    return sections
 
 
-def _request_drug_interactions_text(generic_name: str) -> str | None:
-    """`drug_interactions` text from single-ingredient openFDA labels, or None.
+def fetch_drug_interactions_text(generic_name: str) -> str | None:
+    return label_source.sections_text(fetch_drug_interaction_sections(generic_name))
+
+
+def _request_drug_interaction_sections(generic_name: str) -> list[dict]:
+    """`drug_interactions` sections from single-ingredient openFDA labels,
+    each with the label it came from, or [] if there are none.
 
     Raises OpenFDAUnavailable on network or server errors, so the caller can
     tell "no label" apart from "couldn't ask" (same contract as
@@ -296,15 +306,12 @@ def _request_drug_interactions_text(generic_name: str) -> str | None:
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
-        return None
+        return []
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
-    sections = [
-        text
-        for label in r.json().get("results", [])
-        for text in label.get("drug_interactions", [])
-    ]
-    return "\n".join(sections) or None
+    return label_source.sections_from_results(
+        r.json().get("results", []), "drug_interactions", generic_name.lower()
+    )
 
 
 def _label_text(substance_id: str, generic_name: str) -> str | None:
@@ -374,6 +381,7 @@ class LabelMatch:
     matched_term: str  # the literal name/alias, or the class keyword, that hit
     is_literal: bool  # True: other_id's own name/alias appears in the sentence
     other_class: str | None  # the CLASS_MEMBERS key, only set when not literal
+    section: dict | None = None
 
 
 REJECTED_CLASS_MATCH: tuple[str, bool, str | None] = ("", False, None)
@@ -486,7 +494,10 @@ def label_mention_detail(
         # whatever we claim matched it. Should be unreachable given how
         # `match` was built above; drop rather than trust it if it ever isn't.
         return None, None
-    return match, None
+    section = label_source.find_section(
+        _sections_cache.get(entry["name"].upper(), []), match.sentence
+    )
+    return replace(match, section=section), None
 
 
 # --- Concentration overlap (the only place this module touches app.pk) --------
@@ -627,6 +638,7 @@ def _also_mentioned(self_entry: dict, match: LabelMatch) -> dict:
         "quoted_text": match.sentence,
         "quote_source": QUOTE_SOURCE_FDA_LABEL,
         "message": f"Also mentioned in the FDA label for {self_entry['name']}.",
+        **label_source.source_fields(match.section),
     }
 
 
@@ -650,6 +662,7 @@ def _curated_finding(
         # corroboration beneath the primary curated card. None when there are
         # none, never an empty list.
         "also_mentioned_in_label": also_mentioned_in_label or None,
+        **label_source.source_fields(None),
     }
 
 
@@ -682,6 +695,7 @@ def _label_finding(
         "overlap": overlap,
         "message": message,
         "also_mentioned_in_label": None,
+        **label_source.source_fields(match.section),
     }
 
 

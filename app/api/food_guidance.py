@@ -54,7 +54,14 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..registry.loader import Registry
-from . import label_cache, products, schedule, service, verification
+from . import (
+    label_cache,
+    label_source,
+    products,
+    schedule,
+    service,
+    verification,
+)
 from .db import DoseEvent, ScheduledDose
 from .provenance import QUOTE_SOURCE_FDA_LABEL
 from .quote_text import (
@@ -609,7 +616,7 @@ def label_product_name(label: dict) -> str | None:
 
 # --- Pointer text (DailyMed) ------------------------------------------------------
 
-DAILYMED_URL = "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid={set_id}"
+DAILYMED_URL = label_source.DAILYMED_URL
 
 FIELD_DISPLAY_NAMES = {
     "dosage_and_administration": "Dosage and Administration",
@@ -888,6 +895,22 @@ def _item_for_schedule(
 # --- Findings --------------------------------------------------------------------
 
 
+def _label_active_ingredient(item: RegimenItem, label: dict | None) -> str | None:
+    if not item.is_product:
+        return item.display_name.lower()
+    names = (label or {}).get("openfda", {}).get("substance_name") or []
+    return _join_items([n.lower() for n in names]) or None
+
+
+def _attribution_fields(
+    product_name: str | None, active_ingredient: str | None, set_id: str | None
+) -> dict:
+    return {
+        "label_attribution": label_source.attribution(product_name, active_ingredient),
+        "dailymed_url": label_source.dailymed_url(set_id),
+    }
+
+
 def _finding(
     item: RegimenItem,
     item_term: str,
@@ -897,6 +920,8 @@ def _finding(
     product_name: str | None = None,
     dosage_form: str | None = None,
     quote_source: str | None = None,
+    set_id: str | None = None,
+    active_ingredient: str | None = None,
 ) -> dict:
     return {
         "name": item.display_name,
@@ -921,6 +946,7 @@ def _finding(
         # when nothing matched, never guessed.
         "product_name": product_name,
         "dosage_form": dosage_form,
+        **_attribution_fields(product_name, active_ingredient, set_id),
     }
 
 
@@ -931,9 +957,16 @@ def _pointer_finding(
     product_name: str | None,
     dosage_form: str | None,
     set_id: str | None,
+    active_ingredient: str | None = None,
 ) -> dict:
     return _collapsed_pointer_finding(
-        item, [item_term], pointer.field, product_name, dosage_form, set_id
+        item,
+        [item_term],
+        pointer.field,
+        product_name,
+        dosage_form,
+        set_id,
+        active_ingredient,
     )
 
 
@@ -944,6 +977,7 @@ def _collapsed_pointer_finding(
     product_name: str | None,
     dosage_form: str | None,
     set_id: str | None,
+    active_ingredient: str | None = None,
 ) -> dict:
     """A unit qualified by item + instruction cue but failed the quote
     integrity rules -- reported anyway, as a citation with no quote, rather
@@ -966,6 +1000,7 @@ def _collapsed_pointer_finding(
         "also_in_curated": False,
         "product_name": product_name,
         "dosage_form": dosage_form,
+        **_attribution_fields(product_name, active_ingredient, set_id),
     }
 
 
@@ -1075,6 +1110,8 @@ def _findings_for_item(
                                     product_name,
                                     dosage_form,
                                     QUOTE_SOURCE_FDA_LABEL,
+                                    set_id,
+                                    _label_active_ingredient(item, label),
                                 )
                             )
                         for p in pointers:
@@ -1092,6 +1129,7 @@ def _findings_for_item(
                                 product_name,
                                 dosage_form,
                                 set_id,
+                                _label_active_ingredient(item, label),
                             )
                         )
 
@@ -1113,6 +1151,9 @@ def _findings_for_item(
                     c.verified,
                     c.product_name,
                     c.dosage_form,
+                    None,
+                    c.set_id,
+                    _label_active_ingredient(item, None),
                 )
             )
 

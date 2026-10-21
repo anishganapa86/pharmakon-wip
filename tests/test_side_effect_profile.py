@@ -54,9 +54,10 @@ class FakeOpenFDA:
             raise httpx.ConnectError("unreachable", request=request)
         for name, text in self.labels.items():
             if f'"{name}"' in search:
-                return httpx.Response(
-                    200, json={"results": [{"adverse_reactions": [text]}]}
+                label = (
+                    text if isinstance(text, dict) else {"adverse_reactions": [text]}
                 )
+                return httpx.Response(200, json={"results": [label]})
         return httpx.Response(
             404, json={"error": {"code": "NOT_FOUND", "message": "No matches"}}
         )
@@ -223,3 +224,21 @@ def test_reachable_openfda_adds_no_unchecked_reason(client, openfda):
     log(client, "prod_nodoz_200", 2)
 
     assert "unchecked_reason" not in profile(client)
+
+
+def test_label_sourced_effects_say_which_label_was_used(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "adverse_reactions": ["Nausea, headache, and jitteriness were reported."],
+        "openfda": {"brand_name": ["NoDoz"]},
+    }
+    log(client, "prod_nodoz_200", 2)
+
+    (substance,) = profile(client)["substances"]
+
+    assert substance["label_attributions"] == [
+        "From the label for NoDoz, a caffeine product. "
+        "Not necessarily the exact product you take."
+    ]
+    sourced = [e for e in substance["side_effects"] if e["source"] == "openfda_label"]
+    assert sourced
+    assert all(e["label_attribution"] for e in sourced)

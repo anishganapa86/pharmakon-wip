@@ -271,6 +271,9 @@ export interface SymptomMatch {
   threshold_status: "above" | "approaching";
   contributing_doses: ContributingDose[];
   message: string;
+  label_product_name: string | null;
+  label_attribution: string | null;
+  dailymed_url: string | null;
 }
 
 export interface SymptomCheckResponse {
@@ -293,6 +296,7 @@ export interface SideEffectEntry {
   source: AssociationSource;
   source_label: string;
   verified: false;
+  label_attribution: string | null;
 }
 
 export interface SubstanceSideEffectProfile {
@@ -301,6 +305,7 @@ export interface SubstanceSideEffectProfile {
   total_24h_mg: number;
   threshold_24h_mg: number | null;
   side_effects: SideEffectEntry[];
+  label_attributions: string[];
   contributing_products: ContributingProduct[];
 }
 
@@ -529,6 +534,9 @@ export interface Interaction {
   severity: string | null; // null unless the source itself states one
   overlap: OverlapWindow[] | null; // null when either substance isn't modeled
   message: string;
+  label_product_name: string | null; // fda_label only
+  label_attribution: string | null; // "From the label for ..." (fda_label only)
+  dailymed_url: string | null;
 }
 
 /** One product's mention on a DuplicateIngredientFinding card. */
@@ -628,6 +636,8 @@ export interface FoodGuidanceFinding {
   // generally.
   product_name: string | null;
   dosage_form: string | null;
+  label_attribution: string | null;
+  dailymed_url: string | null;
 }
 
 export type FoodGuidanceTimelineType = "dose_marker" | "window" | "ongoing";

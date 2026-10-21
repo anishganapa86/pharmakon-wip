@@ -71,6 +71,9 @@ export function SymptomCheck() {
                     </span>
                   </div>
                   <p>{m.message}</p>
+                  {m.label_attribution && (
+                    <p className="muted small">{m.label_attribution}</p>
+                  )}
                   {m.current_level_mg_l !== null && (
                     <p className="muted small">
                       Estimated current level: {m.current_level_mg_l.toFixed(3)} mg/L
