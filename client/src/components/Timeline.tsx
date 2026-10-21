@@ -209,7 +209,7 @@ export function Timeline({ userId, onDeleted }: Props) {
       (entries) => {
         if (entries[0]?.isIntersecting) void loadMore();
       },
-      { root: sentinel.closest(".timeline-scroll"), threshold: 0 },
+      { root: null, threshold: 0 },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -274,7 +274,7 @@ export function Timeline({ userId, onDeleted }: Props) {
   }
 
   return (
-    <div className="timeline-scroll">
+    <div>
       <ul className="timeline">
         {rows}
         <li ref={sentinelRef} className="timeline-sentinel">
@@ -286,6 +286,15 @@ export function Timeline({ userId, onDeleted }: Props) {
                 Retry
               </button>
             </span>
+          )}
+          {!loadingMore && !error && hasMore && (
+            <button
+              className="button-link"
+              type="button"
+              onClick={() => void loadMore()}
+            >
+              Load more
+            </button>
           )}
           {!loadingMore && !error && !hasMore && (
             <span className="muted small">Start of your history.</span>
