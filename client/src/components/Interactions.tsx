@@ -92,7 +92,7 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
                 <span className="tag">Quoted from FDA label</span>
               </>
             )
-          : !interaction.verified && (
+          : interaction.source_type === "curated" && !interaction.verified && (
               <>
                 {" · "}
                 <span className="tag">Unverified reference</span>
@@ -163,6 +163,7 @@ function CopyForPharmacist({ result }: { result: InteractionCheckResponse }) {
 function Results({ result }: { result: InteractionCheckResponse }) {
   return (
     <>
+      <RulesNotice notice={result.rules_awaiting_verification} />
       {result.unchecked_reason.length > 0 && (
         <ul className="effect-tags">
           {result.unchecked_reason.map((reason, i) => (
@@ -244,9 +245,6 @@ export function Interactions({ userId }: Props) {
         references. They are not medical advice. Do not stop or change any
         medication without talking to your prescriber or pharmacist.
       </p>
-      <RulesNotice
-        notice={(regimenResult ?? manualResult)?.rules_awaiting_verification}
-      />
 
       <section className="panel">
         <h2>Your regimen</h2>
