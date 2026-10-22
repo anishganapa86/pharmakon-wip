@@ -140,6 +140,10 @@ for label in "${labels[@]}"; do
   stop_servers
 done
 
+if [ -f "reports/runs/${labels[0]}/api_smoke.json" ]; then
+  cp "reports/runs/${labels[0]}/api_smoke.json" reports/api_smoke.json
+fi
+
 python scripts/build_demo_report.py --runs reports/runs --out reports/demo_test.md
 echo "report: reports/demo_test.md"
 exit "$OVERALL"
