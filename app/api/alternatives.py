@@ -187,19 +187,22 @@ def as_loggable_product(c: CuratedProduct) -> CuratedSkincareProduct:
 def search_curated(
     q: str, curated: tuple[CuratedProduct, ...] | None = None
 ) -> list[CuratedSkincareProduct]:
-    """Case-insensitive substring match on brand or name, every loaded
-    entry -- including an unverified packaging one. This is about finding
-    and logging a product the user already owns, not about offering it to
-    someone else as a replacement; see _is_candidate_eligible for that
-    separate, stricter gate."""
+    """Case-insensitive substring match on brand, name, or the two together
+    ("brand name", as the product is displayed), every loaded entry --
+    including an unverified packaging one. This is about finding and logging
+    a product the user already owns, not about offering it to someone else as
+    a replacement; see _is_candidate_eligible for that separate, stricter
+    gate."""
     curated = load_products() if curated is None else curated
-    needle = q.strip().lower()
+    needle = " ".join(q.lower().split())
     if not needle:
         return []
     return [
         as_loggable_product(c)
         for c in curated
-        if needle in c.brand.lower() or needle in c.name.lower()
+        if needle in c.brand.lower()
+        or needle in c.name.lower()
+        or needle in f"{c.brand} {c.name}".lower()
     ]
 
 
@@ -486,9 +489,17 @@ def check_alternatives_manual(
 # --- Medication guard ------------------------------------------------------------
 
 
+COSMETIC_REGISTRY_SUBSTANCES = frozenset({"ethanol", "caffeine"})
+
+
 def medication_ingredient_names(names: list[str], registry: Registry) -> list[str]:
     """Names among these that resolve against the PK medication registry --
     this checker's entire domain is topical/skincare products, and a name
     that resolves here almost certainly means someone typed a medication into
     the wrong form. Never silently accepted."""
-    return [name for name in names if registry.resolve(name) is not None]
+    return [
+        name
+        for name in names
+        if (substance_id := registry.resolve(name)) is not None
+        and substance_id not in COSMETIC_REGISTRY_SUBSTANCES
+    ]

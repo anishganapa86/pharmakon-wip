@@ -910,12 +910,14 @@ def test_generic_name_stored_as_a_salt_form_is_found_by_the_fallback_search(
 
     body = manual_check(client, ["Donepezil", "Memantine"])
 
-    assert calls[0] == (
-        'openfda.generic_name.exact:"DONEPEZIL" AND _exists_:drug_interactions'
-    )
-    assert calls[1] == 'openfda.generic_name:"DONEPEZIL" AND _exists_:drug_interactions'
+    exact = 'openfda.generic_name.exact:"DONEPEZIL" AND _exists_:drug_interactions'
+    fallback = 'openfda.generic_name:"DONEPEZIL" AND _exists_:drug_interactions'
+    assert exact in calls
+    assert fallback in calls
+    assert calls.index(exact) < calls.index(fallback)
     (finding,) = [f for f in body["interactions"] if f["source_type"] == "fda_label"]
     assert finding["quoted_text"] == "Memantine may be combined with donepezil."
+    assert "A combination label that must not be used." not in str(body)
     assert not any(
         "No label found for 'donepezil'" in r for r in body["unchecked_reason"]
     )

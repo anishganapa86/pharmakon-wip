@@ -597,6 +597,36 @@ def test_search_tirtir_returns_three_curated_entries(client):
     }
 
 
+def test_search_by_full_displayed_curated_name_finds_exactly_that_product(client):
+    body = client.get("/products/search", params={"q": "TIRTIR Milk Skin Toner"}).json()
+    curated = [
+        p["brand_name"] for p in body["results"] if p["source"] == "skincare_catalog"
+    ]
+    assert curated == ["TIRTIR Milk Skin Toner"]
+
+
+def test_search_by_brand_and_part_of_the_name_or_spacing_and_case_still_matches(client):
+    for q in ("tirtir milk", "TIRTIR   Milk  Skin Toner", "tirtir sos serum"):
+        body = client.get("/products/search", params={"q": q}).json()
+        assert any(
+            p["source"] == "skincare_catalog"
+            and p["brand_name"].lower().startswith("tirtir")
+            for p in body["results"]
+        ), q
+
+
+def test_search_brand_plus_a_name_from_another_brand_matches_nothing_curated(client):
+    body = client.get("/products/search", params={"q": "TIRTIR Toleriane"}).json()
+    assert not [p for p in body["results"] if p["source"] == "skincare_catalog"]
+
+
+def test_search_by_full_catalog_name_finds_it(client):
+    body = client.get("/products/search", params={"q": "Tylenol Extra Strength"}).json()
+    assert [p["brand_name"] for p in body["results"] if p["source"] == "catalog"] == [
+        "Tylenol Extra Strength"
+    ]
+
+
 def test_curated_skincare_result_is_labeled_and_unverified(client):
     body = client.get("/products/search", params={"q": "TIRTIR"}).json()
     result = next(p for p in body["results"] if p["source"] == "skincare_catalog")
