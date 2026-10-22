@@ -16,3 +16,4 @@ interaction_coverage.csv
 .interaction_coverage_cache.json
 food_guidance_coverage.csv
 .food_guidance_coverage_cache.json
+test-results/
