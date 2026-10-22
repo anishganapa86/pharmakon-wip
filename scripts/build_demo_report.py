@@ -62,7 +62,7 @@ def git_branch() -> str:
 
 def outcome(row: dict) -> str:
     if row["status"] == row["expected"]:
-        return "pass"
+        return "known bug" if row["expected"] == "failed" else "pass"
     if row["status"] == "skipped":
         return "skipped"
     return "FAIL"
@@ -121,6 +121,24 @@ def main() -> None:
         rows.append([tid, *per_run, flaky, durations])
     lines.append("## Pass/fail\n")
     lines.append(table(["test", *labels, "flaky", "duration"], rows))
+
+    bugs: dict[str, str] = {}
+    for label in labels:
+        for tid, row in results[label].items():
+            if row["expected"] == "failed":
+                notes = [
+                    a["description"] for a in row["annotations"] if a["type"] == "bug"
+                ]
+                bugs[tid] = " ".join(notes)
+    lines.append("### Known bugs\n")
+    lines.append(
+        "These tests are marked test.fail: the app currently misbehaves as noted. "
+        "A known-bug test that starts passing, or fails for another reason, "
+        "is reported as FAIL.\n"
+    )
+    lines.append(
+        table(["test", "note"], [[tid, note] for tid, note in sorted(bugs.items())])
+    )
 
     failures = []
     for label in labels:
