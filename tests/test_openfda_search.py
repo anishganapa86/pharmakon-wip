@@ -283,7 +283,7 @@ def test_condition_search_augments_thin_catalog_results(client, fake_openfda):
     assert product["route"] == "TOPICAL"
     (ing,) = product["ingredients"]
     # Not in the registry: topical-only substances are out of scope
-    # (CLAUDE.md), so this is refused, not guessed.
+    # (project notes), so this is refused, not guessed.
     assert ing["substance_id"] is None
     assert ing["strength_mg"] is None
     assert ing["unmodeled_reason"] == "unmatched"

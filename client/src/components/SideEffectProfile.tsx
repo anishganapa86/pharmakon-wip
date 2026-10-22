@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { fetchSideEffectProfile } from "../api";
 import type { SideEffectProfileResponse } from "../types/contract";
+import { LoadingNote, UncheckedReasons } from "./LoadingNote";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -37,13 +38,14 @@ export function SideEffectProfile({ userId }: Props) {
       <summary>Side effects of your current regimen</summary>
       <div className="collapsible-body">
         {loading ? (
-          <p className="muted">Loading…</p>
+          <LoadingNote label="Looking up FDA labels for your regimen…" />
         ) : error ? (
           <p className="error">Couldn't load side effects: {error}</p>
         ) : !data || data.substances.length === 0 ? (
           <p className="muted">Log a dose to see potential side effects.</p>
         ) : (
           <>
+            <UncheckedReasons reasons={data.unchecked_reason} />
             <p className="muted small">
               These are side effects listed on FDA drug labels for the
               substances you've logged. Not all will occur.

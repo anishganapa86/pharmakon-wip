@@ -7,7 +7,7 @@ default -- it's a lookup, not a prediction. There are two sources:
      specific FDA label section; a rule with no source doesn't belong there
      (see the file's own `_README`), and `load_rules` refuses to load one
      that lacks one. Every rule is `verified: false` until a human opens the
-     cited source (CLAUDE.md invariant) -- never flip that here.
+     cited source (project notes invariant) -- never flip that here.
 
   B) Live openFDA label text: for a flagged pair, each substance's own
      `drug_interactions` label field is searched for the other substance's
@@ -41,8 +41,9 @@ from sqlalchemy.orm import Session
 
 from ..pk.individualize import Patient
 from ..registry.loader import Registry, normalize, strip_salt_tokens
-from . import products, schedule, service
+from . import label_cache, products, schedule, service, verification
 from .db import DoseEvent
+from .provenance import QUOTE_SOURCE_FDA_LABEL
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "drug_interactions.json"
 
@@ -171,6 +172,12 @@ def load_rules(path: Path | None = None) -> tuple[CuratedRule, ...]:
                 f"rule {e.get('substance_a')!r} + {e.get('substance_b')!r} "
                 "has no source; see drug_interactions.json's _README"
             )
+        missing = verification.missing_verification_fields(e)
+        if missing:
+            raise InvalidRule(
+                f"rule {e.get('substance_a')!r} + {e.get('substance_b')!r} "
+                f"is marked verified but is missing {', '.join(missing)}"
+            )
         rules.append(
             CuratedRule(
                 substance_a=e["substance_a"],
@@ -178,10 +185,21 @@ def load_rules(path: Path | None = None) -> tuple[CuratedRule, ...]:
                 effect=e["effect"],
                 recommendation=e["recommendation"],
                 source=source,
-                verified=e.get("verified", False),
+                verified=e.get("verified") is True,
             )
         )
     return tuple(rules)
+
+
+def active_rules() -> tuple[CuratedRule, ...]:
+    rules = load_rules()
+    if verification.show_unverified_rules():
+        return rules
+    return tuple(r for r in rules if r.verified)
+
+
+def unverified_rule_count() -> int:
+    return sum(1 for r in load_rules() if not r.verified)
 
 
 # --- B. FDA label text -----------------------------------------------------------
@@ -226,6 +244,14 @@ def _entry(key: str, registry: Registry, shadow: dict[str, dict]) -> dict:
 
 
 def fetch_drug_interactions_text(generic_name: str) -> str | None:
+    return label_cache.cached(
+        "drug_interactions",
+        generic_name.upper(),
+        lambda: _request_drug_interactions_text(generic_name),
+    )
+
+
+def _request_drug_interactions_text(generic_name: str) -> str | None:
     """`drug_interactions` text from single-ingredient openFDA labels, or None.
 
     Raises OpenFDAUnavailable on network or server errors, so the caller can
@@ -261,6 +287,25 @@ def _label_text(substance_id: str, generic_name: str) -> str | None:
     text = fetch_drug_interactions_text(generic_name)  # may raise
     _label_cache[substance_id] = text
     return text
+
+
+def _prefetch_label_texts(
+    substance_ids: list[str], registry: Registry, shadow: dict[str, dict]
+) -> set[str]:
+    names = {
+        sid: _entry(sid, registry, shadow)["name"]
+        for sid in dict.fromkeys(substance_ids)
+    }
+    results = label_cache.fetch_concurrently(
+        list(names), lambda sid: _label_text(sid, names[sid])
+    )
+    unavailable: set[str] = set()
+    for sid, outcome in results.items():
+        if isinstance(outcome, OpenFDAUnavailable):
+            unavailable.add(sid)
+        elif isinstance(outcome, Exception):
+            raise outcome
+    return unavailable
 
 
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
@@ -339,6 +384,7 @@ def label_mention(
     self_id: str,
     other_id: str,
     registry: Registry,
+    unavailable: set[str] | None = None,
     shadow: dict[str, dict] | None = None,
 ) -> LabelMatch | None:
     """The best sentence in self_id's own FDA label mentioning other_id (by
@@ -351,6 +397,8 @@ def label_mention(
     synthetic entries for the latter -- omit it when both ids are real
     registry ids (every existing caller/test does).
     """
+    if unavailable is not None and self_id in unavailable:
+        raise OpenFDAUnavailable(self_id)
     shadow = shadow or {}
     entry = _entry(self_id, registry, shadow)
     text = _label_text(self_id, entry["name"])
@@ -503,6 +551,7 @@ def _also_mentioned(self_entry: dict, match: LabelMatch) -> dict:
     return {
         "source": f"FDA label, {self_entry['name']}, Drug Interactions section",
         "quoted_text": match.sentence,
+        "quote_source": QUOTE_SOURCE_FDA_LABEL,
         "message": f"Also mentioned in the FDA label for {self_entry['name']}.",
     }
 
@@ -518,6 +567,7 @@ def _curated_finding(
         "source_type": "curated",
         "source": rule.source,
         "quoted_text": None,
+        "quote_source": None,
         "verified": rule.verified,
         "severity": None,  # never invented; no curated rule states one yet
         "overlap": overlap,
@@ -552,7 +602,8 @@ def _label_finding(
         "source_type": "fda_label",
         "source": f"FDA label, {self_entry['name']}, Drug Interactions section",
         "quoted_text": match.sentence,
-        "verified": True,  # quoted verbatim from the live FDA label, not a guess
+        "quote_source": QUOTE_SOURCE_FDA_LABEL,
+        "verified": False,
         "severity": None,  # never interpreted from label prose
         "overlap": overlap,
         "message": message,
@@ -581,10 +632,13 @@ def check(
     (resolve_for_label_check) among `substances`.
     """
     shadow = shadow or {}
-    rules = load_rules()
+    rules = active_rules()
     findings: list[dict] = []
     label_unavailable = False
     checked_pairs = 0
+    unavailable = _prefetch_label_texts(
+        [s.substance_id for s in substances], registry, shadow
+    )
 
     # Fetch each substance's own label exactly once, before any pairwise
     # work -- "cache label fetches, one fetch per ingredient, then check
@@ -597,11 +651,10 @@ def check(
     no_label_names: list[str] = []
     for s in substances:
         entry = _entry(s.substance_id, registry, shadow)
-        try:
-            text = _label_text(s.substance_id, entry["name"])
-        except OpenFDAUnavailable:
+        if s.substance_id in unavailable:
             label_unavailable = True
             continue
+        text = _label_text(s.substance_id, entry["name"])
         if text is None and not _is_registry_key(s.substance_id):
             no_label_names.append(entry["name"])
 
@@ -626,11 +679,15 @@ def check(
 
         match_ab = match_ba = None
         try:
-            match_ab = label_mention(a.substance_id, b.substance_id, registry, shadow)
+            match_ab = label_mention(
+                a.substance_id, b.substance_id, registry, unavailable, shadow
+            )
         except OpenFDAUnavailable:
             label_unavailable = True
         try:
-            match_ba = label_mention(b.substance_id, a.substance_id, registry, shadow)
+            match_ba = label_mention(
+                b.substance_id, a.substance_id, registry, unavailable, shadow
+            )
         except OpenFDAUnavailable:
             label_unavailable = True
 
@@ -680,12 +737,13 @@ def check(
     else:
         message = None
 
-    return {
+    body = {
         "interactions": findings,
         "checked_pairs": checked_pairs,
         "unchecked_reason": unchecked_reason,
         "message": message,
     }
+    return verification.attach_notice(body, unverified_rule_count())
 
 
 # --- "Same ingredient in more than one product" ---------------------------------

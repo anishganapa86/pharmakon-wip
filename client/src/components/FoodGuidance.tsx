@@ -7,6 +7,8 @@ import type {
   FoodGuidanceResponse,
   FoodGuidanceTimelineEntry,
 } from "../types/contract";
+import { LoadingNote } from "./LoadingNote";
+import { RulesNotice } from "./RulesNotice";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -83,12 +85,19 @@ function FindingCard({ finding }: { finding: FoodGuidanceFinding }) {
         </span>
         {" · "}
         {finding.label_field}
-        {!finding.verified && (
-          <>
-            {" · "}
-            <span className="tag">Unverified reference</span>
-          </>
-        )}
+        {finding.source_type === "fda_label"
+          ? finding.quote_source !== null && (
+              <>
+                {" · "}
+                <span className="tag">Quoted from FDA label</span>
+              </>
+            )
+          : !finding.verified && (
+              <>
+                {" · "}
+                <span className="tag">Unverified reference</span>
+              </>
+            )}
       </p>
     </div>
   );
@@ -222,11 +231,14 @@ export function FoodGuidance({ userId }: Props) {
         These are instructions quoted from FDA labels. They are not medical
         advice. Ask a pharmacist how they apply to you.
       </p>
+      <RulesNotice
+        notice={(regimenResult ?? manualResult)?.rules_awaiting_verification}
+      />
 
       <section className="panel">
         <h2>Your regimen</h2>
         {regimenLoading ? (
-          <p className="muted">Loading…</p>
+          <LoadingNote label="Reading FDA labels for your regimen…" />
         ) : regimenError ? (
           <p className="error">Couldn't check: {regimenError}</p>
         ) : (
@@ -255,6 +267,7 @@ export function FoodGuidance({ userId }: Props) {
             </button>
           </div>
         </form>
+        {checking && <LoadingNote label="Reading FDA labels…" />}
         {manualError && <p className="error">Couldn't check: {manualError}</p>}
       </section>
 

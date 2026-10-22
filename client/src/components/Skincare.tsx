@@ -13,6 +13,7 @@ import type {
   SkincareCheckResponse,
   SkincareProductRequest,
 } from "../types/contract";
+import { RulesNotice } from "./RulesNotice";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -138,6 +139,14 @@ function SkincareResults({
   alternatives: SkincareAlternativesResponse | null;
 }) {
   const flagged = result.incompatibilities.length > 0 || result.irritants.length > 0;
+
+  if (result.rules_checked === 0) {
+    return (
+      <p className="muted">
+        No rules are being applied, so these ingredients were not checked.
+      </p>
+    );
+  }
 
   return (
     <>
@@ -327,6 +336,7 @@ export function Skincare({ userId }: Props) {
         literature. They are not diagnoses. Discuss changes to your skincare
         routine with a dermatologist.
       </p>
+      <RulesNotice notice={(autoResult ?? result)?.rules_awaiting_verification} />
 
       <section className="panel">
         <h2>Products logged today</h2>

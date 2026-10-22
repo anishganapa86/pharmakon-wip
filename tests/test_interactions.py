@@ -163,11 +163,46 @@ def test_label_text_mentioning_the_other_drug_is_flagged_with_quote(client, open
     assert finding["substance_b"]["id"] == "warfarin"
     assert "Warfarin" in finding["quoted_text"]
     assert len(finding["quoted_text"]) <= 300
-    assert finding["verified"] is True
+    assert finding["verified"] is False
+    assert finding["quote_source"] == "fda_label_verbatim"
     assert finding["message"] == (
         "The FDA label for Loratadine mentions Warfarin in its drug "
         "interactions section."
     )
+
+
+def test_no_live_label_interaction_finding_is_ever_verified(client, openfda):
+    openfda.labels["LORATADINE"] = "Warfarin: no interaction was observed."
+    openfda.labels["IBUPROFEN"] = "Naproxen should not be taken with ibuprofen."
+
+    body = manual_check(client, ["loratadine", "warfarin", "ibuprofen", "naproxen"])
+
+    label_findings = [
+        f for f in body["interactions"] if f["source_type"] == "fda_label"
+    ]
+    assert label_findings
+    for finding in label_findings:
+        assert finding["verified"] is False
+        assert finding["quote_source"] == "fda_label_verbatim"
+        assert finding["quoted_text"]
+
+
+def test_curated_interaction_finding_has_no_quote_source(client, openfda):
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    (curated,) = [f for f in body["interactions"] if f["source_type"] == "curated"]
+    assert curated["quote_source"] is None
+    assert curated["verified"] is False
+
+
+def test_label_mention_folded_into_curated_card_names_its_quote_source(client, openfda):
+    openfda.labels["IBUPROFEN"] = "Do not use naproxen together with ibuprofen."
+
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    (curated,) = [f for f in body["interactions"] if f["source_type"] == "curated"]
+    (mention,) = curated["also_mentioned_in_label"]
+    assert mention["quote_source"] == "fda_label_verbatim"
 
 
 def test_label_text_not_mentioning_the_other_drug_is_not_flagged(client, openfda):
@@ -199,7 +234,8 @@ def test_two_nonregistry_drugs_label_mention_produces_a_finding(client, openfda)
     assert finding["substance_b"]["id"] == "label:memantine"
     assert "Memantine" in finding["quoted_text"]
     assert len(finding["quoted_text"]) <= 300
-    assert finding["verified"] is True
+    assert finding["verified"] is False
+    assert finding["quote_source"] == "fda_label_verbatim"
     assert finding["severity"] is None
     # A non-registry ingredient has no curated rules and no PK curve.
     assert finding["effect"] is None
@@ -473,6 +509,33 @@ def test_manual_check_requires_at_least_one_name(client, openfda):
     assert r.status_code == 422
 
 
+def test_unreachable_openfda_is_tried_once_per_substance_not_once_per_pair(
+    client, openfda
+):
+    openfda.down = True
+
+    body = manual_check(client, ["ibuprofen", "warfarin", "loratadine"])
+
+    assert len(openfda.calls) == 3
+    assert interactions.LABEL_UNAVAILABLE_NOTE in body["unchecked_reason"]
+
+
+def test_substance_labels_are_fetched_concurrently(client, openfda, monkeypatch):
+    import threading
+
+    barrier = threading.Barrier(3, timeout=5)
+
+    def fake(generic_name):
+        barrier.wait()
+        return None
+
+    monkeypatch.setattr(interactions, "fetch_drug_interactions_text", fake)
+
+    body = manual_check(client, ["ibuprofen", "warfarin", "loratadine"])
+
+    assert body["checked_pairs"] == 3
+
+
 # --- "Same ingredient in more than one product" --------------------------------
 
 
@@ -558,3 +621,135 @@ def test_same_product_scheduled_twice_is_one_product_not_a_duplicate(client, ope
     body = client.get("/users/default/interaction-check").json()
 
     assert body["duplicate_ingredients"] == []
+
+
+# --- Audit rules for the non-registry, same-ingredient and gated paths --------
+
+NONREGISTRY = ["Donepezil", "Memantine", "Rivastigmine"]
+
+
+def test_nonregistry_labels_are_fetched_concurrently(client, openfda, monkeypatch):
+    import threading
+
+    barrier = threading.Barrier(3, timeout=5)
+
+    def fake(generic_name):
+        barrier.wait()
+        return None
+
+    monkeypatch.setattr(interactions, "fetch_drug_interactions_text", fake)
+
+    body = manual_check(client, NONREGISTRY)
+
+    assert body["checked_pairs"] == 3
+
+
+def test_nonregistry_label_lookups_go_through_the_disk_cache(client, openfda, tmp_path):
+    from app.api import label_cache
+
+    label_cache.set_cache_dir(tmp_path)
+    openfda.labels["DONEPEZIL"] = "Memantine may be combined with donepezil."
+
+    manual_check(client, NONREGISTRY)
+    first_pass = len(openfda.calls)
+    interactions.clear_cache()
+    manual_check(client, NONREGISTRY)
+
+    assert first_pass == 3
+    assert len(openfda.calls) == first_pass
+
+
+def test_unreachable_openfda_is_tried_once_per_nonregistry_substance(client, openfda):
+    openfda.down = True
+
+    body = manual_check(client, NONREGISTRY)
+
+    assert len(openfda.calls) == 3
+    assert interactions.LABEL_UNAVAILABLE_NOTE in body["unchecked_reason"]
+
+
+def test_nonregistry_label_finding_is_never_verified(client, openfda):
+    openfda.labels["DONEPEZIL"] = "Memantine: concomitant use was studied."
+
+    body = manual_check(client, ["Donepezil", "Memantine"])
+
+    findings = body["interactions"]
+    assert findings
+    assert all(f["verified"] is False for f in findings)
+    assert all(f["quote_source"] == "fda_label_verbatim" for f in findings)
+
+
+def test_same_ingredient_card_is_not_gated_and_carries_no_verified_flag(
+    client, openfda, monkeypatch
+):
+    monkeypatch.delenv("SHOW_UNVERIFIED_RULES", raising=False)
+    _discover_oral("fda_donepezil", "Donepezil", ["Donepezil"])
+    _discover_oral("fda_namzaric", "Namzaric", ["Memantine", "Donepezil"])
+    log(client, "fda_donepezil", hours_ago=1)
+    log(client, "fda_namzaric", hours_ago=1)
+
+    body = client.get("/users/default/interaction-check").json()
+
+    cards = [
+        c for c in body["duplicate_ingredients"] if c["ingredient_name"] == "Donepezil"
+    ]
+    assert len(cards) == 1
+    assert cards[0]["product_count"] == 2
+    assert "verified" not in cards[0]
+    assert "source" not in cards[0]
+
+
+def test_gate_off_empty_result_still_carries_the_awaiting_notice(
+    client, openfda, monkeypatch
+):
+    monkeypatch.delenv("SHOW_UNVERIFIED_RULES", raising=False)
+
+    body = manual_check(client, ["ibuprofen", "warfarin"])
+
+    assert body["interactions"] == []
+    assert body["checked_pairs"] == 1
+    assert body["rules_awaiting_verification"]["count"] > 0
+    assert (
+        "awaiting verification and are not being applied"
+        in body["rules_awaiting_verification"]["message"]
+    )
+
+
+def test_gate_off_no_pairs_result_still_carries_the_awaiting_notice(
+    client, openfda, monkeypatch
+):
+    monkeypatch.delenv("SHOW_UNVERIFIED_RULES", raising=False)
+
+    body = manual_check(client, ["ibuprofen"])
+
+    assert body["checked_pairs"] == 0
+    assert body["message"] == interactions.NO_PAIRS_MESSAGE
+    assert body["rules_awaiting_verification"]["count"] > 0
+
+
+def test_gate_off_regimen_empty_result_carries_the_awaiting_notice(
+    client, openfda, monkeypatch
+):
+    monkeypatch.delenv("SHOW_UNVERIFIED_RULES", raising=False)
+    log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/interaction-check").json()
+
+    assert body["interactions"] == []
+    assert body["rules_awaiting_verification"]["count"] > 0
+
+
+def test_only_curated_findings_can_be_unverified_references(client, openfda):
+    openfda.labels["IBUPROFEN"] = "Warfarin: concomitant use raises bleeding risk."
+    openfda.labels["LORATADINE"] = "Famotidine: concomitant use was studied."
+
+    body = manual_check(client, ["ibuprofen", "warfarin", "loratadine", "famotidine"])
+
+    by_type = {f["source_type"] for f in body["interactions"]}
+    assert by_type == {"curated", "fda_label"}
+    for f in body["interactions"]:
+        if f["source_type"] == "fda_label":
+            assert f["verified"] is False
+            assert f["quote_source"] == "fda_label_verbatim"
+        else:
+            assert f["quote_source"] is None

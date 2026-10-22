@@ -5,6 +5,8 @@ import type {
   Interaction,
   InteractionCheckResponse,
 } from "../types/contract";
+import { LoadingNote } from "./LoadingNote";
+import { RulesNotice } from "./RulesNotice";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -83,12 +85,19 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
       )}
       <p className="muted small">
         <SourceTag interaction={interaction} /> Source: {interaction.source}
-        {!interaction.verified && (
-          <>
-            {" · "}
-            <span className="tag">Unverified reference</span>
-          </>
-        )}
+        {interaction.source_type === "fda_label"
+          ? interaction.quote_source !== null && (
+              <>
+                {" · "}
+                <span className="tag">Quoted from FDA label</span>
+              </>
+            )
+          : interaction.source_type === "curated" && !interaction.verified && (
+              <>
+                {" · "}
+                <span className="tag">Unverified reference</span>
+              </>
+            )}
       </p>
       <div className="pharmacist-questions">
         <p className="muted small">Questions for your pharmacist:</p>
@@ -154,6 +163,7 @@ function CopyForPharmacist({ result }: { result: InteractionCheckResponse }) {
 function Results({ result }: { result: InteractionCheckResponse }) {
   return (
     <>
+      <RulesNotice notice={result.rules_awaiting_verification} />
       {result.unchecked_reason.length > 0 && (
         <ul className="effect-tags">
           {result.unchecked_reason.map((reason, i) => (
@@ -239,7 +249,7 @@ export function Interactions({ userId }: Props) {
       <section className="panel">
         <h2>Your regimen</h2>
         {regimenLoading ? (
-          <p className="muted">Loading…</p>
+          <LoadingNote label="Checking your regimen against FDA labels…" />
         ) : regimenError ? (
           <p className="error">Couldn't check: {regimenError}</p>
         ) : (
@@ -268,6 +278,7 @@ export function Interactions({ userId }: Props) {
             </button>
           </div>
         </form>
+        {checking && <LoadingNote label="Checking FDA labels…" />}
         {manualError && <p className="error">Couldn't check: {manualError}</p>}
       </section>
 

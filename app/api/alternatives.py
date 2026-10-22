@@ -75,7 +75,7 @@ class CuratedProduct:
 
 def _is_real_entry(e: dict) -> bool:
     """False for a placeholder: empty ingredients, or -- for anything other
-    than a "packaging" entry -- a missing/"TODO" source_url. CLAUDE.md's "no
+    than a "packaging" entry -- a missing/"TODO" source_url. project notes's "no
     source, no entry" invariant, enforced here rather than trusted -- a
     placeholder is an expected, in-progress state of the data file, never a
     load error, and it must simply never reach a user.

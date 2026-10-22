@@ -175,6 +175,7 @@ def test_hidden_acetaminophen_across_products_triggers_duplication(client):
             "Risk increases with alcohol use or liver impairment."
         ),
         "description": "Pain reliever and fever reducer",
+        "verified": False,
     }
     assert alert["uncounted_doses"] == []
 
@@ -327,6 +328,18 @@ def test_zero_order_substance_is_200_with_modelable_false(client):
     assert body["points"] == []
     assert body["peak"] is None and body["current"] is None
     assert body["unit"] == "mg/L"
+
+
+def test_unmodelable_curve_has_null_fidelity(client):
+    body = curve(client, substance_id="ethanol").json()
+    assert body["modelable"] is False
+    assert body["fidelity"] is None
+
+
+def test_modelable_curve_still_reports_full_fidelity(client):
+    body = curve(client).json()
+    assert body["modelable"] is True
+    assert body["fidelity"] == "full"
 
 
 def test_current_is_null_when_now_is_outside_the_window(client):

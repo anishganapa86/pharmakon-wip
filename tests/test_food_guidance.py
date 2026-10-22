@@ -457,6 +457,63 @@ def test_avoid_item_matches_via_variant_not_just_base_term():
     assert food_guidance.classify(quote, "alcohol") == "avoid_item"
 
 
+def test_water_is_not_a_tracked_item():
+    assert "water" not in food_guidance.ITEM_TERMS
+
+
+def test_take_with_water_then_do_not_crush_is_not_avoid_item():
+    quote = (
+        "Adults: take 2 tablets every 8 hours with water swallow whole; do not "
+        "crush, chew, split or dissolve."
+    )
+    assert food_guidance.classify(quote, "water") != "avoid_item"
+
+
+def test_do_not_drink_alcohol_is_avoid_item():
+    quote = "Do not drink alcohol while you take sertraline hydrochloride tablets."
+    assert food_guidance.classify(quote, "alcohol") == "avoid_item"
+
+
+def test_avoid_grapefruit_juice_phrase_is_avoid_item():
+    assert (
+        food_guidance.classify("avoid grapefruit juice", "grapefruit") == "avoid_item"
+    )
+
+
+def test_must_not_cue_counts():
+    quote = "You must not take antacid products within two hours."
+    assert food_guidance.classify(quote, "antacid") == "avoid_item"
+
+
+def test_do_not_crush_chew_with_item_earlier_is_not_avoid_item():
+    quote = "Take with food and swallow whole. Do not crush, chew, split or dissolve."
+    assert food_guidance.classify(quote, "food") != "avoid_item"
+    same_sentence = "Take with milk, swallow whole, do not crush or chew."
+    assert food_guidance.classify(same_sentence, "milk") != "avoid_item"
+
+
+def test_cue_governing_another_verb_never_counts_for_a_later_item():
+    quote = "Do not crush or chew with milk."
+    assert food_guidance.classify(quote, "milk") != "avoid_item"
+
+
+def test_cue_and_item_in_different_clauses_is_not_avoid_item():
+    assert food_guidance.classify("Do not drink alcohol", "alcohol") == "avoid_item"
+    for sep in (".", ";", ":"):
+        quote = f"Do not drink{sep} alcohol is common in syrups"
+        assert food_guidance.classify(quote, "alcohol") != "avoid_item"
+
+
+def test_more_than_four_words_between_cue_and_item_is_not_avoid_item():
+    quote = "Avoid taking this product together with any kind of alcohol."
+    assert food_guidance.classify(quote, "alcohol") != "avoid_item"
+
+
+def test_exactly_four_words_between_cue_and_item_is_avoid_item():
+    quote = "Avoid drinking large amounts of alcohol."
+    assert food_guidance.classify(quote, "alcohol") == "avoid_item"
+
+
 def test_generic_take_with_no_food_word_is_not_take_with_food():
     # The old rule matched bare "take with"; the new one requires one of the
     # specific phrases.
@@ -977,3 +1034,84 @@ def test_timeline_never_derived_from_concentrations(client, openfda, monkeypatch
 def test_timeline_empty_regimen_gives_empty_timeline(client):
     body = client.get("/users/default/food-guidance").json()
     assert body["timeline"] == []
+
+
+# --- Provenance: live label findings are never "verified" -------------------------
+
+
+def _ibuprofen_item():
+    return food_guidance.RegimenItem("ibuprofen", "Ibuprofen", False, "Ibuprofen")
+
+
+def test_live_quote_finding_is_unverified_with_quote_source(monkeypatch, tmp_path):
+    monkeypatch.setattr(food_guidance, "DATA_PATH", write_curated(tmp_path, []))
+    food_guidance.clear_curated_cache()
+    label = oral_label(directions=["Take with food to reduce stomach upset."])
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: [label]
+    )
+
+    findings = food_guidance._findings_for_item(_ibuprofen_item(), [])
+    food_guidance.clear_curated_cache()
+
+    (finding,) = [f for f in findings if f["quote"] is not None]
+    assert finding["source_type"] == "fda_label"
+    assert finding["verified"] is False
+    assert finding["quote_source"] == "fda_label_verbatim"
+
+
+def test_live_pointer_finding_is_unverified_and_has_no_quote_source():
+    pointer = food_guidance.PointerMatch("warnings", "alcohol")
+
+    finding = food_guidance._pointer_finding(
+        _ibuprofen_item(), "alcohol", pointer, "Ibuprofen", "tablet", "abc-123"
+    )
+
+    assert finding["quote"] is None
+    assert finding["verified"] is False
+    assert finding["quote_source"] is None
+
+
+def test_curated_finding_keeps_its_own_verified_flag_and_has_no_quote_source(
+    monkeypatch, tmp_path
+):
+    path = write_curated(
+        tmp_path,
+        [
+            {
+                "substance": "warfarin",
+                "item": "vitamin k",
+                "quote": "Maintain a consistent vitamin K intake while on warfarin.",
+                "label_field": "information_for_patients",
+                "date_fetched": "2026-01-01",
+                "verified": False,
+            }
+        ],
+    )
+    monkeypatch.setattr(food_guidance, "DATA_PATH", path)
+    food_guidance.clear_curated_cache()
+    monkeypatch.setattr(
+        food_guidance, "fetch_labels_for_substance", lambda name, **kw: []
+    )
+    item = food_guidance.RegimenItem("warfarin", "Warfarin", False, "Warfarin")
+
+    findings = food_guidance._findings_for_item(item, [])
+    food_guidance.clear_curated_cache()
+
+    (finding,) = findings
+    assert finding["source_type"] == "curated"
+    assert finding["verified"] is False
+    assert finding["quote_source"] is None
+
+
+def test_no_live_finding_in_an_http_response_is_verified(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        directions=["Take with food to reduce stomach upset."],
+        warnings=["2 DOSAGE AND ADMINISTRATION avoid alcohol with this product"],
+    )
+
+    body = manual_check(client, ["ibuprofen"])
+
+    live = [f for f in body["guidance"] if f["source_type"] == "fda_label"]
+    assert live
+    assert all(f["verified"] is False for f in live)

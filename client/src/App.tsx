@@ -416,7 +416,11 @@ function App() {
 
           <section className="panel">
             <h2>Timeline</h2>
-            <Timeline key={timelineKey} userId={USER_ID} />
+            <Timeline
+              key={timelineKey}
+              userId={USER_ID}
+              onDeleted={() => setTimelineKey((k) => k + 1)}
+            />
           </section>
         </>
       )}

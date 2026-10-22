@@ -74,7 +74,7 @@ export interface SubstanceCurve {
   unit: ConcentrationUnit;
   // "approximate" is a simplified decay curve in mg (see ConcentrationUnit);
   // its `notes` say what is missing.
-  fidelity: "full" | "approximate";
+  fidelity: "full" | "approximate" | null;
   points: ConcentrationPoint[]; // ordered by t ascending; empty if !modelable
   // Published plasma concentration from the registry. Never derived from a
   // dose threshold. null for every substance at launch — the Curves screen
@@ -147,6 +147,7 @@ export interface AlertSubstanceRef extends SubstanceRef {
   // null unless the registry documents one -- never derived or invented.
   // Shown as "Why this matters" next to the alert.
   threshold_explanation: string | null;
+  verified: boolean;
 }
 
 export interface Alert {
@@ -263,6 +264,7 @@ export interface SymptomMatch {
   symptom: string;
   source: AssociationSource;
   source_label: string; // human-readable source, e.g. "FDA drug label"
+  verified: false;
   current_level_mg_l: number | null; // null when the substance can't be modeled
   total_24h_mg: number;
   threshold_24h_mg: number | null;
@@ -274,6 +276,7 @@ export interface SymptomMatch {
 export interface SymptomCheckResponse {
   matches: SymptomMatch[]; // empty when nothing qualifies
   message: string;
+  unchecked_reason?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -289,6 +292,7 @@ export interface SideEffectEntry {
   effect: string;
   source: AssociationSource;
   source_label: string;
+  verified: false;
 }
 
 export interface SubstanceSideEffectProfile {
@@ -306,6 +310,7 @@ export interface SubstanceSideEffectProfile {
 export interface SideEffectProfileResponse {
   substances: SubstanceSideEffectProfile[];
   shared_effects: string[];
+  unchecked_reason?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +374,7 @@ export interface SkincareCheckResponse {
   // many matched -- lets the UI say "no matching rule among our M
   // documented rules" rather than implying a guarantee of safety.
   rules_checked: number;
+  rules_awaiting_verification?: RulesAwaitingVerification;
 }
 
 // ---------------------------------------------------------------------------
@@ -462,6 +468,13 @@ export interface InteractionCheckRequest {
   names: string[]; // product or substance names, as typed
 }
 
+export type QuoteSource = "fda_label_verbatim";
+
+export interface RulesAwaitingVerification {
+  count: number;
+  message: string;
+}
+
 export type InteractionSourceType = "curated" | "fda_label";
 
 export interface InteractionSubstanceSource {
@@ -497,8 +510,7 @@ export interface Interaction {
   source_type: InteractionSourceType;
   source: string; // citation (curated) or "FDA label, <drug>, ..." (fda_label)
   quoted_text: string | null; // fda_label only, <=300 chars, verbatim
-  // Curated: false until a human opens the cited source. fda_label: true --
-  // quoted verbatim from the live FDA label, not a curated guess.
+  quote_source: QuoteSource | null;
   verified: boolean;
   severity: string | null; // null unless the source itself states one
   overlap: OverlapWindow[] | null; // null when either substance isn't modeled
@@ -537,6 +549,7 @@ export interface InteractionCheckResponse {
   // paired at all), the exact "no documented interactions" sentence when
   // pairs were checked but none were found, else null.
   message: string | null;
+  rules_awaiting_verification?: RulesAwaitingVerification;
   duplicate_ingredients: DuplicateIngredientFinding[];
 }
 
@@ -586,8 +599,7 @@ export interface FoodGuidanceFinding {
   pointer: string | null;
   source_type: FoodGuidanceSourceType;
   label_field: string; // e.g. "dosage_and_administration"
-  // Curated: false until a human opens the cited source. fda_label: true --
-  // quoted verbatim from the live FDA label, not a curated guess.
+  quote_source: QuoteSource | null;
   verified: boolean;
   window: FoodGuidanceWindow | null;
   // True when a curated entry quoted the same sentence (exact, or after
@@ -624,6 +636,7 @@ export interface FoodGuidanceResponse {
   unchecked_reason: string[];
   // Set to the exact required sentence when `guidance` is empty, else null.
   message: string | null;
+  rules_awaiting_verification?: RulesAwaitingVerification;
 }
 
 // ---------------------------------------------------------------------------

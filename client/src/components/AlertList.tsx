@@ -29,6 +29,12 @@ function AlertItem({ alert }: { alert: Alert }) {
       {alert.substance?.threshold_explanation && (
         <p className="alert-why muted">
           <strong>Why this matters:</strong> {alert.substance.threshold_explanation}
+          {!alert.substance.verified && (
+            <>
+              {" "}
+              <span className="tag">Unverified reference</span>
+            </>
+          )}
         </p>
       )}
       <p className="alert-action muted">

@@ -11,7 +11,7 @@ copy you write.
 ## Commands
 
     source .venv/bin/activate       # .venv\Scripts\Activate.ps1 on Windows
-    pytest                          # 507 tests (1 xfail), must be green
+    pytest                          # 683 tests (1 xfail), must be green
     ruff check app tests --fix
     ruff format app tests
 
@@ -39,14 +39,17 @@ CI runs lint, format check, and tests. All three must pass.
 - **Concentrations are mg/L, times are hours, everywhere.** Conversion to ISO
   timestamps happens at the API boundary and nowhere else.
 - **Every alert is traceable to specific doses.** An alert the user can't
-  trace back to specific doses is not actionable. The intended invariant (see
+  trace back to specific doses is not actionable. The invariant (see
   `docs/api-contract.md`) is that an alert's counted doses
-  (`contributing_dose_ids`) and uncounted doses (`uncounted_doses`) are
-  *together* non-empty. **This is not enforced at runtime yet.** The `Alert`
-  dataclass only requires `contributing_dose_ids` to be passed; an empty list is
-  accepted, and `uncounted_doses` doesn't exist yet. The runtime check is a
-  pending follow-up; until it lands, don't rely on the dataclass to catch an
-  untraceable alert.
+  (`contributing_doses`) and uncounted doses (`uncounted_doses`) are
+  *together* non-empty. It is enforced at runtime in `app/api/service.py`:
+  `recompute_alerts` raises `RuntimeError` for an alert with neither, and every
+  alert response carries both lists. `uncounted_doses` is always `[]` today
+  because the detectors don't produce uncounted doses yet (the
+  `incomplete_data` follow-up, the one xfail). The `Alert` dataclass in
+  `app/detect/alerts.py` has no `uncounted_doses` field and accepts an empty
+  `contributing_dose_ids`, so the check lives in the service layer; don't rely
+  on the dataclass to catch an untraceable alert.
 - **Registry entries stay `verified: false`** until a human has opened the cited
   source. Never flip that flag yourself. Unverified is not the same as wrong,
   but it is not the same as right either.
@@ -86,6 +89,30 @@ ones. And no diagnosis, no medication recommendation, no efficacy prediction.
   label text via openFDA, quoted verbatim under the quote-integrity rules
   in `app/api/food_guidance.py`, or shown as a pointer when it can't be
   safely quoted.
+
+## Configuration
+
+- **`SHOW_UNVERIFIED_RULES`** (default off; see `.env.example`). Curated rules
+  with `verified: false` are not applied while it is off: the rules in
+  `app/data/drug_interactions.json` and `app/data/ingredient_interactions.json`,
+  and the curated entries in `app/data/food_drug_guidance.json`. Each affected
+  response then carries `rules_awaiting_verification` (`count`, `message`), and
+  the Interactions, Skincare and Food tabs show "N rules are awaiting
+  verification and are not being applied." Live FDA-label findings are
+  unaffected. Truthy values are `1`, `true`, `yes` and `on`. `run.sh` and
+  `run.ps1` default it to `1` for local development, `tests/conftest.py` turns
+  it on for the suite, and `tests/test_verification_gate.py` turns it off
+  explicitly. Registry thresholds and the detectors are not gated. The gate
+  lives in `app/api/verification.py`.
+- **`verified` means a person opened the source.** An entry can be
+  `verified: true` only with `verified_by`, `verified_on`, `source_url` and
+  `source_quote`; all three loaders reject it at load otherwise. Live
+  FDA-label findings always return `verified: false`, plus
+  `quote_source: "fda_label_verbatim"` where text is quoted.
+- **`PHARMAKON_LABEL_CACHE_DIR`**: the on-disk openFDA label cache (default
+  `.label_cache/`, gitignored, 7-day TTL; an empty value disables it, and the
+  tests disable it). `python scripts/warm_label_cache.py` fills it for every
+  registry substance and catalog combination product.
 
 ## Working style
 

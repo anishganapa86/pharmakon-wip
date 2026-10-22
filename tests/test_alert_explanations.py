@@ -58,3 +58,18 @@ def test_product_level_incomplete_data_has_no_substance_to_explain():
     registry = load_registry()
     body = alert_json(_record(None), registry)
     assert body["substance"] is None
+
+
+def test_unverified_registry_substance_is_flagged_unverified():
+    registry = load_registry()
+    body = alert_json(_record("acetaminophen"), registry)
+    assert body["substance"]["verified"] is False
+
+
+def test_verified_registry_substance_is_flagged_verified():
+    class StubRegistry:
+        def get(self, substance_id):
+            return {"name": "Stubbed", "verified": True}
+
+    body = alert_json(_record("stubbed"), StubRegistry())
+    assert body["substance"]["verified"] is True

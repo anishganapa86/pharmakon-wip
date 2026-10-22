@@ -53,8 +53,9 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..registry.loader import Registry
-from . import products, schedule, service
+from . import label_cache, products, schedule, service, verification
 from .db import DoseEvent, ScheduledDose
+from .provenance import QUOTE_SOURCE_FDA_LABEL
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "food_drug_guidance.json"
 
@@ -104,7 +105,6 @@ ITEM_VARIANTS: dict[str, tuple[str, ...]] = {
     "caffeine": ("caffeine",),
     "antacid": ("antacid",),
     "empty stomach": ("empty stomach",),
-    "water": ("water",),
     "vitamin k": ("vitamin k",),
     "supplement": ("supplement",),
     "calcium": ("calcium",),
@@ -161,7 +161,29 @@ def clear_cache() -> None:
 # --- Fetching ------------------------------------------------------------------
 
 
+KEPT_OPENFDA_FIELDS = ("route", "substance_name", "product_type", "brand_name")
+
+
+def _trim_label(label: dict) -> dict:
+    kept = {
+        f: label[f]
+        for f in (*TEXT_FIELDS, *_DOSAGE_FORM_FIELDS, "set_id")
+        if f in label
+    }
+    openfda = label.get("openfda") or {}
+    kept["openfda"] = {k: openfda[k] for k in KEPT_OPENFDA_FIELDS if k in openfda}
+    return kept
+
+
 def _fetch_candidates_by(field: str, value: str) -> list[dict]:
+    return label_cache.cached(
+        "food_guidance_labels",
+        f"{field}:{value.upper()}",
+        lambda: _request_candidates_by(field, value),
+    )
+
+
+def _request_candidates_by(field: str, value: str) -> list[dict]:
     search = f'openfda.{field}.exact:"{value.upper()}"'
     try:
         r = _http.get(
@@ -173,7 +195,7 @@ def _fetch_candidates_by(field: str, value: str) -> list[dict]:
         return []
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
-    return r.json().get("results", [])
+    return [_trim_label(label) for label in r.json().get("results", [])]
 
 
 def _is_single_ingredient(label: dict) -> bool:
@@ -614,8 +636,33 @@ def pointer_text(product_name: str, item: str, field: str, set_id: str | None) -
 # somewhere unrelated (e.g. "avoid drastic diet changes" in a sentence
 # that's really about keeping vitamin K intake *consistent*) must not read
 # as "avoid this item".
-AVOID_PHRASES = ("avoid", "do not", "should not", "not recommended")
-AVOID_WORD_WINDOW = 8
+AVOID_PHRASES = ("avoid", "do not", "should not", "not recommended", "must not")
+AVOID_MAX_GAP_WORDS = 4
+CUE_GOVERNED_VERBS = frozenset(
+    {
+        "crush",
+        "crushing",
+        "chew",
+        "chewing",
+        "split",
+        "splitting",
+        "break",
+        "breaking",
+        "dissolve",
+        "dissolving",
+        "swallow",
+        "swallowing",
+        "cut",
+        "cutting",
+        "open",
+        "opening",
+        "divide",
+        "dividing",
+        "exceed",
+        "exceeding",
+    }
+)
+_CLAUSE_BREAK_RE = re.compile(r"[.;:]")
 TAKE_WITH_FOOD_PHRASES = ("with food", "with meals", "with milk", "after eating")
 # "with the evening meal", "with the morning meal", etc.
 _WITH_THE_MEAL_RE = re.compile(r"\bwith the \w+ meal\b")
@@ -623,28 +670,21 @@ _WITH_THE_MEAL_RE = re.compile(r"\bwith the \w+ meal\b")
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
 
-def _word_index_at(words: list[re.Match], char_pos: int) -> int:
-    for i, w in enumerate(words):
-        if w.start() <= char_pos < w.end():
-            return i
-    return min(range(len(words)), key=lambda i: abs(words[i].start() - char_pos))
-
-
-def _within_words(lowered: str, phrase: str, item: str, max_words: int) -> bool:
-    """True if `phrase` and `item` each appear as whole-word/phrase matches
-    within `max_words` words of each other, anywhere in the text."""
-    phrase_hits = [m.start() for m in re.finditer(rf"\b{re.escape(phrase)}\b", lowered)]
-    item_hits = [m.start() for m in re.finditer(rf"\b{re.escape(item)}\b", lowered)]
-    if not phrase_hits or not item_hits:
-        return False
-    words = list(_WORD_RE.finditer(lowered))
-    if not words:
-        return False
-    for p in phrase_hits:
-        pi = _word_index_at(words, p)
-        for it in item_hits:
-            if abs(pi - _word_index_at(words, it)) <= max_words:
-                return True
+def _avoid_cue_governs_item(lowered: str, variants: tuple[str, ...]) -> bool:
+    for phrase in AVOID_PHRASES:
+        for cue in re.finditer(rf"\b{re.escape(phrase)}\b", lowered):
+            tail = lowered[cue.end() :]
+            for variant in variants:
+                for hit in re.finditer(rf"\b{re.escape(variant)}\b", tail):
+                    gap = tail[: hit.start()]
+                    if _CLAUSE_BREAK_RE.search(gap):
+                        continue
+                    gap_words = _WORD_RE.findall(gap)
+                    if len(gap_words) > AVOID_MAX_GAP_WORDS:
+                        continue
+                    if CUE_GOVERNED_VERBS.intersection(gap_words):
+                        continue
+                    return True
     return False
 
 
@@ -653,11 +693,7 @@ def classify(quote: str, item: str) -> str:
     variants = ITEM_VARIANTS.get(item, (item.lower(),))
     if _phrase_in(lowered, "empty stomach"):
         return "take_on_empty_stomach"
-    if any(
-        _within_words(lowered, phrase, variant, AVOID_WORD_WINDOW)
-        for phrase in AVOID_PHRASES
-        for variant in variants
-    ):
+    if _avoid_cue_governs_item(lowered, variants):
         return "avoid_item"
     if re.search(r"\bhours?\s+(before|after)\b", lowered) or _phrase_in(
         lowered, "separate"
@@ -723,9 +759,20 @@ def _is_real_curated_entry(e: dict) -> bool:
     return bool((e.get("quote") or "").strip())
 
 
+class InvalidCuratedEntry(ValueError):
+    pass
+
+
 @lru_cache(maxsize=1)
 def load_curated(path: Path | None = None) -> tuple[CuratedGuidance, ...]:
     data = json.loads((path or DATA_PATH).read_text(encoding="utf-8"))
+    for e in data["entries"]:
+        missing = verification.missing_verification_fields(e)
+        if missing:
+            raise InvalidCuratedEntry(
+                f"entry {e.get('substance')!r} / {e.get('item')!r} is marked "
+                f"verified but is missing {', '.join(missing)}"
+            )
     return tuple(
         CuratedGuidance(
             substance=e["substance"],
@@ -734,7 +781,7 @@ def load_curated(path: Path | None = None) -> tuple[CuratedGuidance, ...]:
             label_field=e.get("label_field", ""),
             set_id=e.get("set_id"),
             date_fetched=e.get("date_fetched", ""),
-            verified=e.get("verified", False),
+            verified=e.get("verified") is True,
             product_name=e.get("product_name"),
             dosage_form=e.get("dosage_form"),
         )
@@ -745,6 +792,10 @@ def load_curated(path: Path | None = None) -> tuple[CuratedGuidance, ...]:
 
 def clear_curated_cache() -> None:
     load_curated.cache_clear()
+
+
+def unverified_curated_count() -> int:
+    return sum(1 for c in load_curated() if not c.verified)
 
 
 # --- Regimen assembly ------------------------------------------------------------
@@ -809,6 +860,7 @@ def _finding(
     verified: bool,
     product_name: str | None = None,
     dosage_form: str | None = None,
+    quote_source: str | None = None,
 ) -> dict:
     return {
         "name": item.display_name,
@@ -820,6 +872,7 @@ def _finding(
         "source_type": source_type,
         "label_field": match.field,
         "verified": verified,
+        "quote_source": quote_source,
         "window": _window_json(parse_window(match.quote)),
         # True only when a curated entry quoting the same sentence was
         # folded into this (live) finding -- see _dedupe_against_curated.
@@ -855,7 +908,8 @@ def _pointer_finding(
         "pointer": pointer_text(display_product, item_term, pointer.field, set_id),
         "source_type": "fda_label",
         "label_field": pointer.field,
-        "verified": True,
+        "verified": False,
+        "quote_source": None,
         "window": None,
         "also_in_curated": False,
         "product_name": product_name,
@@ -892,16 +946,34 @@ def _dedupe_against_curated(
     return live_findings + kept_curated
 
 
-def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
+def _labels_for(item: RegimenItem) -> list[dict]:
+    if item.is_product:
+        return fetch_labels_for_product(item.lookup_name)
+    return fetch_labels_for_substance(item.lookup_name)
+
+
+def _prefetch_labels(items: list[RegimenItem]) -> dict[str, list[dict] | Exception]:
+    by_key = {item.key: item for item in items}
+    return label_cache.fetch_concurrently(
+        list(by_key), lambda key: _labels_for(by_key[key])
+    )
+
+
+def _findings_for_item(
+    item: RegimenItem,
+    unchecked: list[str],
+    prefetched: list[dict] | Exception | None = None,
+) -> list[dict]:
     live_findings: list[dict] = []
     curated_findings: list[dict] = []
 
     try:
-        labels = (
-            fetch_labels_for_product(item.lookup_name)
-            if item.is_product
-            else fetch_labels_for_substance(item.lookup_name)
-        )
+        if prefetched is None:
+            labels = _labels_for(item)
+        elif isinstance(prefetched, Exception):
+            raise prefetched
+        else:
+            labels = prefetched
     except OpenFDAUnavailable:
         unchecked.append(
             f"openFDA was unreachable, so label checks could not run for "
@@ -946,9 +1018,10 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
                                     item_term,
                                     match,
                                     "fda_label",
-                                    True,
+                                    False,
                                     product_name,
                                     dosage_form,
+                                    QUOTE_SOURCE_FDA_LABEL,
                                 )
                             )
                         for p in pointers:
@@ -972,6 +1045,8 @@ def _findings_for_item(item: RegimenItem, unchecked: list[str]) -> list[dict]:
     if not item.is_product:
         for c in load_curated():
             if c.substance != item.key:
+                continue
+            if not (c.verified or verification.show_unverified_rules()):
                 continue
             match = QuoteMatch(c.quote, c.label_field, c.item)
             curated_findings.append(
@@ -1076,11 +1151,14 @@ def _respond(items: list[RegimenItem], unresolved: list[str]) -> tuple[dict, dic
     guidance_by_key: dict[str, list[dict]] = {}
     seen: set[str] = set()
 
+    unique = list({item.key: item for item in items}.values())
+    prefetched = _prefetch_labels(unique)
+
     for item in items:
         if item.key in seen:
             continue
         seen.add(item.key)
-        findings = _findings_for_item(item, unchecked)
+        findings = _findings_for_item(item, unchecked, prefetched[item.key])
         guidance_by_key[item.key] = findings
         guidance.extend(findings)
 
@@ -1089,6 +1167,7 @@ def _respond(items: list[RegimenItem], unresolved: list[str]) -> tuple[dict, dic
         "unchecked_reason": unchecked,
         "message": EMPTY_MESSAGE if not guidance else None,
     }
+    verification.attach_notice(body, unverified_curated_count())
     return body, guidance_by_key
 
 
