@@ -541,6 +541,42 @@ def test_skincare_ingredients_are_never_flagged_as_medications():
     assert bad == []
 
 
+def test_cosmetic_ingredients_sharing_a_registry_name_are_not_medications():
+    registry = load_registry()
+    bad = alternatives.medication_ingredient_names(
+        ["Alcohol", "Ethyl Alcohol", "Caffeine", "Ibuprofen"], registry
+    )
+    assert bad == ["Ibuprofen"]
+
+
+def test_payload_the_client_sends_after_skincare_check_is_accepted(client):
+    register_and_log(
+        client, "Vitamin C Serum", ["Water", "Alcohol", "Retinol", "Salicylic Acid"]
+    )
+    register_and_log(client, "Toner", ["Aqua", "Caffeine", "Niacinamide"])
+
+    check = client.get("/users/default/skincare-check")
+    assert check.status_code == 200, check.text
+    r = client.post(
+        "/skincare-alternatives", json={"products": check.json()["products"]}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["results"]
+
+
+def test_get_alternatives_for_a_product_listing_alcohol_is_accepted(client):
+    product_id = register_and_log(
+        client, "Vitamin C Serum", ["Water", "Alcohol", "Retinol", "Salicylic Acid"]
+    )
+
+    r = client.get(
+        "/users/default/skincare-alternatives", params={"product_id": product_id}
+    )
+
+    assert r.status_code == 200, r.text
+
+
 # --- API endpoints -------------------------------------------------------------
 
 

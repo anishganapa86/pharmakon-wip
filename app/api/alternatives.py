@@ -486,9 +486,17 @@ def check_alternatives_manual(
 # --- Medication guard ------------------------------------------------------------
 
 
+COSMETIC_REGISTRY_SUBSTANCES = frozenset({"ethanol", "caffeine"})
+
+
 def medication_ingredient_names(names: list[str], registry: Registry) -> list[str]:
     """Names among these that resolve against the PK medication registry --
     this checker's entire domain is topical/skincare products, and a name
     that resolves here almost certainly means someone typed a medication into
     the wrong form. Never silently accepted."""
-    return [name for name in names if registry.resolve(name) is not None]
+    return [
+        name
+        for name in names
+        if (substance_id := registry.resolve(name)) is not None
+        and substance_id not in COSMETIC_REGISTRY_SUBSTANCES
+    ]
