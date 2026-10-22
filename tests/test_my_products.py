@@ -234,3 +234,89 @@ def test_my_product_never_appears_as_an_alternative_candidate(client):
     for group in result["results"]:
         brands = {a["brand"] for a in group["alternatives"]}
         assert "WouldBeGreatAlternative" not in brands
+
+
+FLOW_TEXT = "Water, Glycerin (Kosher, Vegetable), 1,2-Hexanediol, Retinol"
+
+
+def test_search_finds_a_saved_product_by_brand_and_name_together(client):
+    created = create_product(
+        client,
+        brand="Test",
+        name="Test Cream",
+        category="moisturizer",
+        raw_text=FLOW_TEXT,
+    ).json()
+
+    r = client.get("/products/search", params={"q": "Test Test Cream"})
+
+    assert r.status_code == 200, r.text
+    assert [p["id"] for p in r.json()["results"]] == [created["id"]]
+
+
+def test_saved_product_can_be_found_logged_and_checked_end_to_end(client):
+    r = create_product(
+        client,
+        brand="Test",
+        name="Test Cream",
+        category="moisturizer",
+        raw_text=FLOW_TEXT,
+    )
+    assert r.status_code == 201, r.text
+    saved = r.json()
+    assert len(saved["ingredients"]) == 4
+
+    found = client.get("/products/search", params={"q": "Test Cream"}).json()["results"]
+    (product,) = [p for p in found if p["id"] == saved["id"]]
+    assert product["source"] == "my_product"
+    assert product["route"] == "TOPICAL"
+    assert len(product["ingredients"]) == 4
+
+    dose = client.post(
+        "/users/default/doses",
+        json={
+            "product_id": saved["id"],
+            "taken_at": NOW.isoformat(),
+            "quantity": 1,
+        },
+    )
+    assert dose.status_code == 201, dose.text
+
+    logged = client.get("/users/default/doses").json()
+    assert [i["name"] for i in logged[0]["ingredients"]] == saved["ingredients"]
+
+    check = client.get("/users/default/skincare-check").json()
+    assert check["products"] == [
+        {"name": "Test Test Cream", "ingredients": saved["ingredients"]}
+    ]
+
+
+def test_dose_history_and_timeline_mark_a_topical_dose(client):
+    saved = create_product(client, raw_text=FLOW_TEXT).json()
+    client.post(
+        "/users/default/doses",
+        json={"product_id": saved["id"], "taken_at": NOW.isoformat(), "quantity": 1},
+    )
+    client.post(
+        "/users/default/doses",
+        json={
+            "product_id": "prod_tylenol_es_500",
+            "taken_at": NOW.isoformat(),
+            "quantity": 1,
+        },
+    )
+
+    history = {d["product_id"]: d for d in client.get("/users/default/doses").json()}
+    timeline = {
+        e["product_id"]: e
+        for e in client.get("/users/default/timeline").json()
+        if e["type"] == "dose"
+    }
+
+    assert history[saved["id"]]["topical"] is True
+    assert history["prod_tylenol_es_500"]["topical"] is False
+    assert timeline[saved["id"]]["topical"] is True
+    assert timeline["prod_tylenol_es_500"]["topical"] is False
+    assert [i["name"] for i in history[saved["id"]]["ingredients"]] == saved[
+        "ingredients"
+    ]

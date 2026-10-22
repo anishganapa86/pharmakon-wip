@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from functools import lru_cache
 from itertools import combinations
@@ -41,9 +41,14 @@ from sqlalchemy.orm import Session
 
 from ..pk.individualize import Patient
 from ..registry.loader import Registry, normalize, strip_salt_tokens
-from . import label_cache, products, schedule, service, verification
+from . import label_cache, label_source, products, schedule, service, verification
 from .db import DoseEvent
 from .provenance import QUOTE_SOURCE_FDA_LABEL
+from .quote_text import (
+    has_cross_reference,
+    has_section_number_noise,
+    separate_section_heading,
+)
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "drug_interactions.json"
 
@@ -78,13 +83,32 @@ CLASS_DISPLAY: dict[str, str] = {
 # interaction. Require one of these nearby before trusting a class-word match.
 CONTEXT_KEYWORDS = (
     "concomitant",
-    "concomitantly",
-    "combination",
+    "concurrent",
+    "together with",
+    "in combination with",
     "coadminister",
-    "co-administer",
-    "administered together",
-    "other nsaid",
-    "with another",
+    "other nsaids",
+    "another nsaid",
+)
+
+GENERIC_INTERACTING_PARTY_TERMS = (
+    "anticoagulant",
+    "antiplatelet",
+    "diuretic",
+    "corticosteroid",
+    "antidepressant",
+    "serotonin reuptake",
+    "SNRI",
+)
+CLASS_PARTY_TERMS: dict[str, tuple[str, ...]] = {
+    "SSRI": ("serotonin reuptake", "SNRI", "antidepressant"),
+}
+
+PRONOUN_REFERENCE_START = re.compile(
+    r"^(?:this|these|that|those|such)\s+"
+    r"(?:interactions?|drugs?|medications?|medicines?|combinations?|effects?|"
+    r"reactions?|agents?)\b|^(?:it|they)\s+(?:is|are|may|can|should|will)\b",
+    re.IGNORECASE,
 )
 
 SUBSTANCE_CLASSES: dict[str, tuple[str, ...]] = {}
@@ -116,6 +140,8 @@ _http = httpx.Client(timeout=5.0)
 # pairs in the same regimen never re-fetch.
 _label_cache: dict[str, str | None] = {}
 
+_sections_cache: dict[str, list[dict]] = {}
+
 # Key prefix for an oral ingredient that doesn't resolve against the PK
 # registry but is still checked from its own FDA label, by its normalized,
 # salt-stripped generic name (see resolve_for_label_check). Prefixed so it
@@ -133,6 +159,7 @@ class InvalidRule(ValueError):
 
 def clear_cache() -> None:
     _label_cache.clear()
+    _sections_cache.clear()
 
 
 # --- A. Curated rules ----------------------------------------------------------
@@ -243,41 +270,60 @@ def _entry(key: str, registry: Registry, shadow: dict[str, dict]) -> dict:
     return shadow[key]
 
 
-def fetch_drug_interactions_text(generic_name: str) -> str | None:
-    return label_cache.cached(
-        "drug_interactions",
+def fetch_drug_interaction_sections(generic_name: str) -> list[dict]:
+    sections = label_cache.cached(
+        "drug_interaction_sections",
         generic_name.upper(),
-        lambda: _request_drug_interactions_text(generic_name),
+        lambda: _request_drug_interaction_sections(generic_name),
     )
+    _sections_cache[generic_name.upper()] = sections
+    return sections
 
 
-def _request_drug_interactions_text(generic_name: str) -> str | None:
-    """`drug_interactions` text from single-ingredient openFDA labels, or None.
+def fetch_drug_interactions_text(generic_name: str) -> str | None:
+    return label_source.sections_text(fetch_drug_interaction_sections(generic_name))
+
+
+def _request_drug_interaction_sections(generic_name: str) -> list[dict]:
+    """`drug_interactions` sections from single-ingredient openFDA labels,
+    each with the label it came from, or [] if there are none.
 
     Raises OpenFDAUnavailable on network or server errors, so the caller can
     tell "no label" apart from "couldn't ask" (same contract as
     app/api/side_effects.py's fetch_adverse_reactions).
     """
-    search = (
+    results = _search_results(
         f'openfda.generic_name.exact:"{generic_name.upper()}"'
-        " AND _exists_:drug_interactions"
+        " AND _exists_:drug_interactions",
+        LABEL_LIMIT,
     )
-    try:
-        r = _http.get(
-            OPENFDA_LABEL_URL, params={"search": search, "limit": LABEL_LIMIT}
+    if not results:
+        candidates = _search_results(
+            label_source.fallback_search(
+                "generic_name", generic_name, "drug_interactions"
+            ),
+            label_source.FALLBACK_LIMIT,
         )
+        results = [
+            label
+            for label in candidates
+            if label_source.fallback_matches("generic_name", label, generic_name)
+        ][:LABEL_LIMIT]
+    return label_source.sections_from_results(
+        results, "drug_interactions", generic_name.lower()
+    )
+
+
+def _search_results(search: str, limit: int) -> list[dict]:
+    try:
+        r = _http.get(OPENFDA_LABEL_URL, params={"search": search, "limit": limit})
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
-        return None
+        return []
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
-    sections = [
-        text
-        for label in r.json().get("results", [])
-        for text in label.get("drug_interactions", [])
-    ]
-    return "\n".join(sections) or None
+    return r.json().get("results", [])
 
 
 def _label_text(substance_id: str, generic_name: str) -> str | None:
@@ -324,12 +370,33 @@ def _has_combination_context(sentence: str) -> bool:
     return any(kw in lowered for kw in CONTEXT_KEYWORDS)
 
 
+def _names_other_interacting_party(sentence: str, own_class: str) -> bool:
+    terms = list(GENERIC_INTERACTING_PARTY_TERMS)
+    for cls, keywords in CLASS_KEYWORDS.items():
+        if cls != own_class:
+            terms.extend(keywords)
+            terms.extend(CLASS_PARTY_TERMS.get(cls, ()))
+    return any(_mentions(sentence, term) for term in terms)
+
+
+def _class_sentence_is_about_use_together(sentence: str, own_class: str) -> bool:
+    if PRONOUN_REFERENCE_START.search(sentence.strip()):
+        return False
+    if not _has_combination_context(sentence):
+        return False
+    return not _names_other_interacting_party(sentence, own_class)
+
+
 @dataclass(frozen=True)
 class LabelMatch:
     sentence: str  # <=300 chars, verbatim
     matched_term: str  # the literal name/alias, or the class keyword, that hit
     is_literal: bool  # True: other_id's own name/alias appears in the sentence
     other_class: str | None  # the CLASS_MEMBERS key, only set when not literal
+    section: dict | None = None
+
+
+REJECTED_CLASS_MATCH: tuple[str, bool, str | None] = ("", False, None)
 
 
 def _match_in_sentence(
@@ -350,34 +417,51 @@ def _match_in_sentence(
     for term in (entry["name"], *entry.get("aliases", [])):
         if _mentions(sentence, term):
             return term, True, None
-    if _has_combination_context(sentence):
-        for cls in SUBSTANCE_CLASSES.get(other_id, ()):
-            for term in CLASS_KEYWORDS.get(cls, ()):
-                if _mentions(sentence, term):
+    for cls in SUBSTANCE_CLASSES.get(other_id, ()):
+        for term in CLASS_KEYWORDS.get(cls, ()):
+            if _mentions(sentence, term):
+                if _class_sentence_is_about_use_together(sentence, cls):
                     return term, False, cls
+                return REJECTED_CLASS_MATCH
     return None
 
 
 def _find_best_match(
     text: str, other_id: str, registry: Registry, shadow: dict[str, dict]
-) -> LabelMatch | None:
-    """At most one match: the first literal name/alias hit if any sentence has
-    one, else the first qualifying class-word hit. Literal always beats class."""
+) -> tuple[LabelMatch | None, str | None]:
+    """(match, rejection_reason). At most one match: the first literal
+    name/alias hit if any sentence has one, else the first qualifying
+    class-word hit. Literal always beats class. rejection_reason is "class"
+    when a class keyword was found but no sentence passed the use-together
+    check, and "unquotable" when a matching sentence carried a cross-reference
+    or an unseparable section heading and so could not be quoted cleanly."""
     best: LabelMatch | None = None
+    rejected: str | None = None
     for raw_sentence in _SENTENCE_SPLIT.split(text):
         sentence = raw_sentence.strip()
         if not sentence:
             continue
-        found = _match_in_sentence(sentence, other_id, registry, shadow)
+        body = separate_section_heading(sentence)
+        unquotable = (
+            body is None or has_cross_reference(body) or has_section_number_noise(body)
+        )
+        candidate = sentence if body is None else body
+        found = _match_in_sentence(candidate, other_id, registry, shadow)
         if found is None:
             continue
+        if unquotable:
+            rejected = rejected or "unquotable"
+            continue
+        if found is REJECTED_CLASS_MATCH:
+            rejected = rejected or "class"
+            continue
         term, is_literal, cls = found
-        match = LabelMatch(sentence[:300], term, is_literal, cls)
+        match = LabelMatch(candidate[:300], term, is_literal, cls)
         if is_literal:
-            return match  # literal wins outright; stop looking
+            return match, None
         if best is None:
             best = match
-    return best
+    return best, (rejected if best is None else None)
 
 
 def label_mention(
@@ -387,6 +471,16 @@ def label_mention(
     unavailable: set[str] | None = None,
     shadow: dict[str, dict] | None = None,
 ) -> LabelMatch | None:
+    return label_mention_detail(self_id, other_id, registry, unavailable, shadow)[0]
+
+
+def label_mention_detail(
+    self_id: str,
+    other_id: str,
+    registry: Registry,
+    unavailable: set[str] | None = None,
+    shadow: dict[str, dict] | None = None,
+) -> tuple[LabelMatch | None, str | None]:
     """The best sentence in self_id's own FDA label mentioning other_id (by
     literal name/alias, preferred, or drug class in a combination-use
     sentence), or None if self_id has no label or doesn't mention it. Raises
@@ -403,16 +497,19 @@ def label_mention(
     entry = _entry(self_id, registry, shadow)
     text = _label_text(self_id, entry["name"])
     if text is None:
-        return None
-    match = _find_best_match(text, other_id, registry, shadow)
+        return None, None
+    match, rejected = _find_best_match(text, other_id, registry, shadow)
     if match is None:
-        return None
+        return None, rejected
     if not _mentions(match.sentence, match.matched_term):
         # Safety net: never show a quote that doesn't literally contain
         # whatever we claim matched it. Should be unreachable given how
         # `match` was built above; drop rather than trust it if it ever isn't.
-        return None
-    return match
+        return None, None
+    section = label_source.find_section(
+        _sections_cache.get(entry["name"].upper(), []), match.sentence
+    )
+    return replace(match, section=section), None
 
 
 # --- Concentration overlap (the only place this module touches app.pk) --------
@@ -553,6 +650,7 @@ def _also_mentioned(self_entry: dict, match: LabelMatch) -> dict:
         "quoted_text": match.sentence,
         "quote_source": QUOTE_SOURCE_FDA_LABEL,
         "message": f"Also mentioned in the FDA label for {self_entry['name']}.",
+        **label_source.source_fields(match.section),
     }
 
 
@@ -576,6 +674,7 @@ def _curated_finding(
         # corroboration beneath the primary curated card. None when there are
         # none, never an empty list.
         "also_mentioned_in_label": also_mentioned_in_label or None,
+        **label_source.source_fields(None),
     }
 
 
@@ -608,7 +707,22 @@ def _label_finding(
         "overlap": overlap,
         "message": message,
         "also_mentioned_in_label": None,
+        **label_source.source_fields(match.section),
     }
+
+
+def _rejected_note(self_entry: dict, other_entry: dict, reason: str) -> str:
+    if reason == "unquotable":
+        return (
+            f"The FDA label for {self_entry['name']} mentions "
+            f"{other_entry['name']} in a sentence we could not quote cleanly, "
+            "so it was not shown as an interaction."
+        )
+    return (
+        f"The FDA label for {self_entry['name']} mentions a drug class that "
+        f"{other_entry['name']} belongs to, but not in a sentence about using "
+        "the two together, so it was not shown as an interaction."
+    )
 
 
 def check(
@@ -635,6 +749,7 @@ def check(
     rules = active_rules()
     findings: list[dict] = []
     label_unavailable = False
+    rejected_notes: list[str] = []
     checked_pairs = 0
     unavailable = _prefetch_label_texts(
         [s.substance_id for s in substances], registry, shadow
@@ -679,15 +794,19 @@ def check(
 
         match_ab = match_ba = None
         try:
-            match_ab = label_mention(
+            match_ab, rejected_ab = label_mention_detail(
                 a.substance_id, b.substance_id, registry, unavailable, shadow
             )
+            if rejected_ab:
+                rejected_notes.append(_rejected_note(entry_a, entry_b, rejected_ab))
         except OpenFDAUnavailable:
             label_unavailable = True
         try:
-            match_ba = label_mention(
+            match_ba, rejected_ba = label_mention_detail(
                 b.substance_id, a.substance_id, registry, unavailable, shadow
             )
+            if rejected_ba:
+                rejected_notes.append(_rejected_note(entry_b, entry_a, rejected_ba))
         except OpenFDAUnavailable:
             label_unavailable = True
 
@@ -727,6 +846,7 @@ def check(
         "could not be checked from its label."
         for name in no_label_names
     ]
+    unchecked_reason += rejected_notes
     if label_unavailable:
         unchecked_reason.append(LABEL_UNAVAILABLE_NOTE)
 

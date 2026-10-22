@@ -44,7 +44,7 @@ export function productModelable(p: Pick<ProductSearchResult, "ingredients">): b
  */
 export function notModeledReason(route: string | null | undefined): string {
   return route === "TOPICAL"
-    ? "Logged — not modeled (topical product)"
+    ? "Logged — not modeled (topical)"
     : "Logged — not yet in our database";
 }
 
@@ -127,23 +127,10 @@ export function showsBodyLocation(category: string): boolean {
 
 /** A logged dose with no modelable ingredient, shown on the timeline. Same
  * honest framing as notModeledReason, worded for the timeline card. */
-export const TIMELINE_DOSE_NOT_MODELED = "Logged — not modeled (topical/unmatched)";
+export const TIMELINE_DOSE_NOT_MODELED = "Logged — not modeled (topical)";
 
-/** Title Case for a raw openFDA label string (e.g. "GLYCERIN" -> "Glycerin").
- * Used only when there's no registry match -- ALL CAPS reads as shouting,
- * but there's no canonical registry name to show instead. */
-function titleCaseIngredient(raw: string): string {
-  return raw
-    .toLowerCase()
-    .split(" ")
-    .map((w) => (w.length === 0 ? w : w[0].toUpperCase() + w.slice(1)))
-    .join(" ");
-}
-
-/** The name to show for a logged ingredient: the registry's canonical name
- * when resolved, else the raw label title-cased. */
-function ingredientDisplayName(i: LoggedIngredient): string {
-  return i.display_name ?? titleCaseIngredient(i.name);
+export function ingredientDisplayName(i: LoggedIngredient): string {
+  return i.display_name ?? i.name;
 }
 
 /** A logged ingredient as a user should read it: canonical name, its

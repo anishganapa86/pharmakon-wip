@@ -13,6 +13,7 @@ import type {
   SkincareCheckResponse,
   SkincareProductRequest,
 } from "../types/contract";
+import { splitIngredientsPreview } from "../ingredientSplit";
 import { RulesNotice } from "./RulesNotice";
 
 function errorMessage(e: unknown): string {
@@ -22,13 +23,6 @@ function errorMessage(e: unknown): string {
 interface DraftProduct {
   name: string;
   ingredientsText: string; // comma-separated, as typed
-}
-
-function parseIngredients(text: string): string[] {
-  return text
-    .split(",")
-    .map((i) => i.trim())
-    .filter((i) => i.length > 0);
 }
 
 const EMPTY_DRAFT: DraftProduct = { name: "", ingredientsText: "" };
@@ -158,9 +152,14 @@ function SkincareResults({
           <p>
             <strong>{f.ingredient_a}</strong> ({f.product_a}) +{" "}
             <strong>{f.ingredient_b}</strong> ({f.product_b})
+            {!f.verified && <span className="tag">Unverified reference</span>}
           </p>
+          {f.appears_in_a && <p className="muted small">{f.appears_in_a}</p>}
+          {f.appears_in_b && <p className="muted small">{f.appears_in_b}</p>}
           <p>{f.effect}</p>
           <p className="muted small">{f.recommendation}</p>
+          {f.match_note_a && <p className="muted small">{f.match_note_a}</p>}
+          {f.match_note_b && <p className="muted small">{f.match_note_b}</p>}
           <p className="muted small">
             Matched on: '{f.matched_ingredient_a}' (rule term: '
             {f.matched_alias_a}') and '{f.matched_ingredient_b}' (rule term: '
@@ -183,8 +182,10 @@ function SkincareResults({
         <div key={`irritant-${i}`} className="skincare-flag skincare-flag-caution">
           <p>
             <strong>{f.ingredient}</strong> ({f.product})
+            {!f.verified && <span className="tag">Unverified reference</span>}
           </p>
           <p>{f.effect}</p>
+          {f.match_note && <p className="muted small">{f.match_note}</p>}
           {f.note && <p className="muted small">{f.note}</p>}
           <p className="muted small">
             Matched on: '{f.matched_ingredient}' (rule term: '{f.matched_alias}
@@ -309,9 +310,11 @@ export function Skincare({ userId }: Props) {
     setDrafts((prev) => prev.filter((_, idx) => idx !== i));
   }
 
-  const products = drafts
-    .map((d) => ({ name: d.name.trim(), ingredients: parseIngredients(d.ingredientsText) }))
-    .filter((p) => p.name && p.ingredients.length > 0);
+  const products: SkincareProductRequest[] = drafts
+    .filter(
+      (d) => d.name.trim() && splitIngredientsPreview(d.ingredientsText).length > 0,
+    )
+    .map((d) => ({ name: d.name.trim(), ingredients_text: d.ingredientsText }));
 
   async function handleCheck(e: React.FormEvent) {
     e.preventDefault();
@@ -426,13 +429,19 @@ export function Skincare({ userId }: Props) {
               <input
                 className="control grow"
                 type="text"
-                placeholder="Ingredients, comma-separated (e.g. Retinol, Glycerin, Fragrance)"
+                placeholder="Paste the ingredient list (e.g. Water, Glycerin (Kosher, Vegetable), Retinol)"
                 value={d.ingredientsText}
                 onChange={(e) =>
                   updateDraft(i, { ingredientsText: e.target.value })
                 }
                 aria-label="Ingredients"
               />
+              {splitIngredientsPreview(d.ingredientsText).length > 0 && (
+                <span className="muted small">
+                  {splitIngredientsPreview(d.ingredientsText).length} ingredient
+                  {splitIngredientsPreview(d.ingredientsText).length === 1 ? "" : "s"}
+                </span>
+              )}
               {drafts.length > 1 && (
                 <button
                   type="button"

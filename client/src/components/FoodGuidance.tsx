@@ -23,6 +23,7 @@ function parseNames(text: string): string[] {
 
 const CLASS_LABELS: Record<FoodGuidanceClass, string> = {
   take_with_food: "Take with food",
+  take_with_food_if_upset: "With food if stomach upset occurs",
   take_on_empty_stomach: "Take on an empty stomach",
   avoid_item: "Avoid",
   separate_from: "Keep apart",
@@ -33,16 +34,16 @@ const CLASS_LABELS: Record<FoodGuidanceClass, string> = {
 // a DailyMed link appended when a set_id was available. Rendered as a
 // clickable link rather than plain URL text when that link is present.
 function PointerText({ pointer }: { pointer: string }) {
-  const marker = "DailyMed: ";
+  const marker = "Read the full section on DailyMed: ";
   const idx = pointer.indexOf(marker);
   if (idx === -1) return <>{pointer}</>;
-  const before = pointer.slice(0, idx + marker.length);
+  const before = pointer.slice(0, idx).trimEnd();
   const url = pointer.slice(idx + marker.length);
   return (
     <>
-      {before}
+      {before}{" "}
       <a href={url} target="_blank" rel="noreferrer">
-        {url}
+        Read on DailyMed
       </a>
     </>
   );
@@ -67,6 +68,9 @@ function FindingCard({ finding }: { finding: FoodGuidanceFinding }) {
             <PointerText pointer={finding.pointer} />
           </p>
         )
+      )}
+      {finding.label_attribution && (
+        <p className="muted small">{finding.label_attribution}</p>
       )}
       {(finding.product_name || finding.dosage_form) && (
         <p className="muted small">
@@ -119,13 +123,22 @@ function timelineSortKey(entry: FoodGuidanceTimelineEntry): string {
 }
 
 function TimelineStrip({ entries }: { entries: FoodGuidanceTimelineEntry[] }) {
-  const timed = entries.filter((e) => e.type !== "ongoing");
-  const ongoing = entries.filter((e) => e.type === "ongoing");
+  const seenMarkers = new Set<string>();
+  const drawn = entries.filter((e) => {
+    if (e.type !== "dose_marker") return true;
+    if (e.class === "take_with_food_if_upset") return false;
+    const key = `${e.at}|${e.name}|${e.class}`;
+    if (seenMarkers.has(key)) return false;
+    seenMarkers.add(key);
+    return true;
+  });
+  const timed = drawn.filter((e) => e.type !== "ongoing");
+  const ongoing = drawn.filter((e) => e.type === "ongoing");
   const sorted = [...timed].sort((a, b) =>
     timelineSortKey(a).localeCompare(timelineSortKey(b)),
   );
 
-  if (entries.length === 0) return null;
+  if (drawn.length === 0) return null;
 
   return (
     <div className="timeline-strip">

@@ -19,7 +19,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -205,6 +205,7 @@ def list_doses(user_id: UserId, session: Db, registry: Reg) -> list[dict]:
             "product_name": ev.product_name,
             "taken_at": ev.taken_at,
             "quantity": ev.quantity,
+            "topical": bool(ev.topical_ingredients),
             "ingredients": [
                 service.ingredient_json(ing, registry) for ing in ev.ingredients
             ],
@@ -407,6 +408,7 @@ def get_curve(
             "description": entry.get("description"),
         },
         "modelable": result.modelable,
+        "parameters_verified": bool(entry.get("verified", False)),
         "reason": result.reason,
         "unit": result.unit,
         # "full" is a concentration curve; "approximate" is the amount left in
@@ -689,6 +691,7 @@ def get_timeline(
                 "product_id": ev.product_id,
                 "product_name": ev.product_name,
                 "quantity": ev.quantity,
+                "topical": bool(ev.topical_ingredients),
                 "ingredients": [
                     service.ingredient_json(ing, registry) for ing in ev.ingredients
                 ],
@@ -726,7 +729,18 @@ def get_timeline(
 
 class SkincareProductRequest(BaseModel):
     name: str = Field(min_length=1)
-    ingredients: list[str] = Field(min_length=1)
+    ingredients: list[str] | None = None
+    ingredients_text: str | None = None
+
+    @model_validator(mode="after")
+    def _resolve_ingredients(self) -> SkincareProductRequest:
+        if (self.ingredients is None) == (self.ingredients_text is None):
+            raise ValueError("provide exactly one of ingredients or ingredients_text")
+        if self.ingredients_text is not None:
+            self.ingredients = skincare.split_ingredients(self.ingredients_text)
+        if not self.ingredients:
+            raise ValueError("no ingredients found")
+        return self
 
 
 class SkincareCheckRequest(BaseModel):

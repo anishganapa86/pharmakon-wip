@@ -28,11 +28,20 @@ const FREQUENCIES = Object.keys(FREQUENCY_LABELS) as ScheduleFrequency[];
 // app/api/food_guidance.py keys a single-ingredient finding by the
 // substance's own display name, and a combination product's finding by the
 // product name -- so a schedule card matches on either.
-function hasFoodGuidance(m: ScheduledMedication, withFoodNames: Set<string>): boolean {
-  if (withFoodNames.has(m.product_name.trim().toLowerCase())) return true;
-  return m.substances.some(
-    (s) => s.display_name && withFoodNames.has(s.display_name.trim().toLowerCase()),
-  );
+export type FoodChip = "take_with_food" | "take_with_food_if_upset";
+
+function foodChipFor(
+  m: ScheduledMedication,
+  withFoodNames: Map<string, FoodChip>,
+): FoodChip | null {
+  const found = [
+    withFoodNames.get(m.product_name.trim().toLowerCase()),
+    ...m.substances.map((s) =>
+      s.display_name ? withFoodNames.get(s.display_name.trim().toLowerCase()) : undefined,
+    ),
+  ].filter((c): c is FoodChip => c !== undefined);
+  if (found.includes("take_with_food")) return "take_with_food";
+  return found.length > 0 ? "take_with_food_if_upset" : null;
 }
 
 function nextDueText(m: ScheduledMedication): string {
@@ -49,13 +58,13 @@ function Card({
   busy,
   onTake,
   onRemove,
-  withFood,
+  foodChip,
 }: {
   med: ScheduledMedication;
   busy: boolean;
   onTake: () => void;
   onRemove: () => void;
-  withFood: boolean;
+  foodChip: FoodChip | null;
 }) {
   const days = daysLabel(med.days_of_week);
   const when = med.times.map(timeOfDayLabel).join(", ");
@@ -69,12 +78,16 @@ function Card({
         <span className={`med-status med-status-${med.status}`}>
           {STATUS_LABELS[med.status]}
         </span>
-        {withFood && (
+        {foodChip !== null && (
           <span
             className="tag"
-            title="A quoted FDA label sentence says to take this with food."
+            title={
+              foodChip === "take_with_food"
+                ? "A quoted FDA label sentence says to take this with food."
+                : "A quoted FDA label sentence says to take this with food if stomach upset occurs."
+            }
           >
-            With food
+            {foodChip === "take_with_food" ? "With food" : "Food if upset"}
           </span>
         )}
       </div>
@@ -281,7 +294,7 @@ interface Props {
   onViewInteractions: () => void;
   /** Lowercased product names with a quoted take_with_food finding (see
    * app/api/food_guidance.py) -- drives the small "With food" chip. */
-  withFoodNames: Set<string>;
+  withFoodNames: Map<string, FoodChip>;
 }
 
 /**
@@ -392,7 +405,7 @@ export function Schedule({
                   busy={busyId === m.id}
                   onTake={() => void take(m)}
                   onRemove={() => void remove(m)}
-                  withFood={hasFoodGuidance(m, withFoodNames)}
+                  foodChip={foodChipFor(m, withFoodNames)}
                 />
               ))}
             </ul>

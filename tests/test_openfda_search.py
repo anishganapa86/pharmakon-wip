@@ -358,3 +358,17 @@ def test_unknown_product_id_is_still_404(client, fake_openfda):
         },
     )
     assert r.status_code == 404
+
+
+def test_all_caps_brand_name_is_title_cased_but_the_product_id_is_unchanged(
+    fake_openfda,
+):
+    fake_openfda.routes["brand_name"] = [
+        label("CORTIZONE PEG CREAM", ["HYDROCORTISONE"])
+    ]
+    shouty = openfda._product_id("CORTIZONE PEG CREAM", ["HYDROCORTISONE"])
+
+    (product,) = openfda.search_by_name("cortizone")
+
+    assert product.brand_name == "Cortizone PEG Cream"
+    assert product.id == shouty

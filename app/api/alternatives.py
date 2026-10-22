@@ -263,7 +263,7 @@ def _introduces_new_flags(
     candidate_product = skincare.Product(candidate_name, candidate_ingredients)
     result = skincare.check_ingredients([candidate_product, *other_products], rules)
     for f in result["incompatibilities"]:
-        if f["product_a"] == candidate_name or f["product_b"] == candidate_name:
+        if candidate_name in f["products_a"] or candidate_name in f["products_b"]:
             return True
     return any(f["product"] == candidate_name for f in result["irritants"])
 
@@ -392,9 +392,9 @@ def _flagged_ingredient_names(product_name: str, check_result: dict) -> list[str
             names.append(name)
 
     for f in check_result["incompatibilities"]:
-        if f["product_a"] == product_name:
+        if product_name in f["products_a"]:
             add(f["ingredient_a"])
-        if f["product_b"] == product_name:
+        if product_name in f["products_b"]:
             add(f["ingredient_b"])
     for f in check_result["irritants"]:
         if f["product"] == product_name:
@@ -413,7 +413,7 @@ def _same_product_partners(
     contributes nothing here."""
     partners: dict[str, list[str]] = {}
     for f in check_result["incompatibilities"]:
-        if f["product_a"] != product_name or f["product_b"] != product_name:
+        if f["products_a"] != [product_name] or f["products_b"] != [product_name]:
             continue
         key_a = skincare.normalize(f["ingredient_a"])
         key_b = skincare.normalize(f["ingredient_b"])

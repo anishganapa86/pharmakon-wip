@@ -70,6 +70,7 @@ export interface ConcentrationPoint {
 export interface SubstanceCurve {
   substance: SubstanceRef;
   modelable: boolean;
+  parameters_verified: boolean;
   reason: string | null; // null when modelable is true
   unit: ConcentrationUnit;
   // "approximate" is a simplified decay curve in mg (see ConcentrationUnit);
@@ -242,6 +243,7 @@ export interface LoggedDoseEvent {
   product_name: string;
   taken_at: IsoTimestamp;
   quantity: number;
+  topical: boolean;
   ingredients: LoggedIngredient[];
 }
 
@@ -271,6 +273,12 @@ export interface SymptomMatch {
   threshold_status: "above" | "approaching";
   contributing_doses: ContributingDose[];
   message: string;
+  label_product_name: string | null;
+  label_attribution: string | null;
+  dailymed_url: string | null;
+  matched_sentence: string | null;
+  quote_source: QuoteSource | null;
+  label_pointer: string | null;
 }
 
 export interface SymptomCheckResponse {
@@ -293,6 +301,7 @@ export interface SideEffectEntry {
   source: AssociationSource;
   source_label: string;
   verified: false;
+  label_attribution: string | null;
 }
 
 export interface SubstanceSideEffectProfile {
@@ -301,6 +310,7 @@ export interface SubstanceSideEffectProfile {
   total_24h_mg: number;
   threshold_24h_mg: number | null;
   side_effects: SideEffectEntry[];
+  label_attributions: string[];
   contributing_products: ContributingProduct[];
 }
 
@@ -322,7 +332,8 @@ export interface SideEffectProfileResponse {
 
 export interface SkincareProductRequest {
   name: string;
-  ingredients: string[];
+  ingredients?: string[];
+  ingredients_text?: string;
 }
 
 export interface SkincareCheckedProduct {
@@ -330,9 +341,15 @@ export interface SkincareCheckedProduct {
   ingredients: string[];
 }
 
+export type SkincareMatchQuality = "inci_name" | "common_name_only";
+
 export interface SkincareIncompatibility {
   ingredient_a: string;
   product_a: string;
+  products_a: string[];
+  appears_in_a: string | null;
+  match_quality_a: SkincareMatchQuality;
+  match_note_a: string | null;
   // matched_ingredient_a duplicates ingredient_a -- present so the UI can
   // pair "which string" with "which rule term" (matched_alias_a) without
   // knowing whether it's reading the a-side or b-side of a finding.
@@ -340,9 +357,14 @@ export interface SkincareIncompatibility {
   matched_alias_a: string; // the rule's canonical name or alias that hit
   ingredient_b: string;
   product_b: string;
+  products_b: string[];
+  appears_in_b: string | null;
+  match_quality_b: SkincareMatchQuality;
+  match_note_b: string | null;
   matched_ingredient_b: string;
   matched_alias_b: string;
   effect: string;
+  verified: boolean;
   // Rewritten when product_a === product_b: the source's timing advice
   // ("use at different times") doesn't apply when both ingredients are
   // already combined in one product.
@@ -355,8 +377,11 @@ export interface SkincareIrritant {
   product: string;
   matched_ingredient: string; // duplicates ingredient; see SkincareIncompatibility
   matched_alias: string; // the rule's canonical name or alias that hit
+  match_quality: SkincareMatchQuality;
+  match_note: string | null;
   effect: string;
   source: string;
+  verified: boolean;
   note?: string; // added only when relevant to something else the user logged
 }
 
@@ -515,6 +540,9 @@ export interface Interaction {
   severity: string | null; // null unless the source itself states one
   overlap: OverlapWindow[] | null; // null when either substance isn't modeled
   message: string;
+  label_product_name: string | null;
+  label_attribution: string | null;
+  dailymed_url: string | null;
 }
 
 /** One product's mention on a DuplicateIngredientFinding card. */
@@ -569,6 +597,7 @@ export interface FoodGuidanceRequest {
 
 export type FoodGuidanceClass =
   | "take_with_food"
+  | "take_with_food_if_upset"
   | "take_on_empty_stomach"
   | "avoid_item"
   | "separate_from"
@@ -587,6 +616,7 @@ export interface FoodGuidanceFinding {
   name: string; // substance display name, or the product name for a combo
   is_product: boolean; // true when `name` is a combination product
   item: string; // e.g. "food", "grapefruit", "vitamin k"
+  items: string[];
   class: FoodGuidanceClass;
   // <=300 chars, verbatim from the label -- only when the underlying
   // sentence passed the quote-integrity rules (true sentence start/end, no
@@ -612,6 +642,8 @@ export interface FoodGuidanceFinding {
   // generally.
   product_name: string | null;
   dosage_form: string | null;
+  label_attribution: string | null;
+  dailymed_url: string | null;
 }
 
 export type FoodGuidanceTimelineType = "dose_marker" | "window" | "ongoing";
@@ -690,6 +722,7 @@ export interface TimelineDoseEntry {
   product_id: string;
   product_name: string;
   quantity: number;
+  topical: boolean;
   ingredients: LoggedIngredient[];
 }
 

@@ -161,8 +161,7 @@ export function ProductSearch({
     setAddOpen(true);
   }
 
-  async function saveAndLogProduct(e: React.FormEvent) {
-    e.preventDefault();
+  async function saveAndLogProduct() {
     if (!userId || !onSavedProductLogged) return;
     if (!addDraft.brand.trim() || !addDraft.name.trim() || addPreview.length === 0) {
       return;
@@ -181,12 +180,19 @@ export function ProductSearch({
       // chooseRecent uses for a recent product.
       const found = (await searchProducts(`${entry.brand} ${entry.name}`)).results;
       const product = found.find((p) => p.id === entry.id);
+      setAddOpen(false);
+      setAddDraft(EMPTY_ADD_DRAFT);
       if (product) {
-        onSavedProductLogged(product);
-        setAddOpen(false);
-        setAddDraft(EMPTY_ADD_DRAFT);
-        setQuery("");
         setOpen(false);
+        setQuery("");
+        onSavedProductLogged(product);
+      } else {
+        setOpen(true);
+        setQuery(`${entry.brand} ${entry.name}`);
+        setAddError(
+          "Saved to My products, but it didn't come back in search, so it " +
+            "wasn't logged. Search for it by name to log it.",
+        );
       }
     } catch (err) {
       setAddError(errorMessage(err));
@@ -212,6 +218,96 @@ export function ProductSearch({
   }
 
   const showDropdown = open && !selected && query.trim() !== "";
+
+  const addControl = !addOpen ? (
+    <div>
+      {addError && <p className="error small">{addError}</p>}
+      <button type="button" className="button-link" onClick={() => openAddForm()}>
+        Add this product with its ingredient list
+      </button>
+    </div>
+  ) : (
+    <div
+      className="manual-entry"
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && (e.target as HTMLElement).tagName === "INPUT") {
+          e.preventDefault();
+          void saveAndLogProduct();
+        }
+      }}
+    >
+      <p className="muted small">
+        Most cosmetics aren't FDA-regulated drugs, so we don't have a label for
+        this. Enter it once and it's saved to your own product library.
+      </p>
+      <input
+        className="control"
+        type="text"
+        placeholder="Brand (e.g. TIRTIR)"
+        value={addDraft.brand}
+        onChange={(e) => setAddDraft((d) => ({ ...d, brand: e.target.value }))}
+        aria-label="Brand"
+      />
+      <input
+        className="control"
+        type="text"
+        placeholder="Product name (e.g. Milk Skin Toner)"
+        value={addDraft.name}
+        onChange={(e) => setAddDraft((d) => ({ ...d, name: e.target.value }))}
+        aria-label="Product name"
+      />
+      <select
+        className="control"
+        value={addDraft.category}
+        onChange={(e) =>
+          setAddDraft((d) => ({
+            ...d,
+            category: e.target.value as MyProductCategory,
+          }))
+        }
+        aria-label="Category"
+      >
+        {CATEGORY_OPTIONS.map((c) => (
+          <option key={c} value={c}>
+            {c}
+          </option>
+        ))}
+      </select>
+      <textarea
+        className="control manual-entry-textarea"
+        placeholder="Paste the ingredient list from the packaging"
+        value={addDraft.rawText}
+        onChange={(e) => setAddDraft((d) => ({ ...d, rawText: e.target.value }))}
+        aria-label="Ingredients"
+        rows={4}
+      />
+      <p className="muted small">
+        {addDraft.rawText.trim() === ""
+          ? "No ingredients yet."
+          : addPreview.length === 0
+            ? "Couldn't find any ingredients in that text."
+            : `Parsed ${addPreview.length} ingredient${
+                addPreview.length === 1 ? "" : "s"
+              }: ${addPreview.slice(0, 3).join(", ")}${
+                addPreview.length > 3 ? ", …" : ""
+              }. If that looks wrong, edit the text above.`}
+      </p>
+      {addError && <p className="error small">Couldn't save: {addError}</p>}
+      <button
+        className="control button"
+        type="button"
+        onClick={() => void saveAndLogProduct()}
+        disabled={
+          !addDraft.brand.trim() ||
+          !addDraft.name.trim() ||
+          addPreview.length === 0 ||
+          addSaving
+        }
+      >
+        {addSaving ? "Saving…" : "Save to My products"}
+      </button>
+    </div>
+  );
 
   return (
     <div className="search" ref={rootRef}>
@@ -254,98 +350,7 @@ export function ProductSearch({
                 <>
                   {`No products found for "${query.trim()}". Try searching by ` +
                     "brand name (e.g. Tylenol) or generic name (e.g. acetaminophen)."}
-                  {!addOpen ? (
-                    <div>
-                      <button
-                        type="button"
-                        className="button-link"
-                        onClick={() => openAddForm()}
-                      >
-                        Add this product with its ingredient list
-                      </button>
-                    </div>
-                  ) : (
-                    <form className="manual-entry" onSubmit={saveAndLogProduct}>
-                      <p className="muted small">
-                        Most cosmetics aren't FDA-regulated drugs, so we don't
-                        have a label for this. Enter it once and it's saved to
-                        your own product library.
-                      </p>
-                      <input
-                        className="control"
-                        type="text"
-                        placeholder="Brand (e.g. TIRTIR)"
-                        value={addDraft.brand}
-                        onChange={(e) =>
-                          setAddDraft((d) => ({ ...d, brand: e.target.value }))
-                        }
-                        aria-label="Brand"
-                      />
-                      <input
-                        className="control"
-                        type="text"
-                        placeholder="Product name (e.g. Milk Skin Toner)"
-                        value={addDraft.name}
-                        onChange={(e) =>
-                          setAddDraft((d) => ({ ...d, name: e.target.value }))
-                        }
-                        aria-label="Product name"
-                      />
-                      <select
-                        className="control"
-                        value={addDraft.category}
-                        onChange={(e) =>
-                          setAddDraft((d) => ({
-                            ...d,
-                            category: e.target.value as MyProductCategory,
-                          }))
-                        }
-                        aria-label="Category"
-                      >
-                        {CATEGORY_OPTIONS.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-                      <textarea
-                        className="control manual-entry-textarea"
-                        placeholder="Paste the ingredient list from the packaging"
-                        value={addDraft.rawText}
-                        onChange={(e) =>
-                          setAddDraft((d) => ({ ...d, rawText: e.target.value }))
-                        }
-                        aria-label="Ingredients"
-                        rows={4}
-                      />
-                      <p className="muted small">
-                        {addDraft.rawText.trim() === ""
-                          ? "No ingredients yet."
-                          : addPreview.length === 0
-                            ? "Couldn't find any ingredients in that text."
-                            : `Parsed ${addPreview.length} ingredient${
-                                addPreview.length === 1 ? "" : "s"
-                              }: ${addPreview.slice(0, 3).join(", ")}${
-                                addPreview.length > 3 ? ", …" : ""
-                              }. If that looks wrong, edit the text above.`}
-                      </p>
-                      {addError && (
-                        <p className="error small">Couldn't save: {addError}</p>
-                      )}
-                      <button
-                        className="control button"
-                        type="submit"
-                        disabled={
-                          !addDraft.brand.trim() ||
-                          !addDraft.name.trim() ||
-                          addPreview.length === 0 ||
-                          addSaving
-                        }
-                      >
-                        {addSaving ? "Saving…" : "Save to My products"}
-                      </button>
-                    </form>
-                  )}
+                  {addControl}
                 </>
               )}
             </li>
@@ -379,6 +384,9 @@ export function ProductSearch({
                 </span>
               </li>
             ))
+          )}
+          {results.length > 0 && canAddProduct && !searching && (
+            <li className="search-status">{addControl}</li>
           )}
           {total > results.length && (
             <li className="search-status muted">

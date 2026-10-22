@@ -160,6 +160,12 @@ class Incompatibility:
     def matched_term_b(self, name: str) -> str | None:
         return _matched_term(name, self.ingredient_b, self.aliases_b)
 
+    def match_a(self, name: str) -> TermMatch | None:
+        return _match(name, self.ingredient_a, self.aliases_a)
+
+    def match_b(self, name: str) -> TermMatch | None:
+        return _match(name, self.ingredient_b, self.aliases_b)
+
 
 @dataclass(frozen=True)
 class Irritant:
@@ -175,6 +181,59 @@ class Irritant:
     def matched_term(self, name: str) -> str | None:
         return _matched_term(name, self.ingredient, self.aliases)
 
+    def match(self, name: str) -> TermMatch | None:
+        return _match(name, self.ingredient, self.aliases)
+
+
+MATCH_INCI = "inci_name"
+MATCH_COMMON_NAME_ONLY = "common_name_only"
+
+
+@dataclass(frozen=True)
+class TermMatch:
+    term: str
+    quality: str
+
+
+def _inci_part(name: str) -> str:
+    return name.split("(", 1)[0]
+
+
+def _first_term_in(key: str, canonical: str, aliases: tuple[str, ...]) -> str | None:
+    for candidate in (canonical, *aliases):
+        needle = normalize(candidate)
+        if needle and re.search(rf"\b{re.escape(needle)}\b", key):
+            return candidate
+    return None
+
+
+def _match(name: str, canonical: str, aliases: tuple[str, ...]) -> TermMatch | None:
+    """Rule terms are matched against the INCI name (the text before any
+    parenthesis) first; a term found only inside the parenthetical is
+    reported as common_name_only rather than dropped, so the caller can say
+    the rule may describe a different ingredient than the one on the label."""
+    inci_key = normalize(_inci_part(name))
+    if inci_key:
+        term = _first_term_in(inci_key, canonical, aliases)
+        if term is not None:
+            return TermMatch(term, MATCH_INCI)
+    full_key = normalize(name)
+    if not full_key:
+        return None
+    term = _first_term_in(full_key, canonical, aliases)
+    if term is None:
+        return None
+    return TermMatch(term, MATCH_COMMON_NAME_ONLY)
+
+
+def common_name_note(match: TermMatch, rule_ingredient: str) -> str | None:
+    if match.quality != MATCH_COMMON_NAME_ONLY:
+        return None
+    return (
+        "Matched on the label's common name only. The rule describes "
+        f"{rule_ingredient}; this ingredient may behave differently."
+    )
+
 
 def _matched_term(name: str, canonical: str, aliases: tuple[str, ...]) -> str | None:
     """The rule's ingredient name or alias that appears as a whole-word
@@ -186,14 +245,8 @@ def _matched_term(name: str, canonical: str, aliases: tuple[str, ...]) -> str | 
     written in the rule, so a finding can show which rule term fired --
     never a new rule or alias of its own.
     """
-    key = normalize(name)
-    if not key:
-        return None
-    for candidate in (canonical, *aliases):
-        needle = normalize(candidate)
-        if needle and re.search(rf"\b{re.escape(needle)}\b", key):
-            return candidate
-    return None
+    found = _match(name, canonical, aliases)
+    return found.term if found else None
 
 
 @dataclass(frozen=True)
@@ -267,11 +320,35 @@ class Product:
     ingredients: tuple[str, ...]
 
 
-_SAME_PRODUCT_RECOMMENDATION = (
+UNVERIFIED_TIMING_PREFIX = "Suggested timing from our unverified reference: "
+_SAME_PRODUCT_UNVERIFIED = (
+    "Both ingredients are in the same product, so the reference's timing "
+    "advice doesn't apply directly. The reference suggests: {text} "
+    "(unverified). Ask a pharmacist or dermatologist about this product."
+)
+_SAME_PRODUCT_VERIFIED = (
     "Both ingredients are in the same product, so the source's timing advice "
-    "doesn't apply directly. The source says: {original}. Ask a pharmacist "
+    "doesn't apply directly. The source says: {text}. Ask a pharmacist "
     "or dermatologist about this product."
 )
+
+
+def _strip_trailing_period(text: str) -> str:
+    return text.strip().rstrip(".").rstrip()
+
+
+def _recommendation_text(rule_text: str, verified: bool, same_product: bool) -> str:
+    bare = _strip_trailing_period(rule_text)
+    if same_product:
+        template = _SAME_PRODUCT_VERIFIED if verified else _SAME_PRODUCT_UNVERIFIED
+        return template.format(text=bare)
+    if verified:
+        return rule_text
+    return f"{UNVERIFIED_TIMING_PREFIX}{bare}."
+
+
+def _appears_in(ingredient: str, product_names: list[str]) -> str:
+    return f"{ingredient} appears in: {', '.join(product_names)}"
 
 
 def check_ingredients(products: list[Product], rules: Rules | None = None) -> dict:
@@ -288,52 +365,90 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
     rules = active_rules(all_rules)
     entries = [(p.name, ing) for p in products for ing in p.ingredients]
 
-    incompatibilities_found = []
-    seen_pairs = set()
+    groups: dict[tuple, dict] = {}
     for i, (name_a, ing_a) in enumerate(entries):
         for name_b, ing_b in entries[i + 1 :]:
             for rule in rules.incompatibilities:
-                term_a = rule.matched_term_a(ing_a)
-                term_b = rule.matched_term_b(ing_b)
-                if term_a is None or term_b is None:
-                    term_a = rule.matched_term_b(ing_a)
-                    term_b = rule.matched_term_a(ing_b)
-                if term_a is None or term_b is None:
+                match_a = rule.match_a(ing_a)
+                match_b = rule.match_b(ing_b)
+                rule_ing_a, rule_ing_b = rule.ingredient_a, rule.ingredient_b
+                if match_a is None or match_b is None:
+                    match_a = rule.match_b(ing_a)
+                    match_b = rule.match_a(ing_b)
+                    rule_ing_a, rule_ing_b = rule.ingredient_b, rule.ingredient_a
+                if match_a is None or match_b is None:
                     continue
-                key = (id(rule), tuple(sorted([normalize(ing_a), normalize(ing_b)])))
-                if key in seen_pairs:
-                    continue
-                seen_pairs.add(key)
-
-                if name_a == name_b:
-                    recommendation = _SAME_PRODUCT_RECOMMENDATION.format(
-                        original=rule.recommendation
-                    )
-                else:
-                    recommendation = rule.recommendation
-
-                incompatibilities_found.append(
-                    {
-                        "ingredient_a": ing_a,
-                        "product_a": name_a,
-                        "matched_ingredient_a": ing_a,
-                        "matched_alias_a": term_a,
-                        "ingredient_b": ing_b,
-                        "product_b": name_b,
-                        "matched_ingredient_b": ing_b,
-                        "matched_alias_b": term_b,
-                        "effect": rule.effect,
-                        "recommendation": recommendation,
-                        "source": rule.source,
+                same_product = name_a == name_b
+                pair = tuple(sorted([normalize(ing_a), normalize(ing_b)]))
+                key = (id(rule), pair, name_a if same_product else None)
+                group = groups.get(key)
+                if group is None:
+                    group = {
+                        "rule": rule,
+                        "same_product": same_product,
+                        "ing_a": ing_a,
+                        "ing_b": ing_b,
+                        "match_a": match_a,
+                        "match_b": match_b,
+                        "rule_ing_a": rule_ing_a,
+                        "rule_ing_b": rule_ing_b,
+                        "products_a": [],
+                        "products_b": [],
                     }
-                )
+                    groups[key] = group
+                if normalize(ing_a) == normalize(group["ing_a"]):
+                    side_a, side_b = name_a, name_b
+                else:
+                    side_a, side_b = name_b, name_a
+                if side_a not in group["products_a"]:
+                    group["products_a"].append(side_a)
+                if side_b not in group["products_b"]:
+                    group["products_b"].append(side_b)
+
+    incompatibilities_found = []
+    for group in groups.values():
+        rule = group["rule"]
+        products_a = group["products_a"]
+        products_b = group["products_b"]
+        same_product = group["same_product"]
+        ing_a, ing_b = group["ing_a"], group["ing_b"]
+        incompatibilities_found.append(
+            {
+                "ingredient_a": ing_a,
+                "product_a": products_a[0],
+                "products_a": products_a,
+                "appears_in_a": (
+                    None if same_product else _appears_in(ing_a, products_a)
+                ),
+                "matched_ingredient_a": ing_a,
+                "matched_alias_a": group["match_a"].term,
+                "match_quality_a": group["match_a"].quality,
+                "match_note_a": common_name_note(group["match_a"], group["rule_ing_a"]),
+                "ingredient_b": ing_b,
+                "product_b": products_b[0],
+                "products_b": products_b,
+                "appears_in_b": (
+                    None if same_product else _appears_in(ing_b, products_b)
+                ),
+                "matched_ingredient_b": ing_b,
+                "matched_alias_b": group["match_b"].term,
+                "match_quality_b": group["match_b"].quality,
+                "match_note_b": common_name_note(group["match_b"], group["rule_ing_b"]),
+                "effect": rule.effect,
+                "recommendation": _recommendation_text(
+                    rule.recommendation, rule.verified, same_product
+                ),
+                "source": rule.source,
+                "verified": rule.verified,
+            }
+        )
 
     irritants_found = []
     seen_irritants = set()
     for name, ing in entries:
         for rule in rules.known_irritants:
-            term = rule.matched_term(ing)
-            if term is None:
+            term_match = rule.match(ing)
+            if term_match is None:
                 continue
             key = (normalize(ing), name)
             if key in seen_irritants:
@@ -344,9 +459,12 @@ def check_ingredients(products: list[Product], rules: Rules | None = None) -> di
                     "ingredient": ing,
                     "product": name,
                     "matched_ingredient": ing,
-                    "matched_alias": term,
+                    "matched_alias": term_match.term,
+                    "match_quality": term_match.quality,
+                    "match_note": common_name_note(term_match, rule.ingredient),
                     "effect": rule.effect,
                     "source": rule.source,
+                    "verified": rule.verified,
                 }
             )
 

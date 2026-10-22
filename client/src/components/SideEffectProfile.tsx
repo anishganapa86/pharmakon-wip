@@ -67,6 +67,11 @@ export function SideEffectProfile({ userId }: Props) {
                       .map((p) => p.product_name)
                       .join(", ")}
                   </p>
+                  {s.label_attributions.map((note) => (
+                    <p key={note} className="muted small">
+                      {note}
+                    </p>
+                  ))}
                   {s.side_effects.length === 0 ? (
                     <p className="muted small">
                       No documented side effects found.

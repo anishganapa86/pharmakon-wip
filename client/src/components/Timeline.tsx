@@ -3,11 +3,13 @@ import { deleteLog, fetchTimeline } from "../api";
 import {
   categoryColor,
   loggedIngredientLabel,
+  notModeledReason,
   TIMELINE_DOSE_NOT_MODELED,
 } from "../labels";
 import { dayKey, formatClock, formatDateHeader } from "../time";
 import type { TimelineDoseEntry, TimelineEntry } from "../types/contract";
 import { ProductName } from "./ProductName";
+import { TopicalIngredients } from "./TopicalIngredients";
 
 const PAGE_MS = 30 * 24 * 60 * 60 * 1000; // matches the API's default range
 
@@ -30,10 +32,20 @@ function DoseCard({ entry }: { entry: TimelineDoseEntry }) {
         </strong>
         <span className="muted timeline-time">{formatClock(entryMs(entry))}</span>
       </div>
-      <p className="timeline-detail">
-        {entry.quantity} × {entry.ingredients.map(loggedIngredientLabel).join(" · ")}
-      </p>
-      {!modeled && <p className="muted small">{TIMELINE_DOSE_NOT_MODELED}</p>}
+      {entry.topical ? (
+        <>
+          <p className="muted small">{TIMELINE_DOSE_NOT_MODELED}</p>
+          <TopicalIngredients ingredients={entry.ingredients} />
+        </>
+      ) : (
+        <>
+          <p className="timeline-detail">
+            {entry.quantity} ×{" "}
+            {entry.ingredients.map(loggedIngredientLabel).join(" · ")}
+          </p>
+          {!modeled && <p className="muted small">{notModeledReason(null)}</p>}
+        </>
+      )}
     </li>
   );
 }
@@ -197,7 +209,7 @@ export function Timeline({ userId, onDeleted }: Props) {
       (entries) => {
         if (entries[0]?.isIntersecting) void loadMore();
       },
-      { root: sentinel.closest(".timeline-scroll"), threshold: 0 },
+      { root: null, threshold: 0 },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -262,7 +274,7 @@ export function Timeline({ userId, onDeleted }: Props) {
   }
 
   return (
-    <div className="timeline-scroll">
+    <div>
       <ul className="timeline">
         {rows}
         <li ref={sentinelRef} className="timeline-sentinel">
@@ -274,6 +286,15 @@ export function Timeline({ userId, onDeleted }: Props) {
                 Retry
               </button>
             </span>
+          )}
+          {!loadingMore && !error && hasMore && (
+            <button
+              className="button-link"
+              type="button"
+              onClick={() => void loadMore()}
+            >
+              Load more
+            </button>
           )}
           {!loadingMore && !error && !hasMore && (
             <span className="muted small">Start of your history.</span>

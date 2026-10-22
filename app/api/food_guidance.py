@@ -24,9 +24,10 @@ Like app/api/interactions.py, there are two sources:
      created, and the loader here rejects one if it somehow existed.
 
 Every quote is verbatim, <=300 chars, never paraphrased into "safe" or
-"will cause". A finding is classified (take_with_food, take_on_empty_stomach,
-avoid_item, separate_from, other) by simple keyword rules for display, but
-the classification is never shown as more than a tag next to its quote.
+"will cause". A finding is classified (take_with_food, take_with_food_if_upset,
+take_on_empty_stomach, avoid_item, separate_from, other) by simple keyword
+rules for display, but the classification is never shown as more than a tag
+next to its quote.
 
 Oral only: a substance whose own label declares a non-oral route (or no
 route at all) produces no guidance and is reported under unchecked_reason
@@ -53,9 +54,22 @@ import httpx
 from sqlalchemy.orm import Session
 
 from ..registry.loader import Registry
-from . import label_cache, products, schedule, service, verification
+from . import (
+    label_cache,
+    label_source,
+    products,
+    schedule,
+    service,
+    verification,
+)
 from .db import DoseEvent, ScheduledDose
+from .names import display_product_name
 from .provenance import QUOTE_SOURCE_FDA_LABEL
+from .quote_text import (
+    has_cross_reference,
+    has_section_number_noise,
+    separate_section_heading,
+)
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "food_drug_guidance.json"
 
@@ -122,9 +136,14 @@ INSTRUCTION_CUES = (
     "before",
     "after",
     "hours",
-    "with",
     "without",
     "separate",
+    "with food",
+    "with meals",
+    "with milk",
+    "after eating",
+    "on an empty stomach",
+    "before meals",
 )
 
 EMPTY_MESSAGE = (
@@ -161,7 +180,13 @@ def clear_cache() -> None:
 # --- Fetching ------------------------------------------------------------------
 
 
-KEPT_OPENFDA_FIELDS = ("route", "substance_name", "product_type", "brand_name")
+KEPT_OPENFDA_FIELDS = (
+    "route",
+    "substance_name",
+    "product_type",
+    "brand_name",
+    "generic_name",
+)
 
 
 def _trim_label(label: dict) -> dict:
@@ -177,18 +202,15 @@ def _trim_label(label: dict) -> dict:
 
 def _fetch_candidates_by(field: str, value: str) -> list[dict]:
     return label_cache.cached(
-        "food_guidance_labels",
+        "food_guidance_labels_v2",
         f"{field}:{value.upper()}",
         lambda: _request_candidates_by(field, value),
     )
 
 
-def _request_candidates_by(field: str, value: str) -> list[dict]:
-    search = f'openfda.{field}.exact:"{value.upper()}"'
+def _search_labels(search: str, limit: int) -> list[dict]:
     try:
-        r = _http.get(
-            OPENFDA_LABEL_URL, params={"search": search, "limit": LABEL_SEARCH_LIMIT}
-        )
+        r = _http.get(OPENFDA_LABEL_URL, params={"search": search, "limit": limit})
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
@@ -196,6 +218,23 @@ def _request_candidates_by(field: str, value: str) -> list[dict]:
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
     return [_trim_label(label) for label in r.json().get("results", [])]
+
+
+def _request_candidates_by(field: str, value: str) -> list[dict]:
+    exact = _search_labels(
+        f'openfda.{field}.exact:"{value.upper()}"', LABEL_SEARCH_LIMIT
+    )
+    if exact:
+        return exact
+    candidates = _search_labels(
+        label_source.fallback_search(field, value), label_source.FALLBACK_LIMIT
+    )
+    matching = [
+        label
+        for label in candidates
+        if label_source.fallback_matches(field, label, value)
+    ]
+    return matching[:LABEL_SEARCH_LIMIT]
 
 
 def _is_single_ingredient(label: dict) -> bool:
@@ -317,12 +356,14 @@ _LIST_BULLET = "•"
 # A numbered ALL-CAPS section heading that leaked into extracted text, e.g.
 # "2 DOSAGE AND ADMINISTRATION" or "17 PATIENT COUNSELING INFORMATION".
 _HEADING_RE = re.compile(r"\b\d{1,2}(?:\.\d+)?\s+[A-Z]{2,}(?:\s+[A-Z]{2,}){1,}")
-# A cross-reference to another label section, e.g. "( 2.1 )" or "( 7.1 , 12.3 )".
-_XREF_RE = re.compile(r"\(\s*\d+(?:\.\d+)?(?:\s*,\s*\d+(?:\.\d+)?)*\s*\)")
 
 
 def _has_heading_or_xref_noise(text: str) -> bool:
-    return bool(_HEADING_RE.search(text) or _XREF_RE.search(text))
+    return bool(
+        _HEADING_RE.search(text)
+        or has_cross_reference(text)
+        or has_section_number_noise(text)
+    )
 
 
 def _split_sentences(chunk: str, block_end: str) -> list[tuple[str, bool]]:
@@ -429,6 +470,17 @@ def _quote_ok(text: str, is_list_item: bool, ends_properly: bool) -> bool:
     return ends_properly
 
 
+def quotable_sentences(block: str) -> list[str]:
+    out = []
+    for text, is_list_item, ends_properly in _units_from_block(block):
+        body = separate_section_heading(text)
+        if body is not None:
+            text = body
+        if _quote_ok(text, is_list_item, ends_properly):
+            out.append(text)
+    return out
+
+
 def _phrase_in(text_lower: str, phrase: str) -> bool:
     return re.search(rf"\b{re.escape(phrase)}\b", text_lower) is not None
 
@@ -468,6 +520,9 @@ def _label_units(label: dict) -> list[tuple[str, str, int, bool, bool]]:
     for idx, field in enumerate(TEXT_FIELDS):
         for block in label.get(field) or []:
             for text, is_list_item, ends_properly in _units_from_block(block):
+                body = separate_section_heading(text)
+                if body is not None:
+                    text = body
                 out.append((text, field, idx, is_list_item, ends_properly))
     return out
 
@@ -588,12 +643,12 @@ def label_dosage_form(label: dict) -> str | None:
 
 def label_product_name(label: dict) -> str | None:
     names = label.get("openfda", {}).get("brand_name") or []
-    return names[0] if names else None
+    return display_product_name(names[0]) if names else None
 
 
 # --- Pointer text (DailyMed) ------------------------------------------------------
 
-DAILYMED_URL = "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid={set_id}"
+DAILYMED_URL = label_source.DAILYMED_URL
 
 FIELD_DISPLAY_NAMES = {
     "dosage_and_administration": "Dosage and Administration",
@@ -612,6 +667,12 @@ FIELD_DISPLAY_NAMES = {
 
 def _field_display(field: str) -> str:
     return FIELD_DISPLAY_NAMES.get(field, field.replace("_", " ").title())
+
+
+def _join_items(items: list[str]) -> str:
+    if len(items) <= 1:
+        return "".join(items)
+    return f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 def pointer_text(product_name: str, item: str, field: str, set_id: str | None) -> str:
@@ -666,6 +727,12 @@ _CLAUSE_BREAK_RE = re.compile(r"[.;:]")
 TAKE_WITH_FOOD_PHRASES = ("with food", "with meals", "with milk", "after eating")
 # "with the evening meal", "with the morning meal", etc.
 _WITH_THE_MEAL_RE = re.compile(r"\bwith the \w+ meal\b")
+_CONDITIONAL_RES = (
+    re.compile(r"\bif\b"),
+    re.compile(r"\bwhen\b.*\boccurs?\b"),
+    re.compile(r"\bshould\b.*\boccur\b"),
+    re.compile(r"\bin case of\b"),
+)
 
 _WORD_RE = re.compile(r"[a-z0-9]+")
 
@@ -688,6 +755,12 @@ def _avoid_cue_governs_item(lowered: str, variants: tuple[str, ...]) -> bool:
     return False
 
 
+def _is_conditional(lowered: str) -> bool:
+    return any(
+        rx.search(clause) for clause in lowered.split(";") for rx in _CONDITIONAL_RES
+    )
+
+
 def classify(quote: str, item: str) -> str:
     lowered = quote.lower()
     variants = ITEM_VARIANTS.get(item, (item.lower(),))
@@ -702,6 +775,8 @@ def classify(quote: str, item: str) -> str:
     if any(
         _phrase_in(lowered, p) for p in TAKE_WITH_FOOD_PHRASES
     ) or _WITH_THE_MEAL_RE.search(lowered):
+        if _is_conditional(lowered):
+            return "take_with_food_if_upset"
         return "take_with_food"
     return "other"
 
@@ -852,6 +927,22 @@ def _item_for_schedule(
 # --- Findings --------------------------------------------------------------------
 
 
+def _label_active_ingredient(item: RegimenItem, label: dict | None) -> str | None:
+    if not item.is_product:
+        return item.display_name.lower()
+    names = (label or {}).get("openfda", {}).get("substance_name") or []
+    return _join_items([n.lower() for n in names]) or None
+
+
+def _attribution_fields(
+    product_name: str | None, active_ingredient: str | None, set_id: str | None
+) -> dict:
+    return {
+        "label_attribution": label_source.attribution(product_name, active_ingredient),
+        "dailymed_url": label_source.dailymed_url(set_id),
+    }
+
+
 def _finding(
     item: RegimenItem,
     item_term: str,
@@ -861,11 +952,14 @@ def _finding(
     product_name: str | None = None,
     dosage_form: str | None = None,
     quote_source: str | None = None,
+    set_id: str | None = None,
+    active_ingredient: str | None = None,
 ) -> dict:
     return {
         "name": item.display_name,
         "is_product": item.is_product,
         "item": item_term,
+        "items": [item_term],
         "class": classify(match.quote, item_term),
         "quote": match.quote,
         "pointer": None,
@@ -884,6 +978,7 @@ def _finding(
         # when nothing matched, never guessed.
         "product_name": product_name,
         "dosage_form": dosage_form,
+        **_attribution_fields(product_name, active_ingredient, set_id),
     }
 
 
@@ -894,26 +989,50 @@ def _pointer_finding(
     product_name: str | None,
     dosage_form: str | None,
     set_id: str | None,
+    active_ingredient: str | None = None,
+) -> dict:
+    return _collapsed_pointer_finding(
+        item,
+        [item_term],
+        pointer.field,
+        product_name,
+        dosage_form,
+        set_id,
+        active_ingredient,
+    )
+
+
+def _collapsed_pointer_finding(
+    item: RegimenItem,
+    item_terms: list[str],
+    field: str,
+    product_name: str | None,
+    dosage_form: str | None,
+    set_id: str | None,
+    active_ingredient: str | None = None,
 ) -> dict:
     """A unit qualified by item + instruction cue but failed the quote
     integrity rules -- reported anyway, as a citation with no quote, rather
     than silently dropped."""
     display_product = product_name or item.display_name
+    joined = _join_items(item_terms)
     return {
         "name": item.display_name,
         "is_product": item.is_product,
-        "item": item_term,
+        "item": joined,
+        "items": item_terms,
         "class": "other",
         "quote": None,
-        "pointer": pointer_text(display_product, item_term, pointer.field, set_id),
+        "pointer": pointer_text(display_product, joined, field, set_id),
         "source_type": "fda_label",
-        "label_field": pointer.field,
+        "label_field": field,
         "verified": False,
         "quote_source": None,
         "window": None,
         "also_in_curated": False,
         "product_name": product_name,
         "dosage_form": dosage_form,
+        **_attribution_fields(product_name, active_ingredient, set_id),
     }
 
 
@@ -1005,6 +1124,7 @@ def _findings_for_item(
                     product_name = label_product_name(label)
                     dosage_form = label_dosage_form(label)
                     set_id = label.get("set_id")
+                    pointer_items: dict[str, list[str]] = {}
                     for item_term in ITEM_TERMS:
                         quotes, pointers = label_matches(label, item_term)
                         for match in quotes:
@@ -1022,6 +1142,8 @@ def _findings_for_item(
                                     product_name,
                                     dosage_form,
                                     QUOTE_SOURCE_FDA_LABEL,
+                                    set_id,
+                                    _label_active_ingredient(item, label),
                                 )
                             )
                         for p in pointers:
@@ -1029,16 +1151,19 @@ def _findings_for_item(
                             if key in seen_pointers:
                                 continue
                             seen_pointers.add(key)
-                            live_findings.append(
-                                _pointer_finding(
-                                    item,
-                                    item_term,
-                                    p,
-                                    product_name,
-                                    dosage_form,
-                                    set_id,
-                                )
+                            pointer_items.setdefault(p.field, []).append(p.item)
+                    for field, terms in pointer_items.items():
+                        live_findings.append(
+                            _collapsed_pointer_finding(
+                                item,
+                                terms,
+                                field,
+                                product_name,
+                                dosage_form,
+                                set_id,
+                                _label_active_ingredient(item, label),
                             )
+                        )
 
     # Source B, curated: single-ingredient only -- a combination product's
     # guidance belongs to the product (Source A), never one ingredient.
@@ -1058,6 +1183,9 @@ def _findings_for_item(
                     c.verified,
                     c.product_name,
                     c.dosage_form,
+                    None,
+                    c.set_id,
+                    _label_active_ingredient(item, None),
                 )
             )
 
@@ -1077,11 +1205,16 @@ def _timeline_entries(
 ) -> list[dict]:
     entries: list[dict] = []
     ongoing_emitted: set[str] = set()
+    markers_emitted: set[tuple[str, str, str]] = set()
 
     def emit(key: str, display_name: str, at: datetime, marker_source: str) -> None:
         for f in guidance_by_key.get(key, []):
             cls = f["class"]
             if cls in ("take_with_food", "take_on_empty_stomach"):
+                marker_key = (at.isoformat(), key, cls)
+                if marker_key in markers_emitted:
+                    continue
+                markers_emitted.add(marker_key)
                 entries.append(
                     {
                         "type": "dose_marker",

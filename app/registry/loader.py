@@ -64,9 +64,19 @@ _SALT_TOKENS = {
 }
 
 
+BREACH_SEVERITIES = ("caution", "urgent")
+DEFAULT_SEVERITY_ON_BREACH = "caution"
+
+
 class Registry:
     def __init__(self, entries: list[dict]):
         for e in entries:
+            severity = e.get("severity_on_breach", DEFAULT_SEVERITY_ON_BREACH)
+            if severity not in BREACH_SEVERITIES:
+                raise ValueError(
+                    f"registry entry {e.get('id')!r} has severity_on_breach "
+                    f"{severity!r}; expected one of {BREACH_SEVERITIES}"
+                )
             # Required key, nullable value. A missing key would read the same as
             # "no published threshold", which hides an incomplete entry.
             if "threshold_concentration_mg_per_l" not in e:
@@ -99,6 +109,11 @@ class Registry:
         accumulation state, so any computed value would be invented.
         """
         return self._by_id[substance_id]["threshold_concentration_mg_per_l"]
+
+    def severity_on_breach(self, substance_id: str) -> str:
+        return self._by_id[substance_id].get(
+            "severity_on_breach", DEFAULT_SEVERITY_ON_BREACH
+        )
 
     def unverified(self) -> list[str]:
         return [e["id"] for e in self._by_id.values() if not e.get("verified", False)]

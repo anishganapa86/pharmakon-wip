@@ -159,6 +159,12 @@ def _contributing(alert: Alert, events: dict[str, DoseEvent]) -> list[dict]:
     return out
 
 
+def _is_breach(alert: Alert) -> bool:
+    total = alert.payload.get("total_mg")
+    limit = alert.payload.get("threshold_mg")
+    return total is not None and limit is not None and total >= limit
+
+
 def recompute_alerts(
     session: Session,
     user_id: str,
@@ -199,6 +205,10 @@ def recompute_alerts(
             else None
         )
         produced += [a for a in (dup, acc) if a is not None]
+
+    for alert in produced:
+        if alert.kind in ("duplication", "threshold") and _is_breach(alert):
+            alert.severity = registry.severity_on_breach(alert.substance_id)
 
     active = {
         (r.kind, r.substance_id, r.severity): r

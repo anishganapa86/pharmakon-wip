@@ -59,9 +59,10 @@ class FakeOpenFDA:
             raise httpx.ConnectError("unreachable", request=request)
         for name, text in self.labels.items():
             if f'"{name}"' in search:
-                return httpx.Response(
-                    200, json={"results": [{"drug_interactions": [text]}]}
+                label = (
+                    text if isinstance(text, dict) else {"drug_interactions": [text]}
                 )
+                return httpx.Response(200, json={"results": [label]})
         return httpx.Response(
             404, json={"error": {"code": "NOT_FOUND", "message": "No matches"}}
         )
@@ -273,6 +274,52 @@ def test_class_word_match_without_combination_context_is_not_flagged(client, ope
     )
 
     assert interactions.label_mention("ibuprofen", "naproxen", load_registry()) is None
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "This interaction should be given consideration in patients taking "
+        "NSAIDs concomitantly with ACE-inhibitors.",
+        "Case-control and cohort epidemiological studies showed that "
+        "concomitant use of drugs that interfere with serotonin reuptake and "
+        "an NSAID may potentiate the risk of bleeding more than an NSAID alone.",
+        "These drugs should not be given together with NSAIDs.",
+    ],
+)
+def test_class_only_sentence_about_another_party_is_rejected(sentence, openfda):
+    openfda.labels["IBUPROFEN"] = sentence
+
+    assert interactions.label_mention("ibuprofen", "naproxen", load_registry()) is None
+    match, rejected = interactions.label_mention_detail(
+        "ibuprofen", "naproxen", load_registry()
+    )
+    assert match is None
+    assert rejected == "class"
+
+
+def test_rejected_class_match_goes_to_unchecked_notice_not_a_card(client, openfda):
+    openfda.labels["IBUPROFEN"] = (
+        "This interaction should be given consideration in patients taking "
+        "NSAIDs concomitantly with ACE-inhibitors."
+    )
+    openfda.labels["NAPROXEN"] = "Take with water."
+
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    assert [f for f in body["interactions"] if f["source_type"] == "fda_label"] == []
+    assert any("not in a sentence about using" in r for r in body["unchecked_reason"])
+
+
+def test_class_only_sentence_about_using_other_nsaids_together_is_kept(openfda):
+    openfda.labels["IBUPROFEN"] = "Do not use with other NSAIDs."
+
+    match = interactions.label_mention("ibuprofen", "naproxen", load_registry())
+
+    assert match is not None
+    assert match.sentence == "Do not use with other NSAIDs."
+    assert match.is_literal is False
+    assert match.other_class == "NSAID"
 
 
 def test_naproxen_ssri_bleeding_text_does_not_match_ibuprofen(openfda):
@@ -652,10 +699,11 @@ def test_nonregistry_label_lookups_go_through_the_disk_cache(client, openfda, tm
 
     manual_check(client, NONREGISTRY)
     first_pass = len(openfda.calls)
+    exact_lookups = [c for c in openfda.calls if ".exact:" in c]
     interactions.clear_cache()
     manual_check(client, NONREGISTRY)
 
-    assert first_pass == 3
+    assert len(exact_lookups) == 3
     assert len(openfda.calls) == first_pass
 
 
@@ -753,3 +801,139 @@ def test_only_curated_findings_can_be_unverified_references(client, openfda):
             assert f["quote_source"] == "fda_label_verbatim"
         else:
             assert f["quote_source"] is None
+
+
+def test_quote_after_a_section_number_heading_is_only_the_sentence(client, openfda):
+    openfda.labels["DONEPEZIL"] = (
+        "7.2 Use with Other N-methyl-D-aspartate (NMDA) Antagonists The combined "
+        "use of memantine with other NMDA antagonists has not been "
+        "systematically evaluated."
+    )
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    (finding,) = [f for f in body["interactions"] if f["source_type"] == "fda_label"]
+    assert finding["quoted_text"] == (
+        "The combined use of memantine with other NMDA antagonists has not been "
+        "systematically evaluated."
+    )
+
+
+def test_unseparable_section_heading_is_not_quoted_and_is_noted(client, openfda):
+    openfda.labels["DONEPEZIL"] = (
+        "7.2 Drug Interactions Memantine may be used with other medicines."
+    )
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    assert [f for f in body["interactions"] if f["source_type"] == "fda_label"] == []
+    assert any("could not quote cleanly" in r for r in body["unchecked_reason"])
+
+
+def test_sentence_with_a_cross_reference_is_not_quoted(client, openfda):
+    openfda.labels["DONEPEZIL"] = (
+        "Memantine has been coadministered with donepezil (see Clinical "
+        "Pharmacology 12.3)."
+    )
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    assert [f for f in body["interactions"] if f["source_type"] == "fda_label"] == []
+    assert any("could not quote cleanly" in r for r in body["unchecked_reason"])
+
+
+def test_label_finding_says_which_label_was_used(client, openfda):
+    openfda.labels["DONEPEZIL"] = {
+        "drug_interactions": [
+            "Memantine: concomitant administration of donepezil and memantine "
+            "did not affect the pharmacokinetics of either drug."
+        ],
+        "set_id": "don-123",
+        "openfda": {"brand_name": ["Aricept"]},
+    }
+
+    body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
+
+    (finding,) = [f for f in body["interactions"] if f["source_type"] == "fda_label"]
+    assert finding["label_product_name"] == "Aricept"
+    assert finding["label_attribution"] == (
+        "From the label for Aricept, a donepezil product. "
+        "Not necessarily the exact product you take."
+    )
+    assert finding["dailymed_url"].endswith("setid=don-123")
+
+
+def test_curated_card_has_no_label_attribution(client, openfda):
+    body = manual_check(client, ["ibuprofen", "naproxen"])
+
+    (finding,) = body["interactions"]
+    assert finding["source_type"] == "curated"
+    assert finding["label_attribution"] is None
+
+
+def _salt_form_only_handler(calls):
+    def handler(request: httpx.Request) -> httpx.Response:
+        search = request.url.params["search"]
+        calls.append(search)
+        if ".exact:" in search:
+            return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
+        labels = [
+            {
+                "openfda": {"generic_name": ["DONEPEZIL HYDROCHLORIDE"]},
+                "drug_interactions": ["Memantine may be combined with donepezil."],
+            },
+            {
+                "openfda": {
+                    "generic_name": [
+                        "DONEPEZIL HYDROCHLORIDE",
+                        "MEMANTINE HYDROCHLORIDE",
+                    ]
+                },
+                "drug_interactions": ["A combination label that must not be used."],
+            },
+        ]
+        return httpx.Response(200, json={"results": labels})
+
+    return handler
+
+
+def test_generic_name_stored_as_a_salt_form_is_found_by_the_fallback_search(
+    client, monkeypatch
+):
+    calls: list[str] = []
+    monkeypatch.setattr(
+        interactions,
+        "_http",
+        httpx.Client(transport=httpx.MockTransport(_salt_form_only_handler(calls))),
+    )
+    interactions.clear_cache()
+
+    body = manual_check(client, ["Donepezil", "Memantine"])
+
+    assert calls[0] == (
+        'openfda.generic_name.exact:"DONEPEZIL" AND _exists_:drug_interactions'
+    )
+    assert calls[1] == 'openfda.generic_name:"DONEPEZIL" AND _exists_:drug_interactions'
+    (finding,) = [f for f in body["interactions"] if f["source_type"] == "fda_label"]
+    assert finding["quoted_text"] == "Memantine may be combined with donepezil."
+    assert not any(
+        "No label found for 'donepezil'" in r for r in body["unchecked_reason"]
+    )
+    interactions.clear_cache()
+
+
+def test_fallback_search_never_uses_a_combination_label(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(
+        interactions,
+        "_http",
+        httpx.Client(transport=httpx.MockTransport(_salt_form_only_handler(calls))),
+    )
+    interactions.clear_cache()
+
+    sections = interactions.fetch_drug_interaction_sections("donepezil")
+
+    assert [s["text"] for s in sections] == [
+        "Memantine may be combined with donepezil."
+    ]
+    interactions.clear_cache()

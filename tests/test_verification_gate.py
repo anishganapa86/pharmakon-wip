@@ -132,6 +132,34 @@ def test_anything_else_leaves_the_gate_off(monkeypatch, value):
     assert verification.show_unverified_rules() is False
 
 
+@pytest.mark.parametrize("value", ["YES", "Yes", "On", "ON", "True", "tRuE"])
+def test_truthy_values_are_case_insensitive(monkeypatch, value):
+    monkeypatch.setenv(GATE, value)
+    assert verification.show_unverified_rules() is True
+
+
+@pytest.mark.parametrize("value", ["NO", "Off", "FALSE", "  ", "2", "enabled"])
+def test_other_spellings_leave_the_gate_off(monkeypatch, value):
+    monkeypatch.setenv(GATE, value)
+    assert verification.show_unverified_rules() is False
+
+
+def test_the_gate_is_read_on_every_request_not_once_at_import(client, monkeypatch):
+    monkeypatch.delenv(GATE, raising=False)
+    off = skincare_check(client, RETINOL_SALICYLIC)
+    monkeypatch.setenv(GATE, "on")
+    on = skincare_check(client, RETINOL_SALICYLIC)
+    monkeypatch.setenv(GATE, "off")
+    off_again = skincare_check(client, RETINOL_SALICYLIC)
+
+    assert "rules_awaiting_verification" in off
+    assert off["incompatibilities"] == []
+    assert "rules_awaiting_verification" not in on
+    assert len(on["incompatibilities"]) == 1
+    assert off_again["incompatibilities"] == []
+    assert "rules_awaiting_verification" in off_again
+
+
 def test_notice_wording_for_one_and_many(gate_off):
     assert verification.awaiting_message(1) == (
         "1 rule is awaiting verification and is not being applied."

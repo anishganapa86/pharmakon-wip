@@ -137,7 +137,7 @@ def test_take_with_food_sentence_is_found_and_classified_pure():
     matches = food_guidance.qualifying_matches(label, "food")
     assert len(matches) == 1
     assert "food" in matches[0].quote.lower()
-    assert food_guidance.classify(matches[0].quote, "food") == "take_with_food"
+    assert food_guidance.classify(matches[0].quote, "food") == "take_with_food_if_upset"
 
 
 def test_item_term_without_instruction_cue_is_excluded():
@@ -432,7 +432,7 @@ def test_avoid_grapefruit_juice_is_avoid_item():
 
 
 def test_take_with_food_or_milk_is_take_with_food():
-    quote = "Take with food or milk if stomach upset occurs."
+    quote = "Take with food or milk to reduce stomach upset."
     assert food_guidance.classify(quote, "food") == "take_with_food"
 
 
@@ -941,7 +941,7 @@ def test_food_guidance_never_creates_an_alert(client, openfda):
 
 def test_timeline_take_with_food_marker_logged_and_scheduled(client, openfda):
     openfda.labels["IBUPROFEN"] = oral_label(
-        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+        dosage_and_administration=["Take with food or milk to reduce stomach upset."]
     )
     register_and_log(client, "prod_advil_200", hours_ago=1)
     add_schedule(client, "prod_advil_200", times=["08:00"])
@@ -956,6 +956,57 @@ def test_timeline_take_with_food_marker_logged_and_scheduled(client, openfda):
     sources = {m["source"] for m in markers}
     assert sources == {"logged", "scheduled"}
     assert all(m["name"] == "Ibuprofen" for m in markers)
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "When using this product take with food or milk if stomach upset occurs.",
+        "If gastrointestinal complaints occur, administer ibuprofen tablets with "
+        "meals or milk.",
+        "Take with food or milk should stomach upset occur.",
+        "Take with food in case of stomach upset.",
+    ],
+)
+def test_conditional_with_food_sentence_is_take_with_food_if_upset(quote):
+    assert food_guidance.classify(quote, "food") == "take_with_food_if_upset"
+
+
+@pytest.mark.parametrize(
+    "quote", ["Take with food.", "Take this medicine with meals or milk."]
+)
+def test_unconditional_with_food_sentence_stays_take_with_food(quote):
+    assert food_guidance.classify(quote, "food") == "take_with_food"
+
+
+def test_conditional_with_food_gets_no_timeline_marker(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    assert any(f["class"] == "take_with_food_if_upset" for f in body["guidance"])
+    assert [e for e in body["timeline"] if e["type"] == "dose_marker"] == []
+
+
+def test_timeline_marker_is_one_per_dose_time_substance_and_class(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        dosage_and_administration=["Take with food."],
+        directions=["Take with meals."],
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    markers = [
+        e
+        for e in body["timeline"]
+        if e["type"] == "dose_marker" and e["class"] == "take_with_food"
+    ]
+    assert len(body["guidance"]) >= 2
+    assert len(markers) == 1
 
 
 def test_timeline_separate_from_window_drawn_around_dose(client, openfda):
@@ -1011,7 +1062,7 @@ def test_timeline_as_needed_schedule_has_no_scheduled_markers(client, openfda):
 
 def test_timeline_never_derived_from_concentrations(client, openfda, monkeypatch):
     openfda.labels["IBUPROFEN"] = oral_label(
-        dosage_and_administration=["Take with food or milk if stomach upset occurs."]
+        dosage_and_administration=["Take with food or milk to reduce stomach upset."]
     )
     # Schedule creation's own response legitimately calls compute_curve (to
     # show current concentration) -- set up the regimen before patching it
@@ -1115,3 +1166,234 @@ def test_no_live_finding_in_an_http_response_is_verified(client, openfda):
     live = [f for f in body["guidance"] if f["source_type"] == "fda_label"]
     assert live
     assert all(f["verified"] is False for f in live)
+
+
+def test_bare_with_is_not_an_instruction_cue():
+    label = oral_label(
+        dosage_and_administration=[
+            "A linear blood level doseresponse relationship exists with single "
+            "doses up to 800 mg (See CLINICAL PHARMACOLOGY for effects of food "
+            "on rate of absorption)."
+        ]
+    )
+
+    quotes, pointers = food_guidance.label_matches(label, "food")
+
+    assert quotes == []
+    assert pointers == []
+
+
+def test_with_food_phrase_is_still_an_instruction_cue():
+    label = oral_label(directions=["Swallow tablets with food."])
+
+    quotes, _pointers = food_guidance.label_matches(label, "food")
+
+    assert [q.quote for q in quotes] == ["Swallow tablets with food."]
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Take with food (See CLINICAL PHARMACOLOGY).",
+        "Take with food ( 2.1 ).",
+        "Take with food [see Dosage and Administration].",
+    ],
+)
+def test_sentence_with_a_cross_reference_is_never_quoted(sentence):
+    label = oral_label(dosage_and_administration=[sentence])
+
+    quotes, pointers = food_guidance.label_matches(label, "food")
+
+    assert quotes == []
+    assert [p.field for p in pointers] == ["dosage_and_administration"]
+
+
+def test_quote_after_a_section_number_heading_is_only_the_sentence():
+    label = oral_label(
+        drug_interactions=[
+            "7.2 Administration Instructions The tablets should be taken with food."
+        ]
+    )
+
+    quotes, _pointers = food_guidance.label_matches(label, "food")
+
+    assert [q.quote for q in quotes] == ["The tablets should be taken with food."]
+
+
+def test_unseparable_section_heading_becomes_a_pointer_not_a_quote():
+    label = oral_label(
+        drug_interactions=["7.2 Use Take with food to reduce stomach upset."]
+    )
+
+    quotes, pointers = food_guidance.label_matches(label, "food")
+
+    assert quotes == []
+    assert [p.field for p in pointers] == ["drug_interactions"]
+
+
+def test_pointers_sharing_a_label_and_field_collapse_into_one_finding(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        set_id="abc-123",
+        openfda={"route": ["ORAL"], "brand_name": ["Advil"]},
+        warnings=[
+            "Take with food (See Dosage). Take with milk (See Dosage). "
+            "Avoid alcohol (See Dosage)."
+        ],
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    pointers = [f for f in body["guidance"] if f["quote"] is None]
+    assert len(pointers) == 1
+    assert pointers[0]["items"] == ["food", "milk", "alcohol"]
+    assert pointers[0]["pointer"].startswith(
+        "The FDA label for Advil mentions food, milk and alcohol in its Warnings "
+        "section."
+    )
+    assert "dailymed.nlm.nih.gov" in pointers[0]["pointer"]
+
+
+def test_food_finding_says_which_label_was_used(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        set_id="adv-123",
+        openfda={"route": ["ORAL"], "brand_name": ["Advil"]},
+        directions=["Take with food."],
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    (finding,) = [f for f in body["guidance"] if f["source_type"] == "fda_label"]
+    assert finding["label_attribution"] == (
+        "From the label for Advil, an ibuprofen product. "
+        "Not necessarily the exact product you take."
+    )
+    assert finding["dailymed_url"].endswith("setid=adv-123")
+
+
+def test_food_pointer_says_which_label_was_used(client, openfda):
+    openfda.labels["IBUPROFEN"] = oral_label(
+        set_id="adv-123",
+        openfda={"route": ["ORAL"], "brand_name": ["Advil"]},
+        warnings=["Take with food (See Dosage)."],
+    )
+    register_and_log(client, "prod_advil_200", hours_ago=1)
+
+    body = client.get("/users/default/food-guidance").json()
+
+    (finding,) = [f for f in body["guidance"] if f["quote"] is None]
+    assert finding["label_attribution"].startswith(
+        "From the label for Advil, an ibuprofen product."
+    )
+
+
+def _fallback_handler(calls, labels_by_search_kind):
+    def handler(request: httpx.Request) -> httpx.Response:
+        search = request.url.params["search"]
+        calls.append(search)
+        kind = "exact" if ".exact:" in search else "fallback"
+        labels = labels_by_search_kind.get(kind, [])
+        if not labels:
+            return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
+        return httpx.Response(200, json={"results": labels})
+
+    return handler
+
+
+def test_brand_name_with_a_suffix_is_found_by_the_fallback_search(monkeypatch):
+    calls: list[str] = []
+    labels = [
+        {
+            "openfda": {
+                "route": ["ORAL"],
+                "brand_name": ["DayQuil Cold and Flu w/VapoCOOL"],
+            },
+            "directions": ["Take with food."],
+        },
+        {
+            "openfda": {"route": ["ORAL"], "brand_name": ["Unrelated Night Syrup"]},
+            "directions": ["Take at bedtime."],
+        },
+    ]
+    monkeypatch.setattr(
+        food_guidance,
+        "_http",
+        httpx.Client(
+            transport=httpx.MockTransport(
+                _fallback_handler(calls, {"fallback": labels})
+            )
+        ),
+    )
+    food_guidance.clear_cache()
+
+    found = food_guidance.fetch_labels_for_product("DayQuil")
+
+    assert calls == [
+        'openfda.brand_name.exact:"DAYQUIL"',
+        'openfda.brand_name:"DAYQUIL"',
+    ]
+    assert [food_guidance.label_product_name(label) for label in found] == [
+        "DayQuil Cold and Flu w/VapoCOOL"
+    ]
+    food_guidance.clear_cache()
+
+
+def test_generic_name_stored_as_a_salt_form_is_found_by_the_fallback_search(
+    monkeypatch,
+):
+    calls: list[str] = []
+    labels = [
+        {
+            "openfda": {
+                "route": ["ORAL"],
+                "generic_name": ["DONEPEZIL HYDROCHLORIDE"],
+            },
+            "directions": ["Take at bedtime."],
+        },
+        {
+            "openfda": {
+                "route": ["ORAL"],
+                "generic_name": ["DONEPEZIL HYDROCHLORIDE", "MEMANTINE"],
+            },
+            "directions": ["Combination label."],
+        },
+    ]
+    monkeypatch.setattr(
+        food_guidance,
+        "_http",
+        httpx.Client(
+            transport=httpx.MockTransport(
+                _fallback_handler(calls, {"fallback": labels})
+            )
+        ),
+    )
+    food_guidance.clear_cache()
+
+    found = food_guidance.fetch_labels_for_substance("donepezil")
+
+    assert calls == [
+        'openfda.generic_name.exact:"DONEPEZIL"',
+        'openfda.generic_name:"DONEPEZIL"',
+    ]
+    assert [label["directions"] for label in found] == [["Take at bedtime."]]
+    food_guidance.clear_cache()
+
+
+def test_exact_match_is_used_without_any_fallback_request(monkeypatch):
+    calls: list[str] = []
+    exact = [{"openfda": {"route": ["ORAL"]}, "directions": ["Take with food."]}]
+    monkeypatch.setattr(
+        food_guidance,
+        "_http",
+        httpx.Client(
+            transport=httpx.MockTransport(_fallback_handler(calls, {"exact": exact}))
+        ),
+    )
+    food_guidance.clear_cache()
+
+    found = food_guidance.fetch_labels_for_substance("ibuprofen")
+
+    assert len(found) == 1
+    assert calls == ['openfda.generic_name.exact:"IBUPROFEN"']
+    food_guidance.clear_cache()

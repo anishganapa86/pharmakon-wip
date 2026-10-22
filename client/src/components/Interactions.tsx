@@ -74,6 +74,9 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
       {interaction.quoted_text && (
         <p className="muted small">"{interaction.quoted_text}"</p>
       )}
+      {interaction.label_attribution && (
+        <p className="muted small">{interaction.label_attribution}</p>
+      )}
       {interaction.overlap && (
         <ul className="effect-tags">
           {interaction.overlap.map((w, i) => (

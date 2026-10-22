@@ -35,7 +35,8 @@ from ..detect.alerts import APPROACH_FRACTION, HEPATIC_THRESHOLD_FACTOR
 from ..pk.engine import UnsupportedKinetics, superpose
 from ..pk.individualize import Patient, adjusted_ke
 from ..registry.loader import Registry
-from . import label_cache
+from . import food_guidance, label_cache, label_source
+from .provenance import QUOTE_SOURCE_FDA_LABEL
 from .service import DEFAULT_PATIENT, load_doses, logged_doses
 
 OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
@@ -64,6 +65,8 @@ _cache: dict[tuple[str, str], str | None] = {}
 
 _text_cache: dict[str, str | None] = {}
 
+_sections_cache: dict[str, list[dict]] = {}
+
 
 class OpenFDAUnavailable(Exception):
     """openFDA could not be reached or answered with an error."""
@@ -72,6 +75,7 @@ class OpenFDAUnavailable(Exception):
 def clear_cache() -> None:
     _cache.clear()
     _text_cache.clear()
+    _sections_cache.clear()
 
 
 def normalize_symptom(symptom: str) -> str:
@@ -92,43 +96,112 @@ def mentions(text: str, symptom: str) -> bool:
     return re.search(pattern, text, re.IGNORECASE) is not None
 
 
-def fetch_adverse_reactions(generic_name: str) -> str | None:
-    return label_cache.cached(
-        "adverse_reactions",
+def fetch_adverse_reaction_sections(generic_name: str) -> list[dict]:
+    sections = label_cache.cached(
+        "adverse_reaction_sections",
         generic_name.upper(),
-        lambda: _request_adverse_reactions(generic_name),
+        lambda: _request_adverse_reaction_sections(generic_name),
     )
+    _sections_cache[generic_name.upper()] = sections
+    return sections
 
 
-def _request_adverse_reactions(generic_name: str) -> str | None:
-    """adverse_reactions text from single-ingredient openFDA labels.
+def fetch_adverse_reactions(generic_name: str) -> str | None:
+    return label_source.sections_text(fetch_adverse_reaction_sections(generic_name))
+
+
+def _request_adverse_reaction_sections(generic_name: str) -> list[dict]:
+    """adverse_reactions sections from single-ingredient openFDA labels, each
+    with the label it came from.
 
     Matches on the exact generic name so a combination product's label (whose
     reactions may belong to another ingredient) is never attributed to this
-    substance. Returns None when no such label has an adverse_reactions
+    substance. Returns [] when no such label has an adverse_reactions
     section. Raises OpenFDAUnavailable on network or server errors, so the
     caller can tell "no label" apart from "couldn't ask".
     """
-    search = (
+    results = _search_results(
         f'openfda.generic_name.exact:"{generic_name.upper()}"'
-        " AND _exists_:adverse_reactions"
+        " AND _exists_:adverse_reactions",
+        LABEL_LIMIT,
     )
-    try:
-        r = _http.get(
-            OPENFDA_LABEL_URL, params={"search": search, "limit": LABEL_LIMIT}
+    if not results:
+        candidates = _search_results(
+            label_source.fallback_search(
+                "generic_name", generic_name, "adverse_reactions"
+            ),
+            label_source.FALLBACK_LIMIT,
         )
+        results = [
+            label
+            for label in candidates
+            if label_source.fallback_matches("generic_name", label, generic_name)
+        ][:LABEL_LIMIT]
+    return label_source.sections_from_results(
+        results, "adverse_reactions", generic_name.lower()
+    )
+
+
+def _search_results(search: str, limit: int) -> list[dict]:
+    try:
+        r = _http.get(OPENFDA_LABEL_URL, params={"search": search, "limit": limit})
     except httpx.HTTPError as exc:
         raise OpenFDAUnavailable(str(exc)) from exc
     if r.status_code == 404:  # openFDA's "no matches"
-        return None
+        return []
     if r.status_code != 200:
         raise OpenFDAUnavailable(f"openFDA returned {r.status_code}")
+    return r.json().get("results", [])
+
+
+def section_mentioning(generic_name: str, symptom: str) -> dict | None:
+    for section in _sections_cache.get(generic_name.upper(), []):
+        if mentions(section["text"], symptom):
+            return section
+    return None
+
+
+def label_evidence(entry: dict, symptom: str, source: str) -> dict:
+    evidence = {
+        **label_source.source_fields(None),
+        "matched_sentence": None,
+        "quote_source": None,
+        "label_pointer": None,
+    }
+    if source != OPENFDA_SOURCE:
+        return evidence
     sections = [
-        text
-        for label in r.json().get("results", [])
-        for text in label.get("adverse_reactions", [])
+        section
+        for section in _sections_cache.get(entry["name"].upper(), [])
+        if mentions(section["text"], symptom)
     ]
-    return "\n".join(sections) or None
+    for section in sections:
+        for sentence in food_guidance.quotable_sentences(section["text"]):
+            if mentions(sentence, symptom):
+                return {
+                    **evidence,
+                    **label_source.source_fields(section),
+                    "matched_sentence": sentence,
+                    "quote_source": QUOTE_SOURCE_FDA_LABEL,
+                }
+    if sections:
+        first = sections[0]
+        who = first.get("product_name") or entry["name"]
+        return {
+            **evidence,
+            **label_source.source_fields(first),
+            "label_pointer": (
+                f"The FDA label for {who} mentions {symptom} in its Adverse "
+                "Reactions section."
+            ),
+        }
+    return evidence
+
+
+def label_source_fields(entry: dict, symptom: str, source: str) -> dict:
+    if source != OPENFDA_SOURCE:
+        return label_source.source_fields(None)
+    return label_source.source_fields(section_mentioning(entry["name"], symptom))
 
 
 def _label_text(generic_name: str) -> str | None:
@@ -327,6 +400,9 @@ def side_effect_profile(
                     "source": source,
                     "source_label": SOURCE_LABELS[source],
                     "verified": False,
+                    "label_attribution": label_source_fields(entry, effect, source)[
+                        "label_attribution"
+                    ],
                 }
             )
             key = normalize_symptom(effect)
@@ -349,6 +425,13 @@ def side_effect_profile(
                 "total_24h_mg": level["total_24h_mg"],
                 "threshold_24h_mg": level["threshold_24h_mg"],
                 "side_effects": side_effects_found,
+                "label_attributions": list(
+                    dict.fromkeys(
+                        e["label_attribution"]
+                        for e in side_effects_found
+                        if e["label_attribution"]
+                    )
+                ),
                 "contributing_products": [
                     {"product_id": pid, "product_name": name}
                     for pid, name in products.items()
@@ -463,4 +546,5 @@ def _match(entry, symptom, source, level, recent, by_id) -> dict:
         "threshold_status": status,
         "contributing_doses": contributing,
         "message": message,
+        **label_evidence(entry, symptom, source),
     }

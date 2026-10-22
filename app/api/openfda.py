@@ -36,6 +36,8 @@ from dataclasses import dataclass
 
 import httpx
 
+from .names import display_product_name
+
 OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
 OPENFDA_DRUGSFDA_URL = "https://api.fda.gov/drug/drugsfda.json"
 
@@ -141,15 +143,15 @@ def _to_product(result: dict, matched_via: str) -> OpenFDAProduct | None:
     names = meta.get("brand_name") or meta.get("generic_name") or []
     if not names:
         return None
-    brand_name = names[0]
+    raw_brand_name = names[0]
     substances = meta.get("substance_name", [])
     if not substances:
         return None
     route = (meta.get("route") or [None])[0]
-    pid = _product_id(brand_name, substances)
+    pid = _product_id(raw_brand_name, substances)
     product = OpenFDAProduct(
         id=pid,
-        brand_name=brand_name,
+        brand_name=display_product_name(raw_brand_name),
         ingredients=tuple(OpenFDAIngredient(name=s) for s in substances),
         route=route,
         matched_via=matched_via,
@@ -193,7 +195,7 @@ def _drugsfda_to_products(results: list[dict]) -> list[OpenFDAProduct]:
             pid = _product_id(brand_name, substances)
             product = OpenFDAProduct(
                 id=pid,
-                brand_name=brand_name,
+                brand_name=display_product_name(brand_name),
                 ingredients=tuple(OpenFDAIngredient(name=s) for s in substances),
                 route=None,
                 matched_via="name",
