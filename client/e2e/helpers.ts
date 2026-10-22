@@ -1,17 +1,11 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { checkpoint, recordBug, recordShot } from './fixtures.ts'
 
 export const API_URL = process.env.DEMO_API_URL ?? 'http://localhost:8000'
 
-const runDir =
-  process.env.DEMO_RUN_DIR ??
-  path.resolve(import.meta.dirname, '../../reports/runs/local')
-
 export async function shot(page: Page, name: string): Promise<void> {
-  const dir = path.join(runDir, 'screenshots')
-  fs.mkdirSync(dir, { recursive: true })
-  await page.screenshot({ path: path.join(dir, `${name}.png`), fullPage: true })
+  await checkpoint(page, name)
+  await recordShot(name)
 }
 
 function escapeRegExp(text: string): string {
@@ -54,6 +48,7 @@ export async function openTab(page: Page, name: string): Promise<void> {
     'aria-selected',
     'true',
   )
+  await checkpoint(page, `tab ${name}`)
 }
 
 export async function pickProduct(
@@ -83,6 +78,7 @@ export async function logDose(
   await logPanel(page).getByRole('button', { name: 'Log', exact: true }).click()
   await expect(page.getByText(`Logged ${quantity} × ${brand}.`)).toBeVisible()
   await page.waitForLoadState('networkidle')
+  await checkpoint(page, `log ${brand} x${quantity}`)
 }
 
 export async function localTimeIn(page: Page, minutes: number): Promise<string> {
@@ -109,6 +105,7 @@ export async function scheduleProduct(
   await expect(form).toHaveCount(0)
   await expect(medCard(page, brand)).toBeVisible()
   await page.waitForLoadState('networkidle')
+  await checkpoint(page, `schedule ${brand}`)
 }
 
 export async function hasHorizontalOverflow(page: Page): Promise<boolean> {
@@ -128,6 +125,9 @@ export async function knownBug(
     await run()
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-    if (signature.test(message)) throw error
+    if (signature.test(message)) {
+      await recordBug(test.info().title, note)
+      throw error
+    }
   }
 }
