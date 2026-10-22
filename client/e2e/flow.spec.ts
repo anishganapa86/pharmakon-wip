@@ -203,7 +203,7 @@ async function foodCards(page: Page) {
   }
 }
 
-test('f. Food & drink quotes start properly, cards name a product, pointers link to DailyMed', async ({
+test('f. Food & drink quotes start properly, cards name a product, water is never avoided, pointers link to DailyMed', async ({
   page,
 }) => {
   const { cards, quoted, pointers } = await foodCards(page)
@@ -221,6 +221,13 @@ test('f. Food & drink quotes start properly, cards name a product, pointers link
   expect(
     withoutProduct.map((c) => c.paras[0]),
     'every card shows a product name',
+  ).toEqual([])
+
+  expect(
+    quoted
+      .filter((c) => c.tag === 'Avoid' && /\bwater\b/i.test(c.quote))
+      .map((c) => c.quote),
+    'no Avoid tag on a water sentence',
   ).toEqual([])
 
   expect(
@@ -244,22 +251,6 @@ test('f. every Food & drink quote ends with terminal punctuation', async ({ page
       expect(
         quoted.filter((c) => !/[.!?]$/.test(c.quote)).map((c) => c.quote),
         'every quote ends with terminal punctuation',
-      ).toEqual([])
-    },
-  )
-})
-
-test('f. no "Avoid" tag appears on a sentence about water', async ({ page }) => {
-  await knownBug(
-    'a dosage sentence ("take 2 tablets every 8 hours with water") is tagged Avoid',
-    /no Avoid tag on a water sentence/,
-    async () => {
-      const { quoted } = await foodCards(page)
-      expect(
-        quoted
-          .filter((c) => c.tag === 'Avoid' && /\bwater\b/i.test(c.quote))
-          .map((c) => c.quote),
-        'no Avoid tag on a water sentence',
       ).toEqual([])
     },
   )
@@ -437,7 +428,7 @@ test('h. saving an added product stores it, logs it, and shows it under My produ
   )
 })
 
-test('i. timeline accepts a skin entry and a headache entry', async ({ page }) => {
+test('i. timeline accepts a skin entry and a headache entry and deletes one after a confirm step', async ({ page }) => {
   await openTab(page, 'Timeline')
   const form = page.locator('form.log-form')
 
@@ -454,25 +445,22 @@ test('i. timeline accepts a skin entry and a headache entry', async ({ page }) =
     page.locator('.timeline-item-log').filter({ hasText: 'mild, behind the eyes' }),
   ).toHaveCount(1)
   await shot(page, 'i-1-entries')
-})
 
-test('i. timeline entry can be deleted after a confirm step', async ({ page }) => {
-  await knownBug(
-    'Timeline.tsx has no delete control; deleteLog in api.ts is never called',
-    /entry can be deleted/,
-    async () => {
-      await openTab(page, 'Timeline')
-      const entry = page
-        .locator('.timeline-item-log')
-        .filter({ hasText: 'mild, behind the eyes' })
-      await expect(entry).toHaveCount(1)
-      page.once('dialog', (dialog) => void dialog.accept())
-      const remove = entry.getByRole('button', { name: /delete|remove/i })
-      await expect(remove, 'entry can be deleted').toHaveCount(1, { timeout: 3000 })
-      await remove.click()
-      await expect(entry).toHaveCount(0)
-    },
-  )
+  const headache = page
+    .locator('.timeline-item-log')
+    .filter({ hasText: 'mild, behind the eyes' })
+  await headache.getByRole('button', { name: /^Delete/ }).click()
+  await expect(headache.getByText('Delete this entry?')).toBeVisible()
+  await headache.getByRole('button', { name: 'Cancel' }).click()
+  await expect(headache).toHaveCount(1)
+  await headache.getByRole('button', { name: /^Delete/ }).click()
+  await shot(page, 'i-2-confirm')
+  await headache.getByRole('button', { name: 'Yes, delete' }).click()
+  await expect(headache).toHaveCount(0)
+  await expect(
+    page.locator('.timeline-item-log').filter({ hasText: 'dry patch on cheek' }),
+  ).toHaveCount(1)
+  await shot(page, 'i-3-deleted')
 })
 
 test('i. timeline has no nested scroll box', async ({ page }) => {
