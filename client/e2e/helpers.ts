@@ -129,5 +129,6 @@ export async function knownBug(
       await recordBug(test.info().title, note)
       throw error
     }
+    console.log(`[known-bug mismatch] ${test.info().title}: ${message.split('\n').slice(0, 6).join(' | ')}`)
   }
 }
