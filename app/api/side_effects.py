@@ -98,7 +98,7 @@ def mentions(text: str, symptom: str) -> bool:
 
 def fetch_adverse_reaction_sections(generic_name: str) -> list[dict]:
     sections = label_cache.cached(
-        "adverse_reaction_sections",
+        "adverse_reaction_sections_v2",
         generic_name.upper(),
         lambda: _request_adverse_reaction_sections(generic_name),
     )

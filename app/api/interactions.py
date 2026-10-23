@@ -272,7 +272,7 @@ def _entry(key: str, registry: Registry, shadow: dict[str, dict]) -> dict:
 
 def fetch_drug_interaction_sections(generic_name: str) -> list[dict]:
     sections = label_cache.cached(
-        "drug_interaction_sections",
+        "drug_interaction_sections_v2",
         generic_name.upper(),
         lambda: _request_drug_interaction_sections(generic_name),
     )
