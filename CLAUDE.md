@@ -114,6 +114,24 @@ ones. And no diagnosis, no medication recommendation, no efficacy prediction.
   tests disable it). `python scripts/warm_label_cache.py` fills it for every
   registry substance and catalog combination product.
 
+## Demo test
+
+A browser and API check of the whole demo, separate from `pytest`. It starts
+the API on a scratch SQLite file (never `pharmakon.db`) and a built client
+preview, then writes `reports/demo_test.md` (gitignored).
+
+    scripts/run_demo_test.sh                 # API smoke, desktop flow, phone layout
+    scripts/run_demo_test.sh --repeat 2      # run twice and mark flaky steps
+    scripts/run_demo_test.sh --gate-off      # SHOW_UNVERIFIED_RULES=0, gate tests only
+    scripts/run_demo_test.sh --no-phone      # skip the 390px project
+    cd client && npm run test:e2e            # Playwright desktop, servers already up
+    cd client && npm run test:e2e:phone
+
+Specs are in `client/e2e/`. A step that fails because of a real app bug is a
+`test.fail` test through `knownBug` in `helpers.ts`, with the bug in its note.
+The report lists those as "known bug"; a known-bug test that starts passing
+fails the run, so remove its `knownBug` wrapper when the bug is fixed.
+
 ## Working style
 
 - Write the test first for anything in `app/pk/` or `app/detect/`. The suite is
