@@ -69,7 +69,7 @@ class Recorder {
           expected: false,
           ms: Date.now() - started,
         })
-      })
+      }).catch(() => undefined)
     })
     page.on('requestfailed', (request) => {
       const failure = request.failure()?.errorText ?? 'failed'
