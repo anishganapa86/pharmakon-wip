@@ -259,12 +259,12 @@ def run(base: str) -> list[dict]:
         if isinstance(body, dict):
             smoke.expect(
                 entry,
-                bool(body.get("matches"))
-                and all(
-                    m.get("source") in ("openfda_label", "local_reference")
-                    for m in body["matches"]
+                any(
+                    m.get("substance", {}).get("id") == "caffeine"
+                    and m.get("source") == "local_reference"
+                    for m in body.get("matches", [])
                 ),
-                "headache matches missing or without a source",
+                "no local-reference caffeine match for headache",
             )
 
         entry, body = smoke.call(

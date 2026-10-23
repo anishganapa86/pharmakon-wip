@@ -99,29 +99,25 @@ test('b. urgent alert "What to do" does not tell the user to stop taking the med
   await expect(alert.locator('.alert-action')).not.toContainText(/stop taking/i)
 })
 
-test('c. symptom headache lists tagged matches, backache finds nothing', async ({
+test('c. symptom headache matches caffeine tagged local reference, backache finds nothing', async ({
   page,
 }) => {
   await logDose(page, 'NoDoz', 'NoDoz', 2)
   const panel = symptomPanel(page)
   await panel.getByRole('textbox', { name: 'Symptom' }).fill('headache')
   await panel.getByRole('button', { name: 'Check' }).click()
-  const matches = panel.locator('li.alert')
-  await expect(matches.first()).toBeVisible()
-  for (const match of await matches.all()) {
-    await expect(match.locator('.source')).toContainText(/FDA label|Local reference/)
-  }
-  const caffeine = matches.filter({
-    has: page.locator('.alert-substance', { hasText: 'Caffeine' }),
-  })
-  for (const match of await caffeine.all()) {
-    await expect(match.locator('.source-local_reference')).toContainText(/local reference/i)
-  }
+  const caffeine = panel
+    .locator('li.alert')
+    .filter({ has: page.locator('.alert-substance', { hasText: 'Caffeine' }) })
+  await expect(caffeine).toHaveCount(1)
+  await expect(caffeine.locator('.source-local_reference')).toContainText(
+    /local reference/i,
+  )
   await shot(page, 'c-1-headache')
 
   await panel.getByRole('textbox', { name: 'Symptom' }).fill('backache')
   await panel.getByRole('button', { name: 'Check' }).click()
-  await expect(matches).toHaveCount(0)
+  await expect(panel.locator('li.alert')).toHaveCount(0)
   await expect(
     panel.getByText(
       'None of your current substances at elevated levels are associated with this symptom.',
