@@ -224,6 +224,8 @@ def _request_candidates_by(field: str, value: str) -> list[dict]:
     exact = _search_labels(
         f'openfda.{field}.exact:"{value.upper()}"', LABEL_SEARCH_LIMIT
     )
+    if field == "generic_name":
+        exact = label_source.oral_labels(exact, value)
     if exact:
         return exact
     candidates = _search_labels(
@@ -233,6 +235,7 @@ def _request_candidates_by(field: str, value: str) -> list[dict]:
         label
         for label in candidates
         if label_source.fallback_matches(field, label, value)
+        and (field != "generic_name" or label_source.is_oral(label))
     ]
     return matching[:LABEL_SEARCH_LIMIT]
 

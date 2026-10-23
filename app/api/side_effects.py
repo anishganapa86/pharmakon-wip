@@ -120,10 +120,13 @@ def _request_adverse_reaction_sections(generic_name: str) -> list[dict]:
     section. Raises OpenFDAUnavailable on network or server errors, so the
     caller can tell "no label" apart from "couldn't ask".
     """
-    results = _search_results(
-        f'openfda.generic_name.exact:"{generic_name.upper()}"'
-        " AND _exists_:adverse_reactions",
-        LABEL_LIMIT,
+    results = label_source.oral_labels(
+        _search_results(
+            f'openfda.generic_name.exact:"{generic_name.upper()}"'
+            " AND _exists_:adverse_reactions",
+            LABEL_LIMIT,
+        ),
+        generic_name,
     )
     if not results:
         candidates = _search_results(
@@ -135,7 +138,8 @@ def _request_adverse_reaction_sections(generic_name: str) -> list[dict]:
         results = [
             label
             for label in candidates
-            if label_source.fallback_matches("generic_name", label, generic_name)
+            if label_source.is_oral(label)
+            and label_source.fallback_matches("generic_name", label, generic_name)
         ][:LABEL_LIMIT]
     return label_source.sections_from_results(
         results, "adverse_reactions", generic_name.lower()

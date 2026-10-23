@@ -67,7 +67,15 @@ def label_text(monkeypatch):
         for name, text in texts.items():
             if f'"{name}"' in search:
                 return httpx.Response(
-                    200, json={"results": [{"drug_interactions": [text]}]}
+                    200,
+                    json={
+                        "results": [
+                            {
+                                "openfda": {"route": ["ORAL"]},
+                                "drug_interactions": [text],
+                            }
+                        ]
+                    },
                 )
         return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
 

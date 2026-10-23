@@ -56,7 +56,9 @@ class FakeOpenFDA:
         for name, text in self.labels.items():
             if f'"{name}"' in search:
                 label = (
-                    text if isinstance(text, dict) else {"adverse_reactions": [text]}
+                    text
+                    if isinstance(text, dict)
+                    else {"openfda": {"route": ["ORAL"]}, "adverse_reactions": [text]}
                 )
                 return httpx.Response(200, json={"results": [label]})
         return httpx.Response(
@@ -183,6 +185,51 @@ def test_no_label_on_openfda_falls_back_to_local_list(client, openfda):
     assert match["source"] == "local_reference"
 
 
+def test_caffeine_citrate_labels_are_ignored_so_the_local_reference_answers(
+    client, openfda
+):
+    openfda.labels["CAFFEINE"] = {
+        "openfda": {
+            "generic_name": ["CAFFEINE CITRATE"],
+            "route": ["INTRAVENOUS"],
+        },
+        "adverse_reactions": ["Apnea of prematurity in infants was treated."],
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["substance"]["id"] == "caffeine"
+    assert match["source"] == "local_reference"
+
+
+def test_oral_caffeine_citrate_solution_is_also_ignored(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "openfda": {
+            "generic_name": ["CAFFEINE CITRATE"],
+            "route": ["ORAL"],
+        },
+        "adverse_reactions": ["Nausea was reported."],
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["source"] == "local_reference"
+
+
+def test_an_oral_caffeine_label_answers_when_it_lists_the_symptom(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "openfda": {"generic_name": ["CAFFEINE"], "route": ["ORAL"]},
+        "adverse_reactions": ["Headache and jitteriness were reported."],
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["source"] == "openfda_label"
+
+
 def test_a_label_that_exists_is_authoritative_over_the_local_list(client, openfda):
     # Spec: the local list is a fallback for when openFDA returns nothing.
     openfda.labels["CAFFEINE"] = "Nausea was reported."
@@ -288,7 +335,7 @@ def test_label_match_says_which_label_was_used(client, openfda):
     openfda.labels["CAFFEINE"] = {
         "adverse_reactions": ["Headache, dizziness, and nausea were reported."],
         "set_id": "caf-123",
-        "openfda": {"brand_name": ["NoDoz"]},
+        "openfda": {"brand_name": ["NoDoz"], "route": ["ORAL"]},
     }
     log(client, "prod_nodoz_200", 2, quantity=2)
 
@@ -317,12 +364,16 @@ def test_adverse_reactions_for_a_salt_form_generic_name_use_the_fallback_search(
             json={
                 "results": [
                     {
-                        "openfda": {"generic_name": ["DONEPEZIL HYDROCHLORIDE"]},
+                        "openfda": {
+                            "generic_name": ["DONEPEZIL HYDROCHLORIDE"],
+                            "route": ["ORAL"],
+                        },
                         "adverse_reactions": ["Nausea and diarrhea were reported."],
                     },
                     {
                         "openfda": {
-                            "generic_name": ["DONEPEZIL HYDROCHLORIDE", "MEMANTINE"]
+                            "generic_name": ["DONEPEZIL HYDROCHLORIDE", "MEMANTINE"],
+                            "route": ["ORAL"],
                         },
                         "adverse_reactions": ["Combination label text."],
                     },
@@ -348,7 +399,7 @@ def test_label_match_shows_the_verbatim_sentence_and_dailymed_link(client, openf
             "Insomnia was common. Headache, dizziness, and nausea were reported."
         ],
         "set_id": "caf-123",
-        "openfda": {"brand_name": ["NoDoz"]},
+        "openfda": {"brand_name": ["NoDoz"], "route": ["ORAL"]},
     }
     log(client, "prod_nodoz_200", 2, quantity=2)
 
@@ -368,7 +419,7 @@ def test_sentence_with_a_cross_reference_is_not_quoted_but_still_linked(
     openfda.labels["CAFFEINE"] = {
         "adverse_reactions": ["Headache was reported (See WARNINGS)."],
         "set_id": "caf-123",
-        "openfda": {"brand_name": ["NoDoz"]},
+        "openfda": {"brand_name": ["NoDoz"], "route": ["ORAL"]},
     }
     log(client, "prod_nodoz_200", 2, quantity=2)
 

@@ -55,7 +55,9 @@ class FakeOpenFDA:
         for name, text in self.labels.items():
             if f'"{name}"' in search:
                 label = (
-                    text if isinstance(text, dict) else {"adverse_reactions": [text]}
+                    text
+                    if isinstance(text, dict)
+                    else {"openfda": {"route": ["ORAL"]}, "adverse_reactions": [text]}
                 )
                 return httpx.Response(200, json={"results": [label]})
         return httpx.Response(
@@ -229,7 +231,7 @@ def test_reachable_openfda_adds_no_unchecked_reason(client, openfda):
 def test_label_sourced_effects_say_which_label_was_used(client, openfda):
     openfda.labels["CAFFEINE"] = {
         "adverse_reactions": ["Nausea, headache, and jitteriness were reported."],
-        "openfda": {"brand_name": ["NoDoz"]},
+        "openfda": {"brand_name": ["NoDoz"], "route": ["ORAL"]},
     }
     log(client, "prod_nodoz_200", 2)
 

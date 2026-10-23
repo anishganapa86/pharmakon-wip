@@ -60,7 +60,9 @@ class FakeOpenFDA:
         for name, text in self.labels.items():
             if f'"{name}"' in search:
                 label = (
-                    text if isinstance(text, dict) else {"drug_interactions": [text]}
+                    text
+                    if isinstance(text, dict)
+                    else {"openfda": {"route": ["ORAL"]}, "drug_interactions": [text]}
                 )
                 return httpx.Response(200, json={"results": [label]})
         return httpx.Response(
@@ -849,7 +851,7 @@ def test_label_finding_says_which_label_was_used(client, openfda):
             "did not affect the pharmacokinetics of either drug."
         ],
         "set_id": "don-123",
-        "openfda": {"brand_name": ["Aricept"]},
+        "openfda": {"brand_name": ["Aricept"], "route": ["ORAL"]},
     }
 
     body = manual_check(client, ["Donepezil Hydrochloride", "Memantine"])
@@ -879,7 +881,10 @@ def _salt_form_only_handler(calls):
             return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
         labels = [
             {
-                "openfda": {"generic_name": ["DONEPEZIL HYDROCHLORIDE"]},
+                "openfda": {
+                    "generic_name": ["DONEPEZIL HYDROCHLORIDE"],
+                    "route": ["ORAL"],
+                },
                 "drug_interactions": ["Memantine may be combined with donepezil."],
             },
             {
@@ -887,7 +892,8 @@ def _salt_form_only_handler(calls):
                     "generic_name": [
                         "DONEPEZIL HYDROCHLORIDE",
                         "MEMANTINE HYDROCHLORIDE",
-                    ]
+                    ],
+                    "route": ["ORAL"],
                 },
                 "drug_interactions": ["A combination label that must not be used."],
             },

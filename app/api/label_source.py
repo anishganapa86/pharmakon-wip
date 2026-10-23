@@ -87,15 +87,41 @@ def fallback_search(field: str, name: str, exists_field: str | None = None) -> s
     return search
 
 
+DIFFERENT_DRUG_SALTS = {"caffeine": frozenset({"citrate"})}
+
+
 def _canonical_generic(name: str) -> str:
     return strip_salt_tokens(normalize(name))
+
+
+def same_drug_name(label_name: str, name: str) -> bool:
+    base = _canonical_generic(label_name)
+    if base != _canonical_generic(name):
+        return False
+    distinct = DIFFERENT_DRUG_SALTS.get(base, frozenset())
+    return set(normalize(label_name).split()) & distinct == (
+        set(normalize(name).split()) & distinct
+    )
+
+
+def is_oral(label: dict) -> bool:
+    return "ORAL" in ((label.get("openfda") or {}).get("route") or [])
+
+
+def _names_the_drug(label: dict, name: str) -> bool:
+    names = (label.get("openfda") or {}).get("generic_name") or []
+    return not names or any(same_drug_name(n, name) for n in names)
+
+
+def oral_labels(labels: list[dict], name: str) -> list[dict]:
+    return [
+        label for label in labels if is_oral(label) and _names_the_drug(label, name)
+    ]
 
 
 def fallback_matches(field: str, label: dict, name: str) -> bool:
     names = (label.get("openfda") or {}).get(field) or []
     if field == "generic_name":
-        return len(names) == 1 and _canonical_generic(names[0]) == _canonical_generic(
-            name
-        )
+        return len(names) == 1 and same_drug_name(names[0], name)
     pattern = re.compile(rf"\b{re.escape(name)}\b", re.IGNORECASE)
     return any(pattern.search(n) for n in names)
