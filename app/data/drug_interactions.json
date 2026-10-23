@@ -3,9 +3,9 @@
     {
       "substance_a": "NSAID",
       "substance_b": "NSAID",
-      "effect": "Combining two NSAIDs does not improve pain or fever relief over either alone and increases the risk of GI bleeding, ulcers, and kidney injury.",
-      "recommendation": "Use only one NSAID (ibuprofen, naproxen, or aspirin) at a time. Ask a pharmacist before combining them.",
-      "source": "FDA OTC Drug Facts label (ibuprofen, naproxen): \"do not use with any other drug containing an NSAID\"",
+      "effect": "The FDA label for ibuprofen says the chance of stomach bleeding is higher if you take other drugs containing prescription or nonprescription NSAIDs.",
+      "recommendation": "The label says to ask a doctor or pharmacist before use if you are taking any other drug containing an NSAID.",
+      "source": "FDA OTC Drug Facts label (Advil, ibuprofen), stomach bleeding warning: \"take other drugs containing prescription or nonprescription NSAIDs [aspirin, ibuprofen, naproxen, or others]\"",
       "verified": false
     },
     {

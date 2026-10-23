@@ -115,6 +115,10 @@ def detect_duplication(
 
     breached = total >= effective
     multi = len(products) > 1
+    if params.substance_id == "acetaminophen" and effective == threshold_24h_mg:
+        level = f"{effective:,.0f} mg liver-warning level on OTC labels"
+    else:
+        level = f"{effective:.0f} mg limit"
 
     lead = (
         f"{display_name} is in {len(products)} of the products you logged "
@@ -130,7 +134,7 @@ def detect_duplication(
         message=(
             f"{lead} Your 24-hour total is {total:.0f} mg, which "
             f"{'exceeds' if breached else 'is approaching'} the "
-            f"{effective:.0f} mg limit. Talk to a pharmacist or your prescriber."
+            f"{level}. Talk to a pharmacist or your prescriber."
         ),
         contributing_dose_ids=[d.dose_id for d in recent],
         notes=notes,

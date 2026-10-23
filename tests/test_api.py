@@ -170,9 +170,10 @@ def test_hidden_acetaminophen_across_products_triggers_duplication(client):
         "id": "acetaminophen",
         "display_name": "Acetaminophen",
         "threshold_explanation": (
-            "The 4000 mg daily limit is set by the FDA to prevent liver "
-            "damage. Exceeding it repeatedly can cause acute liver failure. "
-            "Risk increases with alcohol use or liver impairment."
+            "OTC Drug Facts labels warn that severe liver damage may occur "
+            "above 4,000 mg of acetaminophen in 24 hours, and risk increases "
+            "with alcohol use. Many products' directions set a lower daily "
+            "maximum."
         ),
         "description": "Pain reliever and fever reducer",
         "verified": False,

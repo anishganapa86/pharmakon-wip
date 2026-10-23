@@ -30,9 +30,9 @@ def test_documented_substance_carries_its_explanation():
     registry = load_registry()
     body = alert_json(_record("acetaminophen"), registry)
     assert body["substance"]["threshold_explanation"] == (
-        "The 4000 mg daily limit is set by the FDA to prevent liver damage. "
-        "Exceeding it repeatedly can cause acute liver failure. Risk "
-        "increases with alcohol use or liver impairment."
+        "OTC Drug Facts labels warn that severe liver damage may occur above "
+        "4,000 mg of acetaminophen in 24 hours, and risk increases with "
+        "alcohol use. Many products' directions set a lower daily maximum."
     )
 
 
