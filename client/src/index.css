@@ -53,26 +53,6 @@ body::before {
   background-size: 720px auto, 460px auto, 380px auto;
 }
 
-/* Measurement ruler down the left edge, wide screens only */
-@media (min-width: 1200px) {
-  body::after {
-    content: "";
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    left: 28px;
-    width: 18px;
-    z-index: 0;
-    pointer-events: none;
-    background-image:
-      repeating-linear-gradient(to bottom, rgba(11, 122, 107, 0.55) 0 1px, transparent 1px 60px),
-      repeating-linear-gradient(to bottom, rgba(11, 122, 107, 0.28) 0 1px, transparent 1px 12px);
-    background-size: 18px 100%, 8px 100%;
-    background-position: left top, left top;
-    background-repeat: no-repeat;
-  }
-}
-
 #root {
   position: relative;
   z-index: 1;

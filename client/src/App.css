@@ -1,20 +1,6 @@
 /* Pharmakon UI: clinical-tech theme.
    Colors and fonts come from the variables in index.css. */
 
-@keyframes pulse-dot {
-  0% {
-    box-shadow: 0 0 0 0 rgba(15, 157, 143, 0.5);
-  }
-
-  70% {
-    box-shadow: 0 0 0 10px rgba(15, 157, 143, 0);
-  }
-
-  100% {
-    box-shadow: 0 0 0 0 rgba(15, 157, 143, 0);
-  }
-}
-
 /* --- Page and header ------------------------------------------------------- */
 
 .page {
@@ -31,60 +17,25 @@
 }
 
 .page-header {
-  position: relative;
-  padding: 20px 4px 22px;
-  border-bottom: 1px solid rgba(11, 122, 107, 0.28);
+  padding: 18px 2px 20px;
+  border-bottom: 1px solid rgba(11, 27, 43, 0.14);
 
   @media (max-width: 640px) {
-    padding: 12px 2px 18px;
+    padding: 10px 2px 16px;
   }
 }
 
-/* Thick teal segment on the rule, like a lab label marker */
-.page-header::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  bottom: -3px;
-  width: 64px;
-  height: 5px;
-  border-radius: 1px;
-  background: #0b7a6b;
-}
-
 .page-header h1 {
-  position: relative;
   margin: 0;
   color: var(--text-h);
 }
 
-/* Live indicator dot */
-.page-header h1::after {
-  content: "";
-  display: inline-block;
-  width: 9px;
-  height: 9px;
-  margin-left: 14px;
-  border-radius: 50%;
-  background: #0f9d8f;
-  vertical-align: middle;
-  animation: pulse-dot 2.4s infinite;
-}
-
 .page-header::after {
-  content: "Concentration and interaction monitoring";
-  position: relative;
+  content: "Track what you take and see how it adds up.";
   display: block;
-  margin-top: 8px;
-  font-family: var(--mono);
-  font-size: 13px;
-  color: var(--accent);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .page-header h1::after {
-    animation: none;
-  }
+  margin-top: 6px;
+  font-size: 16px;
+  color: var(--text);
 }
 
 /* --- Panels ------------------------------------------------------------------ */
@@ -94,9 +45,7 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 24px 26px 22px;
-  background: rgba(255, 255, 255, 0.86);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  background: #fff;
   box-shadow:
     0 1px 2px rgba(11, 27, 43, 0.05),
     0 12px 30px rgba(11, 27, 43, 0.1);
@@ -110,18 +59,6 @@
   }
 }
 
-/* Teal tab on the top edge, like a specimen label */
-.panel::before {
-  content: "";
-  position: absolute;
-  top: -1px;
-  left: 22px;
-  width: 44px;
-  height: 3px;
-  border-radius: 0 0 3px 3px;
-  background: var(--accent);
-}
-
 .panel h2 {
   display: flex;
   align-items: center;
@@ -130,15 +67,6 @@
   font-weight: 600;
   letter-spacing: -0.1px;
   color: var(--text-h);
-}
-
-.panel h2::before {
-  content: "";
-  flex: none;
-  width: 8px;
-  height: 8px;
-  background: var(--accent);
-  border-radius: 2px;
 }
 
 /* --- Text states ------------------------------------------------------------ */
@@ -425,9 +353,8 @@
 
 .tag {
   padding: 1px 8px;
-  border-radius: 4px;
-  font-family: var(--mono);
-  font-size: 11px;
+  border-radius: 999px;
+  font-size: 12px;
   font-weight: 500;
   border: 1px solid var(--border);
   color: var(--text);
@@ -450,12 +377,10 @@
 .badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
-  font-family: var(--mono);
-  font-size: 11px;
+  border-radius: 999px;
+  font-size: 12px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.01em;
   color: #fff;
 }
 
@@ -517,7 +442,6 @@
 .alert {
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-left: 4px solid #475467;
   border-radius: 10px;
   background: #f9fbfc;
 
@@ -528,12 +452,12 @@
 }
 
 .alert:has(.badge-urgent) {
-  border-left-color: #d92d20;
+  border-color: #f1b5af;
   background: #fef3f2;
 }
 
 .alert:has(.badge-caution) {
-  border-left-color: #f79009;
+  border-color: #f2cf9a;
   background: #fffaeb;
 }
 
@@ -621,8 +545,7 @@
   margin-left: auto;
   padding: 1px 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
-  font-family: var(--mono);
+  border-radius: 999px;
   font-size: 12px;
   color: var(--text);
 }
@@ -729,7 +652,8 @@
 }
 
 .skincare-flag-caution {
-  border-left: 4px solid #f79009;
+  border-color: #f2cf9a;
+  background: #fffaeb;
 }
 
 .skincare-clear {
@@ -762,9 +686,7 @@
   display: inline-flex;
   gap: 2px;
   padding: 4px;
-  background: rgba(255, 255, 255, 0.88);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
+  background: #fff;
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: 0 1px 2px rgba(11, 27, 43, 0.05);
@@ -855,25 +777,33 @@
 .timeline-item {
   padding: 10px 14px;
   border: 1px solid var(--border);
-  border-left-width: 4px;
   border-radius: 10px;
   background: #f9fbfc;
 }
 
 .timeline-item-dose {
-  border-left-color: var(--accent);
+  --dot: var(--accent);
 }
 
 .timeline-item-log {
-  border-left-color: #cbd5df;
+  --dot: #94a3b8;
 }
 
 .timeline-item-scheduled-taken {
-  border-left-color: #067647;
+  --dot: #067647;
 }
 
 .timeline-item-scheduled-missed {
-  border-left-color: #d92d20;
+  --dot: #d92d20;
+}
+
+.timeline-item-head::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot, #94a3b8);
 }
 
 .timeline-item-head {
@@ -885,8 +815,8 @@
 
 .timeline-time {
   margin-left: auto;
-  font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .timeline-detail {
@@ -937,7 +867,6 @@
   gap: 4px;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-left-width: 4px;
   border-radius: 10px;
   background: #f9fbfc;
 
@@ -947,23 +876,16 @@
   }
 }
 
-/* Left edge color follows status; the status label carries the same meaning
-   in text so color is never the only signal. */
-.med-card-taken_today {
-  border-left-color: #067647;
+/* Status shows as colored text with a small dot (see .med-status); only
+   cards that need attention get a tinted border. */
+.med-card-overdue {
+  border-color: #f1b5af;
+  background: #fef7f6;
 }
 
 .med-card-due {
-  border-left-color: #f79009;
-}
-
-.med-card-overdue {
-  border-left-color: #d92d20;
-}
-
-.med-card-upcoming,
-.med-card-as_needed {
-  border-left-color: #cbd5df;
+  border-color: #f2cf9a;
+  background: #fffaf0;
 }
 
 .med-card-head {
@@ -980,10 +902,20 @@
 
 .med-status {
   flex: none;
-  font-family: var(--mono);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text);
+}
+
+.med-status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
 }
 
 .med-status-taken_today {
