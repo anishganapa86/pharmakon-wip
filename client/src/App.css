@@ -1,11 +1,13 @@
-/* Page layout and components. Colors come from the variables in index.css so
-   light and dark schemes both follow the page theme. */
+/* Pharmakon UI: clinical-tech theme.
+   Colors and fonts come from the variables in index.css. */
+
+/* --- Page and header ------------------------------------------------------- */
 
 .page {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  padding: 24px 32px 32px;
+  padding: 24px 32px 40px;
   text-align: left;
 
   @media (max-width: 640px) {
@@ -14,65 +16,72 @@
   }
 }
 
-.page-header h1 {
-  font-size: 36px;
-  margin: 8px 0 0;
+.page-header {
+  padding: 18px 2px 20px;
+  border-bottom: 1px solid rgba(11, 27, 43, 0.14);
+
+  @media (max-width: 640px) {
+    padding: 10px 2px 16px;
+  }
 }
 
-.panel {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 20px 24px;
-  background: var(--bg);
+.page-header h1 {
+  margin: 0;
+  color: var(--text-h);
+}
 
-  & > h2 {
+.page-header::after {
+  content: "Track what you take and see how it adds up.";
+  display: block;
+  margin-top: 6px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+/* --- Panels ------------------------------------------------------------------ */
+
+.panel {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px 26px 22px;
+  background: #fff;
+  box-shadow:
+    0 1px 2px rgba(11, 27, 43, 0.05),
+    0 12px 30px rgba(11, 27, 43, 0.1);
+
+  &>h2 {
     margin-bottom: 16px;
   }
 
   @media (max-width: 640px) {
-    padding: 16px;
+    padding: 18px 16px;
   }
 }
 
-.loading-note {
+.panel h2 {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.1px;
+  color: var(--text-h);
 }
 
-.spinner {
-  width: 1rem;
-  height: 1rem;
-  flex: none;
-  border: 2px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .spinner {
-    animation-duration: 2.4s;
-  }
-}
+/* --- Text states ------------------------------------------------------------ */
 
 .muted {
   color: var(--text);
 }
 
 .error {
-  color: #dc2626;
+  color: #d92d20;
   margin-top: 8px;
 }
 
 .warning {
-  color: #d97706;
+  color: #b54708;
   margin-top: 8px;
 }
 
@@ -81,6 +90,16 @@
   padding-left: 1.2em;
   font-size: 14px;
   font-style: italic;
+}
+
+.small {
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.grow {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 /* --- Form controls: one height, inline on desktop, stacked on mobile ------ */
@@ -102,13 +121,14 @@
   font: inherit;
   font-size: 16px;
   color: var(--text-h);
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: #fff;
+  border: 1px solid #cbd5df;
   border-radius: 8px;
 
   &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-bg);
   }
 }
 
@@ -126,7 +146,18 @@
   background: var(--accent);
   border-color: var(--accent);
   cursor: pointer;
-  font-weight: 500;
+  font-weight: 600;
+  transition: background 0.15s, border-color 0.15s;
+
+  &:hover:not(:disabled) {
+    background: #096558;
+    border-color: #096558;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
 
   &:disabled {
     opacity: 0.5;
@@ -164,8 +195,8 @@
   }
 }
 
-.page .muted + .muted,
-.log-row + .muted {
+.page .muted+.muted,
+.log-row+.muted {
   margin-top: 10px;
 }
 
@@ -219,10 +250,10 @@
   margin: 0;
   padding: 4px;
   list-style: none;
-  background: var(--code-bg);
+  background: #fff;
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
   box-shadow: var(--shadow);
 }
 
@@ -245,28 +276,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.tag {
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  color: var(--text);
-}
-
-.tag-modelable {
-  border-color: var(--accent-border);
-  color: var(--accent);
-}
-
-.tag-logged-only {
-  color: var(--text);
-}
-
-.tag-source {
-  font-style: italic;
 }
 
 .search-ingredients {
@@ -329,10 +338,62 @@
     border-color: var(--accent-border);
   }
 
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
   &:disabled {
     opacity: 0.6;
     cursor: wait;
   }
+}
+
+/* --- Tags and badges ---------------------------------------------------------- */
+
+.tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+.tag-modelable {
+  background: rgba(11, 122, 107, 0.08);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.tag-logged-only {
+  color: var(--text);
+}
+
+.tag-source {
+  font-style: italic;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #fff;
+}
+
+.badge-urgent {
+  background: #d92d20;
+}
+
+.badge-caution {
+  background: #b54708;
+}
+
+.badge-info {
+  background: #475467;
 }
 
 /* --- Charts ------------------------------------------------------------------ */
@@ -345,11 +406,16 @@
 
 .chart h3 {
   margin: 0 0 4px;
-  font-size: 18px;
+  font-size: 17px;
+  font-weight: 600;
   color: var(--text-h);
 }
 
 .chart-subtitle {
+  margin: 0 0 8px;
+}
+
+.chart-approximate {
   margin: 0 0 8px;
 }
 
@@ -376,12 +442,23 @@
 .alert {
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
+  background: #f9fbfc;
 
-  & > p {
+  &>p {
     color: var(--text-h);
     font-size: 16px;
   }
+}
+
+.alert:has(.badge-urgent) {
+  border-color: #f1b5af;
+  background: #fef3f2;
+}
+
+.alert:has(.badge-caution) {
+  border-color: #f2cf9a;
+  background: #fffaeb;
 }
 
 .alert-head {
@@ -406,29 +483,6 @@
 .alert-action {
   margin-top: 6px;
   font-size: 13px;
-}
-
-.badge {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #fff;
-}
-
-.badge-urgent {
-  background: #dc2626;
-}
-
-.badge-caution {
-  background: #d97706;
-}
-
-.badge-info {
-  background: #6b7280;
 }
 
 .dose-list {
@@ -462,9 +516,10 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 10px;
+  background: #f9fbfc;
 }
 
 .history-head {
@@ -475,11 +530,6 @@
 
 /* --- Symptom check ---------------------------------------------------------- */
 
-.grow {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .symptom-result {
   margin-top: 16px;
   display: flex;
@@ -489,11 +539,6 @@
 
 .symptom-summary {
   color: var(--text-h);
-}
-
-.small {
-  font-size: 14px;
-  margin-top: 4px;
 }
 
 .source {
@@ -508,11 +553,6 @@
 .source-openfda_label {
   border-color: var(--accent-border);
   color: var(--accent);
-}
-
-.page-footer {
-  color: var(--text);
-  padding-top: 8px;
 }
 
 /* --- Collapsible sections (side effect profile, skincare) --------------------- */
@@ -545,7 +585,8 @@
 .side-effect-substance {
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
+  background: #f9fbfc;
 }
 
 .side-effect-head {
@@ -579,6 +620,7 @@
 
 .effect-tag-shared {
   border-color: var(--accent-border);
+  background: var(--accent-bg);
   color: var(--accent);
   font-weight: 600;
 }
@@ -604,16 +646,18 @@
 .skincare-flag {
   padding: 12px 14px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 10px;
+  background: #f9fbfc;
   margin-bottom: 10px;
 
-  & > p {
+  &>p {
     margin: 0 0 4px;
   }
 }
 
 .skincare-flag-caution {
-  border-left: 3px solid #d97706;
+  border-color: #f2cf9a;
+  background: #fffaeb;
 }
 
 .skincare-clear {
@@ -635,71 +679,47 @@
 }
 
 .effect-tag-clear {
-  border-color: #16a34a;
-  color: #16a34a;
+  border-color: #067647;
+  color: #067647;
 }
 
-.alternatives-section {
-  margin-top: 10px;
-}
-
-.alternative-candidate {
-  padding: 8px 0;
-  border-top: 1px solid var(--border);
-
-  &:first-child {
-    border-top: none;
-  }
-
-  & > p {
-    margin: 0 0 4px;
-  }
-}
-
-/* --- Interactions tab ----------------------------------------------------------- */
-
-.pharmacist-questions {
-  margin-top: 10px;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
-
-  & ul {
-    margin: 4px 0 0;
-    padding-left: 20px;
-  }
-
-  & li {
-    margin-bottom: 2px;
-  }
-}
-
-/* --- View tabs ---------------------------------------------------------------- */
+/* --- View tabs: segmented control ------------------------------------------------- */
 
 .view-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
+  align-self: flex-start;
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(11, 27, 43, 0.05);
 }
 
 .view-tab {
-  padding: 10px 16px;
+  padding: 8px 18px;
   font: inherit;
   font-size: 15px;
   font-weight: 500;
   color: var(--text);
-  background: none;
+  background: transparent;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 7px;
   cursor: pointer;
-  margin-bottom: -1px;
 
   &:hover {
     color: var(--text-h);
+    background: var(--code-bg);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
 
   &.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
+    color: #fff;
+    background: var(--accent);
   }
 }
 
@@ -707,6 +727,7 @@
 
 .timeline-disclaimer {
   margin-top: 0;
+  margin-bottom: 16px;
 }
 
 .log-form {
@@ -745,26 +766,43 @@
 .timeline-date-header {
   position: sticky;
   top: 0;
-  padding: 4px 0;
+  padding: 6px 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  background: var(--bg);
+  background: #fff;
 }
 
 .timeline-item {
   padding: 10px 14px;
   border: 1px solid var(--border);
-  border-left-width: 4px;
-  border-radius: 6px;
+  border-radius: 10px;
+  background: #f9fbfc;
 }
 
 .timeline-item-dose {
-  border-left-color: var(--accent);
+  --dot: var(--accent);
 }
 
 .timeline-item-log {
-  border-left-color: var(--border);
+  --dot: #94a3b8;
+}
+
+.timeline-item-scheduled-taken {
+  --dot: #067647;
+}
+
+.timeline-item-scheduled-missed {
+  --dot: #d92d20;
+}
+
+.timeline-item-head::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dot, #94a3b8);
 }
 
 .timeline-item-head {
@@ -777,6 +815,7 @@
 .timeline-time {
   margin-left: auto;
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .timeline-detail {
@@ -816,7 +855,7 @@
   align-items: baseline;
   margin-bottom: 16px;
 
-  & > h2 {
+  &>h2 {
     margin: 0;
   }
 }
@@ -836,8 +875,8 @@
   gap: 4px;
   padding: 14px 16px;
   border: 1px solid var(--border);
-  border-left-width: 4px;
-  border-radius: 8px;
+  border-radius: 10px;
+  background: #f9fbfc;
 
   & p,
   & ul {
@@ -845,23 +884,16 @@
   }
 }
 
-/* Left edge color follows status; the status label carries the same meaning
-   in text so color is never the only signal. */
-.med-card-taken_today {
-  border-left-color: #16a34a;
+/* Status shows as colored text with a small dot (see .med-status); only
+   cards that need attention get a tinted border. */
+.med-card-overdue {
+  border-color: #f1b5af;
+  background: #fef7f6;
 }
 
 .med-card-due {
-  border-left-color: #d97706;
-}
-
-.med-card-overdue {
-  border-left-color: #dc2626;
-}
-
-.med-card-upcoming,
-.med-card-as_needed {
-  border-left-color: var(--border);
+  border-color: #f2cf9a;
+  background: #fffaf0;
 }
 
 .med-card-head {
@@ -883,16 +915,27 @@
   color: var(--text);
 }
 
+.med-status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+}
+
 .med-status-taken_today {
-  color: #16a34a;
+  color: #067647;
 }
 
 .med-status-due {
-  color: #d97706;
+  color: #b54708;
 }
 
 .med-status-overdue {
-  color: #dc2626;
+  color: #d92d20;
 }
 
 .med-next {
@@ -913,16 +956,16 @@
 }
 
 .med-slot-taken {
-  color: #16a34a;
+  color: #067647;
 }
 
 .med-slot-due {
-  color: #d97706;
+  color: #b54708;
 }
 
 .med-slot-overdue,
 .med-slot-missed {
-  color: #dc2626;
+  color: #d92d20;
 }
 
 .med-actions {
@@ -965,14 +1008,23 @@
   font-size: 15px;
 }
 
-.timeline-item-scheduled-taken {
-  border-left-color: #16a34a;
+/* --- Footer and notices outside panels --------------------------------------------- */
+
+.page-footer {
+  color: var(--text);
+  text-align: center;
+  padding-top: 8px;
 }
 
-.timeline-item-scheduled-missed {
-  border-left-color: #dc2626;
+.page>.warning {
+  margin-top: 0;
+  padding: 12px 16px;
+  color: #92400e;
+  background: rgba(255, 244, 224, 0.92);
+  border: 1px solid rgba(247, 144, 9, 0.45);
+  border-radius: 10px;
 }
 
-.chart-approximate {
-  margin: 0 0 8px;
+.page>.warning .button-link {
+  color: var(--accent);
 }
