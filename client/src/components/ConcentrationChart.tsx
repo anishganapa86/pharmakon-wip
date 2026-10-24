@@ -110,7 +110,13 @@ export function ConcentrationChart({ curve, window }: Props) {
       <div className="chart-plot">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            {/* Horizontal rules only: vertical gridlines compete with the
+                "now" marker and the projected segment. */}
+            <CartesianGrid
+              vertical={false}
+              strokeDasharray="2 6"
+              stroke="var(--hair)"
+            />
             <XAxis
               dataKey="t"
               type="number"
@@ -118,19 +124,22 @@ export function ConcentrationChart({ curve, window }: Props) {
               domain={[fromMs, toMs]}
               ticks={timeTicks(fromMs, toMs)}
               tickFormatter={tickFormatter(fromMs, toMs)}
-              tick={{ fontSize: 12, fill: "var(--text)" }}
-              stroke="var(--border)"
+              tick={{ fontSize: 11, fill: "var(--text)", fontFamily: "var(--mono)" }}
+              tickLine={false}
+              stroke="var(--hair)"
             />
             <YAxis
-              tick={{ fontSize: 12, fill: "var(--text)" }}
-              stroke="var(--border)"
-              width={56}
+              tick={{ fontSize: 11, fill: "var(--text)", fontFamily: "var(--mono)" }}
+              tickLine={false}
+              stroke="var(--hair)"
+              width={54}
               label={{
                 value: curve.unit,
                 angle: -90,
                 position: "insideLeft",
                 fill: "var(--text)",
-                fontSize: 12,
+                fontSize: 10,
+                fontFamily: "var(--mono)",
               }}
             />
             <Tooltip
@@ -140,23 +149,44 @@ export function ConcentrationChart({ curve, window }: Props) {
                 n === projectedName ? `${name} (expected)` : name,
               ]}
               contentStyle={{
-                background: "var(--bg)",
+                background: "#fff",
                 border: "1px solid var(--border)",
+                borderRadius: 2,
                 color: "var(--text-h)",
+                fontFamily: "var(--mono)",
+                fontSize: 11,
+              }}
+              labelStyle={{ color: "var(--text)", marginBottom: 4 }}
+            />
+            <Legend
+              verticalAlign="top"
+              height={26}
+              iconSize={8}
+              wrapperStyle={{
+                fontFamily: "var(--mono)",
+                fontSize: 10,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                color: "var(--text)",
               }}
             />
-            <Legend verticalAlign="top" height={28} />
             <ReferenceLine
               x={nowMs}
               stroke="var(--text)"
               strokeDasharray="2 4"
-              label={{ value: "now", position: "insideTopRight", fill: "var(--text)", fontSize: 12 }}
+              label={{
+                value: "now",
+                position: "insideTopRight",
+                fill: "var(--text)",
+                fontSize: 10,
+                fontFamily: "var(--mono)",
+              }}
             />
             <Line
               type="monotone"
               dataKey="concentration"
               stroke="var(--accent)"
-              strokeWidth={2}
+              strokeWidth={2.25}
               dot={false}
               isAnimationActive={false}
               name={seriesName}
@@ -166,7 +196,7 @@ export function ConcentrationChart({ curve, window }: Props) {
                 type="monotone"
                 dataKey="projected"
                 stroke="var(--accent)"
-                strokeWidth={2}
+                strokeWidth={2.25}
                 strokeDasharray="6 4"
                 strokeOpacity={0.7}
                 dot={false}
@@ -180,7 +210,12 @@ export function ConcentrationChart({ curve, window }: Props) {
                 y={threshold}
                 stroke="#dc2626"
                 strokeDasharray="4 4"
-                label={{ value: "Published threshold", fill: "#dc2626", fontSize: 12 }}
+                label={{
+                  value: "Published threshold",
+                  fill: "#dc2626",
+                  fontSize: 10,
+                  fontFamily: "var(--mono)",
+                }}
               />
             )}
           </LineChart>

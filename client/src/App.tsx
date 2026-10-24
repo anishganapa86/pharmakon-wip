@@ -289,11 +289,76 @@ function App() {
     await logProduct(product, qty);
   }
 
+  // The three numbers on the masthead: what's in the last 24 hours, what the
+  // model is currently drawing, and what needs a decision. Null while the first
+  // load is in flight so the cells read as "—" rather than flashing 0.
+  const dosesLast24h = dashboard
+    ? dashboard.doses.filter(
+        (d) => Date.now() - new Date(d.taken_at).getTime() < 24 * HOUR_MS,
+      ).length
+    : null;
+  const modeledSubstances = dashboard ? dashboard.curves.length : null;
+  const activeAlerts = dashboard ? dashboard.alerts.length : null;
+
   return (
     <main className="page">
       <header className="page-header">
-        <h1>Pharmakon</h1>
+        <div className="masthead">
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M10 2.6 16.4 6.3v7.4L10 17.4 3.6 13.7V6.3Z"
+                  stroke="currentColor"
+                  strokeWidth="1.4"
+                />
+                <path d="M10 6.4v7.2" stroke="currentColor" strokeWidth="1.4" />
+                <circle cx="16.4" cy="6.3" r="1.9" fill="#f2705a" />
+              </svg>
+            </span>
+            <div>
+              <div className="brand-line">
+                <h1>Pharmakon</h1>
+                <span className="brand-badge">demo</span>
+              </div>
+              <p className="brand-tagline">
+                Every active ingredient you're taking, on one timeline — and
+                the overlaps that three separate labels can't show you.
+              </p>
+            </div>
+          </div>
+          <div className="masthead-meta" aria-hidden="true">
+            <span>one-compartment model</span>
+            <span>mg/L · hours</span>
+          </div>
+        </div>
+        <dl className="headline-stats">
+          <div className="stat">
+            <dt className="stat-label">Doses · 24h</dt>
+            <dd className="stat-value">{dosesLast24h ?? "—"}</dd>
+          </div>
+          <div className="stat">
+            <dt className="stat-label">Substances modeled</dt>
+            <dd className="stat-value">{modeledSubstances ?? "—"}</dd>
+          </div>
+          <div className="stat">
+            <dt className="stat-label">Open alerts</dt>
+            <dd className="stat-value">{activeAlerts ?? "—"}</dd>
+          </div>
+        </dl>
       </header>
+
+      {/* Alerts lead the page. They are about doses, not about a tab, and they
+          are the reason the app exists -- making a viewer scroll past a
+          medication list to find them would bury the finding. */}
+      <section className="panel">
+        <h2>Alerts</h2>
+        {dashboard && !error ? (
+          <AlertList alerts={dashboard.alerts} />
+        ) : (
+          <p className="muted">{loading ? "Checking…" : "Alerts unavailable."}</p>
+        )}
+      </section>
 
       <Schedule
         userId={USER_ID}
@@ -522,10 +587,6 @@ function App() {
             <SymptomCheck />
           </section>
 
-          <section className="panel">
-            <h2>Alerts</h2>
-            {dashboard && !error && <AlertList alerts={dashboard.alerts} />}
-          </section>
         </>
       )}
 

@@ -1,22 +1,42 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
+/* Pharmakon theme.
+   Palette: the teal that means "measured, clinical" here, with a coral
+   heteroatom accent that appears only in the background molecule drawings.
+   Type: Inter for reading, JetBrains Mono for anything numeric or label-like
+   (section numbers, units, timestamps, tags). The mono is what makes the page
+   read as an instrument panel rather than a marketing site. */
+
 :root {
-  --text: #4b5968;
-  --text-h: #0b1b2b;
-  --bg: #ffffff;
-  --border: #d9e4e3;
-  --code-bg: #eef5f4;
+  --text: #46586a;
+  --text-h: #08161f;
+  --bg: #fbfdfd;
+  --panel: #ffffff;
+  --border: #d6e2e1;
+  --hair: rgba(8, 22, 31, 0.11);
+  --code-bg: #eff6f5;
+
   --accent: #0b7a6b;
-  --accent-bg: rgba(11, 122, 107, 0.09);
-  --accent-border: rgba(11, 122, 107, 0.4);
-  --social-bg: rgba(238, 245, 244, 0.5);
-  --shadow: 0 10px 28px rgba(11, 27, 43, 0.16);
+  --accent-ink: #08655a;
+  --accent-bg: rgba(11, 122, 107, 0.07);
+  --accent-border: rgba(11, 122, 107, 0.38);
+
+  --danger: #c62f22;
+  --danger-bg: #fdf5f3;
+  --danger-border: #eab6ae;
+  --warn: #9a5a0b;
+  --warn-bg: #fdf9f0;
+  --warn-border: #e8cda0;
+  --ok: #067647;
+
+  --shadow: 0 24px 48px rgba(8, 22, 31, 0.1);
+  --rule: 1px solid var(--hair);
 
   --sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
 
-  font: 16px/150% var(--sans);
+  font: 15px/1.55 var(--sans);
   color-scheme: light;
   color: var(--text);
   background: var(--bg);
@@ -26,18 +46,19 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* --- Page canvas: bright lab paper with a visible molecular lattice ---------- */
+/* --- Page canvas: bright lab paper with a faint molecular lattice ---------- */
 
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #ecf6f4;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' fill='none' stroke='%230f9d8f' stroke-opacity='0.2'/%3E%3Cpath d='M28 0L28 34L0 50L0 84L28 100L56 84L56 50L28 34' fill='none' stroke='%230f9d8f' stroke-opacity='0.2'/%3E%3C/svg%3E");
+  background-color: #eef7f5;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' fill='none' stroke='%230f9d8f' stroke-opacity='0.12'/%3E%3Cpath d='M28 0L28 34L0 50L0 84L28 100L56 84L56 50L28 34' fill='none' stroke='%230f9d8f' stroke-opacity='0.12'/%3E%3C/svg%3E");
   background-attachment: fixed;
 }
 
-/* Three layers behind the content: a tinted hexagon cluster, and two large
-   molecule drawings with one warm coral accent on the heteroatoms. */
+/* Two layers behind the content: one large molecule drawing, held well below
+   reading contrast, and a single tinted hexagon cluster for depth. */
 body::before {
   content: "";
   position: fixed;
@@ -45,18 +66,17 @@ body::before {
   z-index: 0;
   pointer-events: none;
   background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='260' viewBox='0 0 400 260'%3E%3Cg fill='none' stroke='%230b7a6b' stroke-opacity='0.5' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M150 80L210.6 115L210.6 185L150 220L89.4 185L89.4 115Z'/%3E%3Cpath d='M210.6 115L277.2 93.4L318.3 150L277.2 206.6L210.6 185'/%3E%3Cpath d='M198 126L198 174' stroke-opacity='0.3'/%3E%3Cpath d='M150 80L150 34M89.4 185L38 214M318.3 150L372 150'/%3E%3C/g%3E%3Cg fill='%23f2705a' fill-opacity='0.22' stroke='%23f2705a' stroke-opacity='0.7' stroke-width='1.8'%3E%3Ccircle cx='150' cy='25' r='10'/%3E%3Ccircle cx='277.2' cy='93.4' r='10'/%3E%3Ccircle cx='277.2' cy='206.6' r='10'/%3E%3C/g%3E%3Cg fill='%230b7a6b' fill-opacity='0.6'%3E%3Ccircle cx='150' cy='80' r='3.5'/%3E%3Ccircle cx='210.6' cy='115' r='3.5'/%3E%3Ccircle cx='210.6' cy='185' r='3.5'/%3E%3Ccircle cx='150' cy='220' r='3.5'/%3E%3Ccircle cx='89.4' cy='185' r='3.5'/%3E%3Ccircle cx='89.4' cy='115' r='3.5'/%3E%3Ccircle cx='318.3' cy='150' r='3.5'/%3E%3Ccircle cx='38' cy='214' r='4.5'/%3E%3Ccircle cx='372' cy='150' r='4.5'/%3E%3C/g%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='300' viewBox='0 0 320 300'%3E%3Cg fill='none' stroke='%230b7a6b' stroke-opacity='0.5' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M140 80L200.6 115L200.6 185L140 220L79.4 185L79.4 115Z'/%3E%3Ccircle cx='140' cy='150' r='44' stroke-opacity='0.3'/%3E%3Cpath d='M200.6 115L255 84M79.4 185L30 214M140 220L140 268'/%3E%3C/g%3E%3Ccircle cx='265' cy='78' r='10' fill='%23f2705a' fill-opacity='0.22' stroke='%23f2705a' stroke-opacity='0.7' stroke-width='1.8'/%3E%3Cg fill='%230b7a6b' fill-opacity='0.6'%3E%3Ccircle cx='140' cy='80' r='3.5'/%3E%3Ccircle cx='200.6' cy='115' r='3.5'/%3E%3Ccircle cx='200.6' cy='185' r='3.5'/%3E%3Ccircle cx='140' cy='220' r='3.5'/%3E%3Ccircle cx='79.4' cy='185' r='3.5'/%3E%3Ccircle cx='79.4' cy='115' r='3.5'/%3E%3Ccircle cx='30' cy='214' r='4.5'/%3E%3Ccircle cx='140' cy='268' r='4.5'/%3E%3C/g%3E%3C/svg%3E"),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='300' viewBox='0 0 320 300'%3E%3Cg stroke='%230f9d8f' stroke-opacity='0.4' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M110 50L161.96 80L161.96 140L110 170L58.04 140L58.04 80Z' fill='%230f9d8f' fill-opacity='0.16'/%3E%3Cpath d='M213.9 50L265.86 80L265.86 140L213.9 170L161.94 140L161.94 80Z' fill='%230f9d8f' fill-opacity='0.08'/%3E%3Cpath d='M162 140L213.96 170L213.96 230L162 260L110.04 230L110.04 170Z' fill='%230f9d8f' fill-opacity='0.24'/%3E%3C/g%3E%3C/svg%3E");
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='260' viewBox='0 0 400 260'%3E%3Cg fill='none' stroke='%230b7a6b' stroke-opacity='0.26' stroke-width='1.6' stroke-linejoin='round'%3E%3Cpath d='M150 80L210.6 115L210.6 185L150 220L89.4 185L89.4 115Z'/%3E%3Cpath d='M210.6 115L277.2 93.4L318.3 150L277.2 206.6L210.6 185'/%3E%3Cpath d='M198 126L198 174' stroke-opacity='0.16'/%3E%3Cpath d='M150 80L150 34M89.4 185L38 214M318.3 150L372 150'/%3E%3C/g%3E%3Cg fill='%23f2705a' fill-opacity='0.12' stroke='%23f2705a' stroke-opacity='0.34' stroke-width='1.6'%3E%3Ccircle cx='150' cy='25' r='10'/%3E%3Ccircle cx='277.2' cy='93.4' r='10'/%3E%3Ccircle cx='277.2' cy='206.6' r='10'/%3E%3C/g%3E%3Cg fill='%230b7a6b' fill-opacity='0.3'%3E%3Ccircle cx='150' cy='80' r='3.5'/%3E%3Ccircle cx='210.6' cy='115' r='3.5'/%3E%3Ccircle cx='210.6' cy='185' r='3.5'/%3E%3Ccircle cx='150' cy='220' r='3.5'/%3E%3Ccircle cx='89.4' cy='185' r='3.5'/%3E%3Ccircle cx='89.4' cy='115' r='3.5'/%3E%3Ccircle cx='318.3' cy='150' r='3.5'/%3E%3Ccircle cx='38' cy='214' r='4.5'/%3E%3Ccircle cx='372' cy='150' r='4.5'/%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='300' viewBox='0 0 320 300'%3E%3Cg stroke='%230f9d8f' stroke-opacity='0.18' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M110 50L161.96 80L161.96 140L110 170L58.04 140L58.04 80Z' fill='%230f9d8f' fill-opacity='0.1'/%3E%3Cpath d='M213.9 50L265.86 80L265.86 140L213.9 170L161.94 140L161.94 80Z' fill='%230f9d8f' fill-opacity='0.05'/%3E%3Cpath d='M162 140L213.96 170L213.96 230L162 260L110.04 230L110.04 170Z' fill='%230f9d8f' fill-opacity='0.14'/%3E%3C/g%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right -80px top 110px, left -90px bottom 10px, left -50px top 150px;
-  background-size: 720px auto, 460px auto, 380px auto;
+  background-position: right -120px top 80px, left -70px bottom 40px;
+  background-size: 780px auto, 360px auto;
 }
 
 #root {
   position: relative;
   z-index: 1;
-  width: 960px;
+  width: 1040px;
   max-width: 100%;
   margin: 0 auto;
   text-align: left;
@@ -71,24 +91,26 @@ body::before {
 h1,
 h2 {
   font-family: var(--heading);
-  font-weight: 700;
   color: var(--text-h);
+  font-weight: 700;
 }
 
 h1 {
-  font-size: 40px;
-  letter-spacing: -0.8px;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -2px;
   margin: 0;
 
-  @media (max-width: 1024px) {
-    font-size: 32px;
+  @media (max-width: 640px) {
+    font-size: 34px;
+    letter-spacing: -1.4px;
   }
 }
 
 h2 {
-  font-size: 20px;
-  line-height: 120%;
-  letter-spacing: -0.2px;
+  font-size: 19px;
+  line-height: 1.2;
+  letter-spacing: -0.35px;
   margin: 0 0 8px;
 }
 
@@ -96,13 +118,33 @@ p {
   margin: 0;
 }
 
+/* Numbers are the argument on this page: keep every digit the same width so
+   a column of mg/L values lines up. */
+strong,
+dd,
+.stat-value,
+.timeline-time,
+.dose-list {
+  font-variant-numeric: tabular-nums;
+}
+
 code {
   font-family: var(--mono);
   display: inline-flex;
-  border-radius: 6px;
+  border-radius: 2px;
   color: var(--text-h);
-  font-size: 14px;
-  line-height: 135%;
-  padding: 4px 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  padding: 3px 7px;
   background: var(--code-bg);
+}
+
+::selection {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

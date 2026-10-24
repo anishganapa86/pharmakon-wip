@@ -80,11 +80,23 @@ function AlertItem({ alert }: { alert: Alert }) {
   );
 }
 
+/** Urgent first, then caution, then info; otherwise the server's order.
+ * The panel is the first thing a reader sees, and "urgent" belongs at the top
+ * of it regardless of the order the detectors ran in. */
+const SEVERITY_RANK: Record<AlertSeverity, number> = {
+  urgent: 0,
+  caution: 1,
+  info: 2,
+};
+
 export function AlertList({ alerts }: { alerts: Alert[] }) {
   if (alerts.length === 0) return <p className="muted">No active alerts.</p>;
+  const ordered = [...alerts].sort(
+    (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity],
+  );
   return (
     <ul className="alerts">
-      {alerts.map((a) => (
+      {ordered.map((a) => (
         <AlertItem key={a.id} alert={a} />
       ))}
     </ul>
