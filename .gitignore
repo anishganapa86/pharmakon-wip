@@ -9,5 +9,12 @@ venv/
 .DS_Store
 node_modules/
 client/dist/
+reports/
 build_notebook.py
 build_split_pdf.py
+interaction_coverage.csv
+.interaction_coverage_cache.json
+food_guidance_coverage.csv
+.food_guidance_coverage_cache.json
+test-results/
+.label_cache/

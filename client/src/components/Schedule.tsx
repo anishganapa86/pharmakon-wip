@@ -4,7 +4,7 @@ import {
   daysLabel,
   DEFAULT_TIMES,
   FREQUENCY_LABELS,
-  notModeledReason,
+  NOT_MODELED_NO_PK_DATA,
   STATUS_LABELS,
   timeOfDayLabel,
   WEEKDAYS,
@@ -25,6 +25,25 @@ function errorMessage(e: unknown): string {
 
 const FREQUENCIES = Object.keys(FREQUENCY_LABELS) as ScheduleFrequency[];
 
+// app/api/food_guidance.py keys a single-ingredient finding by the
+// substance's own display name, and a combination product's finding by the
+// product name -- so a schedule card matches on either.
+export type FoodChip = "take_with_food" | "take_with_food_if_upset";
+
+function foodChipFor(
+  m: ScheduledMedication,
+  withFoodNames: Map<string, FoodChip>,
+): FoodChip | null {
+  const found = [
+    withFoodNames.get(m.product_name.trim().toLowerCase()),
+    ...m.substances.map((s) =>
+      s.display_name ? withFoodNames.get(s.display_name.trim().toLowerCase()) : undefined,
+    ),
+  ].filter((c): c is FoodChip => c !== undefined);
+  if (found.includes("take_with_food")) return "take_with_food";
+  return found.length > 0 ? "take_with_food_if_upset" : null;
+}
+
 function nextDueText(m: ScheduledMedication): string {
   if (m.frequency === "as_needed") return "Take only when needed";
   if (m.next_due === null) return "Nothing scheduled";
@@ -39,11 +58,13 @@ function Card({
   busy,
   onTake,
   onRemove,
+  foodChip,
 }: {
   med: ScheduledMedication;
   busy: boolean;
   onTake: () => void;
   onRemove: () => void;
+  foodChip: FoodChip | null;
 }) {
   const days = daysLabel(med.days_of_week);
   const when = med.times.map(timeOfDayLabel).join(", ");
@@ -57,6 +78,18 @@ function Card({
         <span className={`med-status med-status-${med.status}`}>
           {STATUS_LABELS[med.status]}
         </span>
+        {foodChip !== null && (
+          <span
+            className="tag"
+            title={
+              foodChip === "take_with_food"
+                ? "A quoted FDA label sentence says to take this with food."
+                : "A quoted FDA label sentence says to take this with food if stomach upset occurs."
+            }
+          >
+            {foodChip === "take_with_food" ? "With food" : "Food if upset"}
+          </span>
+        )}
       </div>
       <p className="muted small med-when">
         {FREQUENCY_LABELS[med.frequency]}
@@ -85,14 +118,7 @@ function Card({
           <li key={`${s.name}-${i}`} className="small">
             <span className="muted">{s.display_name ?? s.name}: </span>
             {s.current_concentration === null ? (
-              <span
-                className="muted"
-                title={
-                  s.unmodeled_reason ? notModeledReason(null) : "Can't be modeled"
-                }
-              >
-                —
-              </span>
+              <span className="muted small">{NOT_MODELED_NO_PK_DATA}</span>
             ) : (
               <strong>
                 {s.current_concentration.toFixed(2)} {s.unit}
@@ -264,6 +290,11 @@ interface Props {
   recent: RecentProduct[];
   /** Called after any change (a dose taken, a medication added or removed). */
   onChanged: () => void;
+  interactionsNotice: boolean;
+  onViewInteractions: () => void;
+  /** Lowercased product names with a quoted take_with_food finding (see
+   * app/api/food_guidance.py) -- drives the small "With food" chip. */
+  withFoodNames: Map<string, FoodChip>;
 }
 
 /**
@@ -271,7 +302,15 @@ interface Props {
  * plan: nothing counts as taken until "Take now" (or manual logging) records a
  * real dose, and only recorded doses feed alerts.
  */
-export function Schedule({ userId, medications, recent, onChanged }: Props) {
+export function Schedule({
+  userId,
+  medications,
+  recent,
+  onChanged,
+  interactionsNotice,
+  onViewInteractions,
+  withFoodNames,
+}: Props) {
   const [adding, setAdding] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -334,6 +373,16 @@ export function Schedule({ userId, medications, recent, onChanged }: Props) {
         )}
       </div>
 
+      {interactionsNotice && (
+        <p className="warning">
+          Interactions found in your regimen. See the{" "}
+          <button className="button-link" onClick={onViewInteractions} type="button">
+            Interactions tab
+          </button>
+          .
+        </p>
+      )}
+
       {!open && allDone && (
         <p className="muted">All of today's doses are taken.</p>
       )}
@@ -356,6 +405,7 @@ export function Schedule({ userId, medications, recent, onChanged }: Props) {
                   busy={busyId === m.id}
                   onTake={() => void take(m)}
                   onRemove={() => void remove(m)}
+                  foodChip={foodChipFor(m, withFoodNames)}
                 />
               ))}
             </ul>

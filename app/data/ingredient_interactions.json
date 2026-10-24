@@ -7,7 +7,12 @@
       "aliases_b": ["AHA", "glycolic acid", "lactic acid", "mandelic acid"],
       "effect": "Combined use increases irritation, redness, and peeling. Both exfoliate — using them together strips the skin barrier faster than it can repair.",
       "recommendation": "Use on alternate days or at different times (retinoid at night, AHA in the morning).",
-      "source": "American Academy of Dermatology guidelines"
+      "source": "American Academy of Dermatology guidelines",
+      "verified": false,
+      "verified_by": null,
+      "verified_on": null,
+      "source_url": null,
+      "source_quote": null
     },
     {
       "ingredient_a": "benzoyl peroxide",
@@ -16,7 +21,12 @@
       "aliases_b": ["retinoid", "retinal", "tretinoin"],
       "effect": "Benzoyl peroxide oxidizes and deactivates retinoids on contact, making both less effective.",
       "recommendation": "Apply at different times of day.",
-      "source": "Journal of the American Academy of Dermatology"
+      "source": "Journal of the American Academy of Dermatology",
+      "verified": false,
+      "verified_by": null,
+      "verified_on": null,
+      "source_url": null,
+      "source_quote": null
     },
     {
       "ingredient_a": "vitamin C",
@@ -25,7 +35,12 @@
       "aliases_b": ["nicotinamide", "vitamin B3"],
       "effect": "At high concentrations, these can reduce each other's efficacy and cause flushing. At typical cosmetic concentrations the interaction is mild.",
       "recommendation": "Generally fine together in modern formulations. If you experience flushing, apply at different times.",
-      "source": "Cosmetic Dermatology, Baumann 2015"
+      "source": "Cosmetic Dermatology, Baumann 2015",
+      "verified": false,
+      "verified_by": null,
+      "verified_on": null,
+      "source_url": null,
+      "source_quote": null
     },
     {
       "ingredient_a": "vitamin C",
@@ -34,7 +49,12 @@
       "aliases_b": ["AHA", "glycolic acid", "lactic acid"],
       "effect": "Both are acidic. Layering them can drop skin pH too low, causing irritation and compromising the skin barrier.",
       "recommendation": "Use at different times of day.",
-      "source": "Dermatologic Therapy, 2018"
+      "source": "Dermatologic Therapy, 2018",
+      "verified": false,
+      "verified_by": null,
+      "verified_on": null,
+      "source_url": null,
+      "source_quote": null
     },
     {
       "ingredient_a": "salicylic acid",
@@ -43,7 +63,12 @@
       "aliases_b": ["retinoid", "tretinoin"],
       "effect": "Both cause dryness and exfoliation. Combined use increases risk of irritation, peeling, and barrier damage.",
       "recommendation": "Use on alternate nights.",
-      "source": "American Academy of Dermatology"
+      "source": "American Academy of Dermatology",
+      "verified": false,
+      "verified_by": null,
+      "verified_on": null,
+      "source_url": null,
+      "source_quote": null
     }
   ],
   "known_irritants": [
@@ -51,19 +76,34 @@
       "ingredient": "fragrance",
       "aliases": ["parfum", "linalool", "limonene", "geraniol"],
       "effect": "Fragrance is the most common cause of cosmetic contact dermatitis. Repeated exposure can develop into sensitivity over time.",
-      "source": "Contact Dermatitis, de Groot 2009"
+      "source": "Contact Dermatitis, de Groot 2009",
+      "verified": false,
+      "verified_by": null,
+      "verified_on": null,
+      "source_url": null,
+      "source_quote": null
     },
     {
       "ingredient": "sodium lauryl sulfate",
       "aliases": ["SLS"],
       "effect": "Strong surfactant that strips natural oils and disrupts the skin barrier. Common cause of dryness and irritation, especially in eczema-prone skin.",
-      "source": "Journal of the American Academy of Dermatology"
+      "source": "Journal of the American Academy of Dermatology",
+      "verified": false,
+      "verified_by": null,
+      "verified_on": null,
+      "source_url": null,
+      "source_quote": null
     },
     {
       "ingredient": "denatured alcohol",
       "aliases": ["alcohol denat", "SD alcohol"],
       "effect": "Dries skin and damages the moisture barrier with repeated use. Fatty alcohols (cetyl, cetearyl) are different and are not irritants.",
-      "source": "Skin Research and Technology, 2003"
+      "source": "Skin Research and Technology, 2003",
+      "verified": false,
+      "verified_by": null,
+      "verified_on": null,
+      "source_url": null,
+      "source_quote": null
     }
   ],
   "_README": "Every entry must have a source. If you can't cite it, it doesn't go in this file. These are documented interactions from dermatological literature, not predictions."

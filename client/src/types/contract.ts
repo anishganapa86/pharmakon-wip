@@ -70,11 +70,12 @@ export interface ConcentrationPoint {
 export interface SubstanceCurve {
   substance: SubstanceRef;
   modelable: boolean;
+  parameters_verified: boolean;
   reason: string | null; // null when modelable is true
   unit: ConcentrationUnit;
   // "approximate" is a simplified decay curve in mg (see ConcentrationUnit);
   // its `notes` say what is missing.
-  fidelity: "full" | "approximate";
+  fidelity: "full" | "approximate" | null;
   points: ConcentrationPoint[]; // ordered by t ascending; empty if !modelable
   // Published plasma concentration from the registry. Never derived from a
   // dose threshold. null for every substance at launch — the Curves screen
@@ -147,6 +148,7 @@ export interface AlertSubstanceRef extends SubstanceRef {
   // null unless the registry documents one -- never derived or invented.
   // Shown as "Why this matters" next to the alert.
   threshold_explanation: string | null;
+  verified: boolean;
 }
 
 export interface Alert {
@@ -181,7 +183,17 @@ export interface Ingredient {
  * so a fabricated-looking strength is never mistaken for verified data. */
 /** "user_entered" is a product the user pasted an ingredient list for
  * (POST /products/user-entered) -- for cosmetics openFDA has no label for. */
-export type ProductSource = "catalog" | "openfda" | "user_entered";
+/** "skincare_catalog" is a curated entry (app/data/skincare_products.json,
+ * via app/api/alternatives.py) matched by brand/name. "my_product" is one
+ * the user saved to their own persistent library (POST /users/{id}/my-products,
+ * app/api/my_products.py) -- distinct from "user_entered", which is
+ * in-process-only and never searchable again. */
+export type ProductSource =
+  | "catalog"
+  | "openfda"
+  | "user_entered"
+  | "skincare_catalog"
+  | "my_product";
 
 export interface ProductSearchResult {
   id: string; // use as product_id when logging
@@ -191,7 +203,15 @@ export interface ProductSearchResult {
   source: ProductSource;
   // As labelled by openFDA (e.g. "TOPICAL", "ORAL"); null for catalog
   // products (route isn't tracked there) or when openFDA didn't report one.
+  // "TOPICAL" for skincare_catalog/my_product (always topical, unmodeled).
   route: string | null;
+  // A short badge ("From our curated skincare set", "My product (entered
+  // by you)"); null for catalog/openfda/user_entered.
+  label: string | null;
+  // The specific "not yet verified"/"you entered this" sentence; null when
+  // there's nothing to caveat (catalog/openfda), or when a skincare_catalog
+  // entry has actually been verified.
+  verification_note: string | null;
 }
 
 /** `results` is capped at 10; `total` is the full count before that cap, so
@@ -223,6 +243,7 @@ export interface LoggedDoseEvent {
   product_name: string;
   taken_at: IsoTimestamp;
   quantity: number;
+  topical: boolean;
   ingredients: LoggedIngredient[];
 }
 
@@ -245,17 +266,25 @@ export interface SymptomMatch {
   symptom: string;
   source: AssociationSource;
   source_label: string; // human-readable source, e.g. "FDA drug label"
+  verified: false;
   current_level_mg_l: number | null; // null when the substance can't be modeled
   total_24h_mg: number;
   threshold_24h_mg: number | null;
   threshold_status: "above" | "approaching";
   contributing_doses: ContributingDose[];
   message: string;
+  label_product_name: string | null;
+  label_attribution: string | null;
+  dailymed_url: string | null;
+  matched_sentence: string | null;
+  quote_source: QuoteSource | null;
+  label_pointer: string | null;
 }
 
 export interface SymptomCheckResponse {
   matches: SymptomMatch[]; // empty when nothing qualifies
   message: string;
+  unchecked_reason?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +300,8 @@ export interface SideEffectEntry {
   effect: string;
   source: AssociationSource;
   source_label: string;
+  verified: false;
+  label_attribution: string | null;
 }
 
 export interface SubstanceSideEffectProfile {
@@ -279,6 +310,7 @@ export interface SubstanceSideEffectProfile {
   total_24h_mg: number;
   threshold_24h_mg: number | null;
   side_effects: SideEffectEntry[];
+  label_attributions: string[];
   contributing_products: ContributingProduct[];
 }
 
@@ -288,6 +320,7 @@ export interface SubstanceSideEffectProfile {
 export interface SideEffectProfileResponse {
   substances: SubstanceSideEffectProfile[];
   shared_effects: string[];
+  unchecked_reason?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -299,7 +332,8 @@ export interface SideEffectProfileResponse {
 
 export interface SkincareProductRequest {
   name: string;
-  ingredients: string[];
+  ingredients?: string[];
+  ingredients_text?: string;
 }
 
 export interface SkincareCheckedProduct {
@@ -307,12 +341,33 @@ export interface SkincareCheckedProduct {
   ingredients: string[];
 }
 
+export type SkincareMatchQuality = "inci_name" | "common_name_only";
+
 export interface SkincareIncompatibility {
   ingredient_a: string;
   product_a: string;
+  products_a: string[];
+  appears_in_a: string | null;
+  match_quality_a: SkincareMatchQuality;
+  match_note_a: string | null;
+  // matched_ingredient_a duplicates ingredient_a -- present so the UI can
+  // pair "which string" with "which rule term" (matched_alias_a) without
+  // knowing whether it's reading the a-side or b-side of a finding.
+  matched_ingredient_a: string;
+  matched_alias_a: string; // the rule's canonical name or alias that hit
   ingredient_b: string;
   product_b: string;
+  products_b: string[];
+  appears_in_b: string | null;
+  match_quality_b: SkincareMatchQuality;
+  match_note_b: string | null;
+  matched_ingredient_b: string;
+  matched_alias_b: string;
   effect: string;
+  verified: boolean;
+  // Rewritten when product_a === product_b: the source's timing advice
+  // ("use at different times") doesn't apply when both ingredients are
+  // already combined in one product.
   recommendation: string;
   source: string;
 }
@@ -320,8 +375,13 @@ export interface SkincareIncompatibility {
 export interface SkincareIrritant {
   ingredient: string;
   product: string;
+  matched_ingredient: string; // duplicates ingredient; see SkincareIncompatibility
+  matched_alias: string; // the rule's canonical name or alias that hit
+  match_quality: SkincareMatchQuality;
+  match_note: string | null;
   effect: string;
   source: string;
+  verified: boolean;
   note?: string; // added only when relevant to something else the user logged
 }
 
@@ -335,6 +395,280 @@ export interface SkincareCheckResponse {
   incompatibilities: SkincareIncompatibility[];
   irritants: SkincareIrritant[];
   clear: SkincareClearIngredient[];
+  // Total documented rules checked (incompatibilities + irritants), not how
+  // many matched -- lets the UI say "no matching rule among our M
+  // documented rules" rather than implying a guarantee of safety.
+  rules_checked: number;
+  rules_awaiting_verification?: RulesAwaitingVerification;
+}
+
+// ---------------------------------------------------------------------------
+// Skincare alternatives (see app/api/alternatives.py)
+//
+// Curated only -- app/data/skincare_products.json is hand-sourced, never
+// generated or fetched live. Never a recommendation: only what was checked.
+// ---------------------------------------------------------------------------
+
+export interface SkincareAlternativeCandidate {
+  brand: string;
+  name: string;
+  category: string;
+  ingredients: string[]; // full list, straight from the curated source
+  source_url: string;
+  date_checked: string;
+  verified: boolean;
+  checked_note: string; // e.g. "Does not contain Retinol. No documented..."
+  // Set only when this group's flagged_ingredient was one half of an
+  // incompatibility entirely within the user's own product (see
+  // SkincareAlternativesGroup.same_product_partners): what the candidate's
+  // own ingredient list says about the OTHER half. Never a safety claim.
+  same_product_note: string | null;
+  search_url: string; // Google Shopping search, brand + name, no tracking
+}
+
+/** Alternatives for one flagged ingredient of one product. */
+export interface SkincareAlternativesGroup {
+  flagged_ingredient: string;
+  product_name: string;
+  // Only set when the flagged product itself happens to be a curated one --
+  // never guessed otherwise, so alternatives then span every category.
+  category: string | null;
+  // Non-empty only when flagged_ingredient was one half of an
+  // incompatibility entirely within this same product -- the other
+  // ingredient(s) of that pair. Drives the "replacing this product removes
+  // both ingredients" banner.
+  same_product_partners: string[];
+  alternatives: SkincareAlternativeCandidate[]; // at most 5
+}
+
+export interface SkincareAlternativesResponse {
+  results: SkincareAlternativesGroup[];
+  disclaimer: string;
+}
+
+// ---------------------------------------------------------------------------
+// "My products": a persistent per-user skincare library (see
+// app/api/my_products.py). Never offered to anyone -- including the user
+// who saved it -- as an alternative candidate; app/api/alternatives.py
+// reads only app/data/skincare_products.json.
+// ---------------------------------------------------------------------------
+
+export type MyProductCategory =
+  | "cleanser"
+  | "toner"
+  | "serum"
+  | "moisturizer"
+  | "sunscreen"
+  | "other";
+
+export interface MyProductRequest {
+  brand: string;
+  name: string;
+  category: MyProductCategory;
+  // Pasted ingredient text; split server-side with the same hardened
+  // splitter the curated importer uses. Rejected (422) if nothing survives
+  // the split.
+  raw_text: string;
+}
+
+export interface MyProductEntry {
+  id: string; // use as product_id when logging
+  brand: string;
+  name: string;
+  category: MyProductCategory;
+  ingredients: string[]; // split from raw_text, verbatim
+  raw_text: string;
+  created_at: IsoTimestamp;
+}
+
+// ---------------------------------------------------------------------------
+// Medication interaction checker (see app/api/interactions.py)
+//
+// Informational only -- never creates or feeds an Alert. Two cited sources:
+// curated rules (verified: false until a human opens the source) and live
+// openFDA drug_interactions label text (quoted verbatim, never paraphrased).
+// ---------------------------------------------------------------------------
+
+export interface InteractionCheckRequest {
+  names: string[]; // product or substance names, as typed
+}
+
+export type QuoteSource = "fda_label_verbatim";
+
+export interface RulesAwaitingVerification {
+  count: number;
+  message: string;
+}
+
+export type InteractionSourceType = "curated" | "fda_label";
+
+export interface InteractionSubstanceSource {
+  kind: "dose" | "schedule" | "manual";
+  label: string; // product name, or the raw text typed for a manual check
+  dose_event_id: string | null;
+  product_id: string | null;
+  schedule_id: string | null;
+  taken_at: IsoTimestamp | null;
+}
+
+export interface InteractionSubstanceRef {
+  id: string;
+  display_name: string;
+  description: string | null;
+  sources: InteractionSubstanceSource[];
+}
+
+/** A window this estimate says both substances are above 10% of their own
+ * peak -- computed from the concentration model, always labelled as such. */
+export interface OverlapWindow {
+  from: IsoTimestamp;
+  to: IsoTimestamp;
+  estimate: true;
+  description: string;
+}
+
+export interface Interaction {
+  substance_a: InteractionSubstanceRef;
+  substance_b: InteractionSubstanceRef;
+  effect: string | null; // curated only
+  recommendation: string | null; // curated only
+  source_type: InteractionSourceType;
+  source: string; // citation (curated) or "FDA label, <drug>, ..." (fda_label)
+  quoted_text: string | null; // fda_label only, <=300 chars, verbatim
+  quote_source: QuoteSource | null;
+  verified: boolean;
+  severity: string | null; // null unless the source itself states one
+  overlap: OverlapWindow[] | null; // null when either substance isn't modeled
+  message: string;
+  label_product_name: string | null;
+  label_attribution: string | null;
+  dailymed_url: string | null;
+}
+
+/** One product's mention on a DuplicateIngredientFinding card. */
+export interface DuplicateIngredientProduct {
+  product_id: string;
+  name: string;
+  kind: "dose" | "schedule"; // logged in the last 24h, or on the schedule
+}
+
+/** "Same ingredient in more than one product": a lookup over the active
+ * regimen's own products, never a model -- no severity, no harm claim, and
+ * this never creates or feeds an alert. Only on the regimen (GET) response;
+ * always [] on a manual (POST) check, which has no product identity to
+ * compare. */
+export interface DuplicateIngredientFinding {
+  ingredient_name: string;
+  product_count: number; // >= 2; distinct products, deduped by product_id
+  products: DuplicateIngredientProduct[];
+  message: string;
+  // Set when any contributing product's per-unit strength isn't known --
+  // never computed from an assumed/guessed strength.
+  strength_note: string | null;
+}
+
+export interface InteractionCheckResponse {
+  interactions: Interaction[];
+  checked_pairs: number;
+  // Never silently dropped: unresolved ingredient/substance names and an
+  // unreachable openFDA are both surfaced here.
+  unchecked_reason: string[];
+  // The exact required sentence when checked_pairs is 0 (nothing could be
+  // paired at all), the exact "no documented interactions" sentence when
+  // pairs were checked but none were found, else null.
+  message: string | null;
+  rules_awaiting_verification?: RulesAwaitingVerification;
+  duplicate_ingredients: DuplicateIngredientFinding[];
+}
+
+// ---------------------------------------------------------------------------
+// Food, drink, and timing guidance (see app/api/food_guidance.py)
+//
+// Two cited sources: live openFDA label text (quoted verbatim, <=300 chars)
+// and a curated quote list (verified: false until a human opens the
+// source). Oral medications only -- a non-oral or undeclared route
+// produces no guidance, surfaced in unchecked_reason instead. Never
+// creates or feeds an alert.
+// ---------------------------------------------------------------------------
+
+export interface FoodGuidanceRequest {
+  names: string[]; // medication names, as typed
+}
+
+export type FoodGuidanceClass =
+  | "take_with_food"
+  | "take_with_food_if_upset"
+  | "take_on_empty_stomach"
+  | "avoid_item"
+  | "separate_from"
+  | "other";
+
+export type FoodGuidanceSourceType = "fda_label" | "curated";
+
+/** Only set when the quote states explicit hours ("2 hours before or 4
+ * hours after") -- never derived or guessed otherwise. */
+export interface FoodGuidanceWindow {
+  before_hours: number;
+  after_hours: number;
+}
+
+export interface FoodGuidanceFinding {
+  name: string; // substance display name, or the product name for a combo
+  is_product: boolean; // true when `name` is a combination product
+  item: string; // e.g. "food", "grapefruit", "vitamin k"
+  items: string[];
+  class: FoodGuidanceClass;
+  // <=300 chars, verbatim from the label -- only when the underlying
+  // sentence passed the quote-integrity rules (true sentence start/end, no
+  // heading/cross-reference noise, under the length cap). null means the
+  // label mentions this item but couldn't be safely quoted; see `pointer`.
+  quote: string | null;
+  // Set only when `quote` is null: a citation sentence (never a quote)
+  // pointing to the label section, with a DailyMed link when a set_id was
+  // available. class is always "other" alongside a pointer finding.
+  pointer: string | null;
+  source_type: FoodGuidanceSourceType;
+  label_field: string; // e.g. "dosage_and_administration"
+  quote_source: QuoteSource | null;
+  verified: boolean;
+  window: FoodGuidanceWindow | null;
+  // True when a curated entry quoted the same sentence (exact, or after
+  // whitespace normalization) -- that entry is folded into this one finding
+  // rather than shown twice. Always false on a source_type "curated" finding.
+  also_in_curated: boolean;
+  // The label this finding was read from -- read off the label's own text,
+  // null when nothing matched (never guessed). A form-specific instruction
+  // (e.g. "extended-release tablet") should never be shown as if it applied
+  // generally.
+  product_name: string | null;
+  dosage_form: string | null;
+  label_attribution: string | null;
+  dailymed_url: string | null;
+}
+
+export type FoodGuidanceTimelineType = "dose_marker" | "window" | "ongoing";
+
+export interface FoodGuidanceTimelineEntry {
+  type: FoodGuidanceTimelineType;
+  class: FoodGuidanceClass;
+  name: string;
+  quote: string;
+  at?: IsoTimestamp; // dose_marker only
+  source?: "scheduled" | "logged"; // dose_marker only
+  from?: IsoTimestamp; // window only
+  to?: IsoTimestamp; // window only
+  note?: string; // ongoing only
+}
+
+export interface FoodGuidanceResponse {
+  guidance: FoodGuidanceFinding[];
+  timeline: FoodGuidanceTimelineEntry[];
+  // Never silently dropped: unrecognized names, non-oral/unknown routes,
+  // and an unreachable openFDA are all surfaced here.
+  unchecked_reason: string[];
+  // Set to the exact required sentence when `guidance` is empty, else null.
+  message: string | null;
+  rules_awaiting_verification?: RulesAwaitingVerification;
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +722,7 @@ export interface TimelineDoseEntry {
   product_id: string;
   product_name: string;
   quantity: number;
+  topical: boolean;
   ingredients: LoggedIngredient[];
 }
 

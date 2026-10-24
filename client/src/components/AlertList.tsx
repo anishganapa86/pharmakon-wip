@@ -5,8 +5,8 @@ import type { Alert, AlertSeverity } from "../types/contract";
  * by design: this is guidance about the alert mechanism, not medical advice
  * about the substance, so it doesn't need a registry citation. */
 const WHAT_TO_DO: Record<AlertSeverity, string> = {
-  urgent: "Stop taking this and contact a pharmacist or prescriber now.",
-  caution: "Don't take more until the level drops. Ask a pharmacist if unsure.",
+  urgent: "Don't take more of this until you've spoken with a pharmacist or prescriber.",
+  caution: "Hold off on more of this for now. Ask a pharmacist if you're unsure.",
   info: "No action needed — for your awareness.",
 };
 
@@ -29,6 +29,12 @@ function AlertItem({ alert }: { alert: Alert }) {
       {alert.substance?.threshold_explanation && (
         <p className="alert-why muted">
           <strong>Why this matters:</strong> {alert.substance.threshold_explanation}
+          {!alert.substance.verified && (
+            <>
+              {" "}
+              <span className="tag">Unverified reference</span>
+            </>
+          )}
         </p>
       )}
       <p className="alert-action muted">

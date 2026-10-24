@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchTimeline } from "../api";
+import { deleteLog, fetchTimeline } from "../api";
 import {
   categoryColor,
   loggedIngredientLabel,
+  notModeledReason,
   TIMELINE_DOSE_NOT_MODELED,
 } from "../labels";
 import { dayKey, formatClock, formatDateHeader } from "../time";
 import type { TimelineDoseEntry, TimelineEntry } from "../types/contract";
 import { ProductName } from "./ProductName";
+import { TopicalIngredients } from "./TopicalIngredients";
 
 const PAGE_MS = 30 * 24 * 60 * 60 * 1000; // matches the API's default range
 
@@ -30,10 +32,20 @@ function DoseCard({ entry }: { entry: TimelineDoseEntry }) {
         </strong>
         <span className="muted timeline-time">{formatClock(entryMs(entry))}</span>
       </div>
-      <p className="timeline-detail">
-        {entry.quantity} × {entry.ingredients.map(loggedIngredientLabel).join(" · ")}
-      </p>
-      {!modeled && <p className="muted small">{TIMELINE_DOSE_NOT_MODELED}</p>}
+      {entry.topical ? (
+        <>
+          <p className="muted small">{TIMELINE_DOSE_NOT_MODELED}</p>
+          <TopicalIngredients ingredients={entry.ingredients} />
+        </>
+      ) : (
+        <>
+          <p className="timeline-detail">
+            {entry.quantity} ×{" "}
+            {entry.ingredients.map(loggedIngredientLabel).join(" · ")}
+          </p>
+          {!modeled && <p className="muted small">{notModeledReason(null)}</p>}
+        </>
+      )}
     </li>
   );
 }
@@ -61,8 +73,33 @@ function ScheduledCard({
   );
 }
 
-function LogCard({ entry }: { entry: Extract<TimelineEntry, { type: "log" }> }) {
+function LogCard({
+  entry,
+  userId,
+  onDeleted,
+}: {
+  entry: Extract<TimelineEntry, { type: "log" }>;
+  userId: string;
+  onDeleted: () => void;
+}) {
   const color = categoryColor(entry.category);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function remove() {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteLog(userId, entry.id);
+      onDeleted();
+    } catch (e) {
+      setDeleteError(errorMessage(e));
+      setConfirming(false);
+      setDeleting(false);
+    }
+  }
+
   return (
     <li
       className="timeline-item timeline-item-log"
@@ -79,15 +116,51 @@ function LogCard({ entry }: { entry: Extract<TimelineEntry, { type: "log" }> }) 
         <p className="muted small">Location: {entry.body_location}</p>
       )}
       {entry.notes && <p className="muted small">{entry.notes}</p>}
+      <div className="timeline-item-actions">
+        {confirming ? (
+          <>
+            <span>Delete this entry?</span>
+            <button
+              className="button-link"
+              type="button"
+              disabled={deleting}
+              onClick={() => void remove()}
+            >
+              {deleting ? "Deleting…" : "Yes, delete"}
+            </button>
+            <button
+              className="button-link"
+              type="button"
+              disabled={deleting}
+              onClick={() => setConfirming(false)}
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <button
+            className="button-link"
+            type="button"
+            aria-label={`Delete ${entry.category} entry: ${entry.value}`}
+            onClick={() => setConfirming(true)}
+          >
+            Delete
+          </button>
+        )}
+        {deleteError && (
+          <span className="error small">Couldn't delete: {deleteError}</span>
+        )}
+      </div>
     </li>
   );
 }
 
 interface Props {
   userId: string;
+  onDeleted: () => void;
 }
 
-export function Timeline({ userId }: Props) {
+export function Timeline({ userId, onDeleted }: Props) {
   // Newest first, for display. The API returns oldest-first; this component
   // reverses it and pages further into the past as the user scrolls.
   const [entries, setEntries] = useState<TimelineEntry[]>([]);
@@ -136,7 +209,7 @@ export function Timeline({ userId }: Props) {
       (entries) => {
         if (entries[0]?.isIntersecting) void loadMore();
       },
-      { root: sentinel.closest(".timeline-scroll"), threshold: 0 },
+      { root: null, threshold: 0 },
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -190,13 +263,18 @@ export function Timeline({ userId }: Props) {
       ) : entry.type === "scheduled" ? (
         <ScheduledCard key={`scheduled-${entry.id}`} entry={entry} />
       ) : (
-        <LogCard key={`log-${entry.id}`} entry={entry} />
+        <LogCard
+          key={`log-${entry.id}`}
+          entry={entry}
+          userId={userId}
+          onDeleted={onDeleted}
+        />
       ),
     );
   }
 
   return (
-    <div className="timeline-scroll">
+    <div>
       <ul className="timeline">
         {rows}
         <li ref={sentinelRef} className="timeline-sentinel">
@@ -208,6 +286,15 @@ export function Timeline({ userId }: Props) {
                 Retry
               </button>
             </span>
+          )}
+          {!loadingMore && !error && hasMore && (
+            <button
+              className="button-link"
+              type="button"
+              onClick={() => void loadMore()}
+            >
+              Load more
+            </button>
           )}
           {!loadingMore && !error && !hasMore && (
             <span className="muted small">Start of your history.</span>

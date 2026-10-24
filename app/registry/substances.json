@@ -26,6 +26,7 @@
      "half_life_hours": 2.5, "vd_l_per_kg": 0.95, "bioavailability": 0.88, "ka_per_hour": 2.0,
      "clearance_route": "hepatic", "kinetics": "first_order",
      "threshold_24h_mg": 4000, "threshold_single_mg": 1000, "threshold_concentration_mg_per_l": null,
+     "severity_on_breach": "urgent",
      "threshold_explanation": "The 4000 mg daily limit is set by the FDA to prevent liver damage. Exceeding it repeatedly can cause acute liver failure. Risk increases with alcohol use or liver impairment.",
      "common_side_effects": ["nausea", "rash"],
      "description": "Pain reliever and fever reducer",

@@ -4,6 +4,8 @@ import {
   fetchAlerts,
   fetchCurve,
   fetchDoses,
+  fetchFoodGuidance,
+  fetchInteractionCheck,
   fetchSchedule,
   fetchSkincareCheck,
   logDose,
@@ -13,14 +15,17 @@ import {
   ConcentrationChart,
   type TimeWindow,
 } from "./components/ConcentrationChart";
+import { FoodGuidance } from "./components/FoodGuidance";
+import { Interactions } from "./components/Interactions";
 import { LogForm } from "./components/LogForm";
 import { ProductName } from "./components/ProductName";
 import { ProductSearch } from "./components/ProductSearch";
-import { Schedule } from "./components/Schedule";
+import { Schedule, type FoodChip } from "./components/Schedule";
 import { SideEffectProfile } from "./components/SideEffectProfile";
 import { Skincare } from "./components/Skincare";
 import { SymptomCheck } from "./components/SymptomCheck";
 import { Timeline } from "./components/Timeline";
+import { TopicalIngredients } from "./components/TopicalIngredients";
 import {
   ingredientLabel,
   loggedIngredientLabel,
@@ -37,7 +42,12 @@ import type {
   SubstanceCurve,
 } from "./types/contract";
 
-type View = "concentration" | "timeline" | "skincare";
+type View =
+  | "concentration"
+  | "timeline"
+  | "skincare"
+  | "interactions"
+  | "food";
 
 const USER_ID = "default";
 const MAX_RECENT_PRODUCTS = 5;
@@ -163,6 +173,10 @@ function App() {
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
+  const [interactionsNotice, setInteractionsNotice] = useState(false);
+  const [withFoodNames, setWithFoodNames] = useState<Map<string, FoodChip>>(
+    new Map(),
+  );
 
   // State is set only in promise callbacks, so this is safe to run from an
   // effect. Callers that re-load set `loading` themselves.
@@ -180,6 +194,7 @@ function App() {
 
   useEffect(() => {
     void load();
+    void refreshFoodGuidanceChips();
   }, [load]);
 
   function reload() {
@@ -187,8 +202,8 @@ function App() {
     void load();
   }
 
-  // Best-effort: a failed skincare check must never block a dose that was
-  // already recorded.
+  // Best-effort: a failed skincare or interaction check must never block a
+  // dose that was already recorded.
   async function refreshSkincareNotice() {
     try {
       const check = await fetchSkincareCheck(USER_ID);
@@ -200,6 +215,31 @@ function App() {
     }
   }
 
+  async function refreshInteractionsNotice() {
+    try {
+      const check = await fetchInteractionCheck(USER_ID);
+      setInteractionsNotice(check.interactions.length > 0);
+    } catch {
+      // Leave the existing notice state as-is.
+    }
+  }
+
+  async function refreshFoodGuidanceChips() {
+    try {
+      const check = await fetchFoodGuidance(USER_ID);
+      const chips = new Map<string, FoodChip>();
+      for (const f of check.guidance) {
+        if (f.class !== "take_with_food" && f.class !== "take_with_food_if_upset")
+          continue;
+        const name = f.name.trim().toLowerCase();
+        if (f.class === "take_with_food" || !chips.has(name)) chips.set(name, f.class);
+      }
+      setWithFoodNames(chips);
+    } catch {
+      // Leave the existing chip state as-is.
+    }
+  }
+
   // After a schedule change or a dose taken from it: same refresh as manual
   // logging, since "Take now" records a real dose.
   async function handleScheduleChanged() {
@@ -208,24 +248,24 @@ function App() {
     setLoading(true);
     await load();
     await refreshSkincareNotice();
+    await refreshInteractionsNotice();
+    await refreshFoodGuidanceChips();
   }
 
   const qty = Number(quantity);
   const qtyValid = quantity.trim() !== "" && Number.isFinite(qty) && qty > 0;
 
-  async function handleLogDose(e: React.FormEvent) {
-    e.preventDefault();
-    if (!product || !qtyValid) return;
+  async function logProduct(p: ProductSearchResult, qtyToLog: number) {
     setLogging(true);
     setLogError(null);
     setLogged(null);
     try {
       await logDose(USER_ID, {
-        product_id: product.id,
+        product_id: p.id,
         taken_at: new Date().toISOString(),
-        quantity: qty,
+        quantity: qtyToLog,
       });
-      setLogged(`Logged ${qty} × ${product.brand_name}.`);
+      setLogged(`Logged ${qtyToLog} × ${p.brand_name}.`);
       setProduct(null);
       setQuantity("1");
       setSearchKey((k) => k + 1);
@@ -234,11 +274,19 @@ function App() {
       setLoading(true);
       await load();
       await refreshSkincareNotice();
+      await refreshInteractionsNotice();
+      await refreshFoodGuidanceChips();
     } catch (err) {
       setLogError(errorMessage(err));
     } finally {
       setLogging(false);
     }
+  }
+
+  async function handleLogDose(e: React.FormEvent) {
+    e.preventDefault();
+    if (!product || !qtyValid) return;
+    await logProduct(product, qty);
   }
 
   return (
@@ -252,6 +300,9 @@ function App() {
         medications={dashboard?.schedule ?? null}
         recent={dashboard?.recent ?? []}
         onChanged={() => void handleScheduleChanged()}
+        interactionsNotice={interactionsNotice}
+        onViewInteractions={() => setView("interactions")}
+        withFoodNames={withFoodNames}
       />
 
       <section className="panel">
@@ -259,12 +310,14 @@ function App() {
         <form className="log-row" onSubmit={handleLogDose}>
           <ProductSearch
             key={searchKey}
+            userId={USER_ID}
             selected={product}
             onSelect={(p) => {
               setProduct(p);
               setLogged(null);
             }}
             recent={dashboard?.recent ?? []}
+            onSavedProductLogged={(p) => void logProduct(p, 1)}
           />
           <input
             className="control qty-input"
@@ -324,9 +377,29 @@ function App() {
         >
           Skincare
         </button>
+        <button
+          role="tab"
+          aria-selected={view === "interactions"}
+          className={view === "interactions" ? "view-tab active" : "view-tab"}
+          onClick={() => setView("interactions")}
+        >
+          Interactions
+        </button>
+        <button
+          role="tab"
+          aria-selected={view === "food"}
+          className={view === "food" ? "view-tab active" : "view-tab"}
+          onClick={() => setView("food")}
+        >
+          Food & drink
+        </button>
       </nav>
 
       {view === "skincare" && <Skincare userId={USER_ID} />}
+
+      {view === "interactions" && <Interactions userId={USER_ID} />}
+
+      {view === "food" && <FoodGuidance userId={USER_ID} />}
 
       {view === "timeline" && (
         <>
@@ -345,7 +418,11 @@ function App() {
 
           <section className="panel">
             <h2>Timeline</h2>
-            <Timeline key={timelineKey} userId={USER_ID} />
+            <Timeline
+              key={timelineKey}
+              userId={USER_ID}
+              onDeleted={() => setTimelineKey((k) => k + 1)}
+            />
           </section>
         </>
       )}
@@ -417,17 +494,20 @@ function App() {
                         <span className="muted">
                           {formatDateClock(new Date(d.taken_at).getTime())}
                         </span>
-                        <span className="muted small">
-                          {d.ingredients.map(loggedIngredientLabel).join(" · ")}
-                        </span>
+                        {!d.topical && (
+                          <span className="muted small">
+                            {d.ingredients.map(loggedIngredientLabel).join(" · ")}
+                          </span>
+                        )}
                       </div>
+                      {d.topical && <TopicalIngredients ingredients={d.ingredients} />}
                       {modeled ? (
                         <span className="tag tag-modelable">Modeled</span>
                       ) : (
-                        // Route isn't tracked on a logged dose, only at search
-                        // time, so history uses the generic honest phrasing.
                         <span className="tag tag-logged-only">
-                          {notModeledReason(null)}
+                          {d.topical
+                            ? notModeledReason("TOPICAL")
+                            : notModeledReason(null)}
                         </span>
                       )}
                     </li>

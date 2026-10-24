@@ -1,0 +1,295 @@
+import { useEffect, useState } from "react";
+import { checkFoodGuidance, fetchFoodGuidance } from "../api";
+import { formatClock } from "../time";
+import type {
+  FoodGuidanceClass,
+  FoodGuidanceFinding,
+  FoodGuidanceResponse,
+  FoodGuidanceTimelineEntry,
+} from "../types/contract";
+import { LoadingNote } from "./LoadingNote";
+import { RulesNotice } from "./RulesNotice";
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function parseNames(text: string): string[] {
+  return text
+    .split(",")
+    .map((n) => n.trim())
+    .filter((n) => n.length > 0);
+}
+
+const CLASS_LABELS: Record<FoodGuidanceClass, string> = {
+  take_with_food: "Take with food",
+  take_with_food_if_upset: "With food if stomach upset occurs",
+  take_on_empty_stomach: "Take on an empty stomach",
+  avoid_item: "Avoid",
+  separate_from: "Keep apart",
+  other: "Other",
+};
+
+// Only set on a pointer finding (quote is null): a citation sentence, with
+// a DailyMed link appended when a set_id was available. Rendered as a
+// clickable link rather than plain URL text when that link is present.
+function PointerText({ pointer }: { pointer: string }) {
+  const marker = "Read the full section on DailyMed: ";
+  const idx = pointer.indexOf(marker);
+  if (idx === -1) return <>{pointer}</>;
+  const before = pointer.slice(0, idx).trimEnd();
+  const url = pointer.slice(idx + marker.length);
+  return (
+    <>
+      {before}{" "}
+      <a href={url} target="_blank" rel="noreferrer">
+        Read on DailyMed
+      </a>
+    </>
+  );
+}
+
+function FindingCard({ finding }: { finding: FoodGuidanceFinding }) {
+  return (
+    <div className="skincare-flag skincare-flag-caution">
+      <p>
+        <strong>{finding.name}</strong>
+        {finding.is_product && (
+          <span className="muted small"> (combination product)</span>
+        )}
+        {" — "}
+        <span className="tag">{CLASS_LABELS[finding.class]}</span>
+      </p>
+      {finding.quote !== null ? (
+        <p className="muted small">"{finding.quote}"</p>
+      ) : (
+        finding.pointer !== null && (
+          <p className="muted small">
+            <PointerText pointer={finding.pointer} />
+          </p>
+        )
+      )}
+      {finding.label_attribution && (
+        <p className="muted small">{finding.label_attribution}</p>
+      )}
+      {(finding.product_name || finding.dosage_form) && (
+        <p className="muted small">
+          {[finding.product_name, finding.dosage_form].filter(Boolean).join(" — ")}
+        </p>
+      )}
+      {finding.window && (
+        <p className="muted small">
+          {finding.window.before_hours}h before / {finding.window.after_hours}h
+          after, per the label
+        </p>
+      )}
+      <p className="muted small">
+        <span className="tag tag-source">
+          {finding.source_type === "fda_label" ? "FDA label" : "Curated reference"}
+        </span>
+        {" · "}
+        {finding.label_field}
+        {finding.source_type === "fda_label"
+          ? finding.quote_source !== null && (
+              <>
+                {" · "}
+                <span className="tag">Quoted from FDA label</span>
+              </>
+            )
+          : !finding.verified && (
+              <>
+                {" · "}
+                <span className="tag">Unverified reference</span>
+              </>
+            )}
+      </p>
+    </div>
+  );
+}
+
+function timelineLabel(entry: FoodGuidanceTimelineEntry): string {
+  const who = CLASS_LABELS[entry.class];
+  if (entry.type === "dose_marker") {
+    return `${who} — ${entry.name} (${entry.source})`;
+  }
+  if (entry.type === "window") {
+    return `${who} — ${entry.name}`;
+  }
+  return `${who} — ${entry.name} (ongoing)`;
+}
+
+function timelineSortKey(entry: FoodGuidanceTimelineEntry): string {
+  return entry.at ?? entry.from ?? "";
+}
+
+function TimelineStrip({ entries }: { entries: FoodGuidanceTimelineEntry[] }) {
+  const seenMarkers = new Set<string>();
+  const drawn = entries.filter((e) => {
+    if (e.type !== "dose_marker") return true;
+    if (e.class === "take_with_food_if_upset") return false;
+    const key = `${e.at}|${e.name}|${e.class}`;
+    if (seenMarkers.has(key)) return false;
+    seenMarkers.add(key);
+    return true;
+  });
+  const timed = drawn.filter((e) => e.type !== "ongoing");
+  const ongoing = drawn.filter((e) => e.type === "ongoing");
+  const sorted = [...timed].sort((a, b) =>
+    timelineSortKey(a).localeCompare(timelineSortKey(b)),
+  );
+
+  if (drawn.length === 0) return null;
+
+  return (
+    <div className="timeline-strip">
+      <p className="muted small">Next 24 hours</p>
+      <ul className="effect-tags">
+        {sorted.map((entry, i) => (
+          <li key={`timed-${i}`} className="effect-tag" title={entry.quote}>
+            {entry.at && `${formatClock(new Date(entry.at).getTime())} — `}
+            {entry.from &&
+              entry.to &&
+              `${formatClock(new Date(entry.from).getTime())}–` +
+                `${formatClock(new Date(entry.to).getTime())} — `}
+            {timelineLabel(entry)}
+          </li>
+        ))}
+        {ongoing.map((entry, i) => (
+          <li key={`ongoing-${i}`} className="effect-tag" title={entry.note}>
+            {timelineLabel(entry)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Results({ result }: { result: FoodGuidanceResponse }) {
+  return (
+    <>
+      {result.unchecked_reason.length > 0 && (
+        <ul className="effect-tags">
+          {result.unchecked_reason.map((reason, i) => (
+            <li key={i} className="effect-tag">
+              {reason}
+            </li>
+          ))}
+        </ul>
+      )}
+      {result.guidance.length === 0 ? (
+        <p className="muted">{result.message}</p>
+      ) : (
+        <>
+          <TimelineStrip entries={result.timeline} />
+          {result.guidance.map((finding, i) => (
+            <FindingCard key={i} finding={finding} />
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
+interface Props {
+  userId: string;
+}
+
+export function FoodGuidance({ userId }: Props) {
+  const [regimenResult, setRegimenResult] = useState<FoodGuidanceResponse | null>(
+    null,
+  );
+  const [regimenLoading, setRegimenLoading] = useState(true);
+  const [regimenError, setRegimenError] = useState<string | null>(null);
+
+  const [namesText, setNamesText] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [manualResult, setManualResult] = useState<FoodGuidanceResponse | null>(
+    null,
+  );
+  const [manualError, setManualError] = useState<string | null>(null);
+
+  // Mounts once per tab visit, same convention as Skincare/Interactions:
+  // App.tsx only renders this while the Food & drink tab is active.
+  useEffect(() => {
+    let cancelled = false;
+    fetchFoodGuidance(userId)
+      .then((r) => !cancelled && setRegimenResult(r))
+      .catch((e: unknown) => !cancelled && setRegimenError(errorMessage(e)))
+      .finally(() => !cancelled && setRegimenLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const names = parseNames(namesText);
+
+  async function handleCheck(e: React.FormEvent) {
+    e.preventDefault();
+    if (names.length === 0) return;
+    setChecking(true);
+    setManualError(null);
+    try {
+      setManualResult(await checkFoodGuidance(names));
+    } catch (err) {
+      setManualResult(null);
+      setManualError(errorMessage(err));
+    } finally {
+      setChecking(false);
+    }
+  }
+
+  return (
+    <>
+      <p className="warning timeline-disclaimer">
+        These are instructions quoted from FDA labels. They are not medical
+        advice. Ask a pharmacist how they apply to you.
+      </p>
+      <RulesNotice
+        notice={(regimenResult ?? manualResult)?.rules_awaiting_verification}
+      />
+
+      <section className="panel">
+        <h2>Your regimen</h2>
+        {regimenLoading ? (
+          <LoadingNote label="Reading FDA labels for your regimen…" />
+        ) : regimenError ? (
+          <p className="error">Couldn't check: {regimenError}</p>
+        ) : (
+          regimenResult && <Results result={regimenResult} />
+        )}
+      </section>
+
+      <section className="panel">
+        <h2>Check a medication</h2>
+        <form className="skincare-form" onSubmit={handleCheck}>
+          <input
+            className="control grow"
+            type="text"
+            placeholder="Names, comma-separated (e.g. ibuprofen, warfarin)"
+            value={namesText}
+            onChange={(e) => setNamesText(e.target.value)}
+            aria-label="Medication names"
+          />
+          <div className="log-row">
+            <button
+              className="control button"
+              type="submit"
+              disabled={names.length === 0 || checking}
+            >
+              {checking ? "Checking…" : "Check"}
+            </button>
+          </div>
+        </form>
+        {checking && <LoadingNote label="Reading FDA labels…" />}
+        {manualError && <p className="error">Couldn't check: {manualError}</p>}
+      </section>
+
+      {manualResult && (
+        <section className="panel">
+          <h2>Results</h2>
+          <Results result={manualResult} />
+        </section>
+      )}
+    </>
+  );
+}

@@ -159,6 +159,12 @@ def _contributing(alert: Alert, events: dict[str, DoseEvent]) -> list[dict]:
     return out
 
 
+def _is_breach(alert: Alert) -> bool:
+    total = alert.payload.get("total_mg")
+    limit = alert.payload.get("threshold_mg")
+    return total is not None and limit is not None and total >= limit
+
+
 def recompute_alerts(
     session: Session,
     user_id: str,
@@ -199,6 +205,10 @@ def recompute_alerts(
             else None
         )
         produced += [a for a in (dup, acc) if a is not None]
+
+    for alert in produced:
+        if alert.kind in ("duplication", "threshold") and _is_breach(alert):
+            alert.severity = registry.severity_on_breach(alert.substance_id)
 
     active = {
         (r.kind, r.substance_id, r.severity): r
@@ -268,12 +278,13 @@ def alert_json(record: AlertRecord, registry: Registry) -> dict:
             "display_name": entry["name"],
             # Why the threshold matters, shown as "Why this matters" next to
             # the alert. Null unless the registry documents one; never
-            # invented here (CLAUDE.md: never a plausible-looking coefficient
+            # invented here (project notes: never a plausible-looking coefficient
             # or claim without a source).
             "threshold_explanation": entry.get("threshold_explanation"),
             # Plain-language "what this is / does", from the registry field
             # of the same name. Null unless the registry documents one.
             "description": entry.get("description"),
+            "verified": bool(entry.get("verified", False)),
         }
     return {
         "id": record.id,
@@ -306,7 +317,7 @@ class CurveResult:
     # "mg/L" for a full curve. An approximate curve (see registry.Modelability)
     # is the amount remaining in the body, in mg: no Vd, so no concentration.
     unit: str = "mg/L"
-    fidelity: str = "full"  # "full" | "approximate"
+    fidelity: str | None = "full"
     # The same curve with future scheduled doses added, from `now` on; empty
     # when no schedule contributes. A projection, never merged into `points`.
     projected_points: list[dict] | None = None
@@ -377,7 +388,7 @@ def compute_curve(
     try:
         params.check_modelable()
     except UnsupportedKinetics as exc:
-        return CurveResult(False, str(exc), [], None, None, [])
+        return CurveResult(False, str(exc), [], None, None, [], fidelity=None)
 
     entry = registry.get(substance_id)
     tier = registry.modelability(substance_id)
@@ -390,6 +401,7 @@ def compute_curve(
             None,
             None,
             [],
+            fidelity=None,
         )
 
     ke, notes = adjusted_ke(params, patient)

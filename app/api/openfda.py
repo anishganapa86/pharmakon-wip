@@ -10,7 +10,7 @@ describes what it treats.
 Every ingredient found here gets `strength_mg=None`. openFDA label text is
 unstructured free-form paragraphs, not a structured dose table, and a regex
 guess at a milligram value risks silently mis-attributing a dose -- exactly
-what CLAUDE.md's "refuse rather than guess" invariant exists to prevent.
+what project notes's "refuse rather than guess" invariant exists to prevent.
 Ingredients still resolve against the registry, so they come back
 `unknown_strength` when the substance is recognized and `unmatched` when it
 isn't: the same two honest outcomes `app/api/products.py` already produces
@@ -35,6 +35,8 @@ import re
 from dataclasses import dataclass
 
 import httpx
+
+from .names import display_product_name
 
 OPENFDA_LABEL_URL = "https://api.fda.gov/drug/label.json"
 OPENFDA_DRUGSFDA_URL = "https://api.fda.gov/drug/drugsfda.json"
@@ -112,7 +114,7 @@ def _parse_ingredient_list(text: str) -> list[str]:
 
     Real label text ("Water, Glycerin, Fragrance...") is comma/semicolon
     delimited prose, not a structured list, so this is a delimiter split, not
-    a dose parse -- unlike a milligram value (CLAUDE.md: "refuse rather than
+    a dose parse -- unlike a milligram value (project notes: "refuse rather than
     guess"), a missed or extra token here can't misattribute a dose; the
     failure mode is a name the checker doesn't see, not a fabricated number.
     """
@@ -141,15 +143,15 @@ def _to_product(result: dict, matched_via: str) -> OpenFDAProduct | None:
     names = meta.get("brand_name") or meta.get("generic_name") or []
     if not names:
         return None
-    brand_name = names[0]
+    raw_brand_name = names[0]
     substances = meta.get("substance_name", [])
     if not substances:
         return None
     route = (meta.get("route") or [None])[0]
-    pid = _product_id(brand_name, substances)
+    pid = _product_id(raw_brand_name, substances)
     product = OpenFDAProduct(
         id=pid,
-        brand_name=brand_name,
+        brand_name=display_product_name(raw_brand_name),
         ingredients=tuple(OpenFDAIngredient(name=s) for s in substances),
         route=route,
         matched_via=matched_via,
@@ -193,7 +195,7 @@ def _drugsfda_to_products(results: list[dict]) -> list[OpenFDAProduct]:
             pid = _product_id(brand_name, substances)
             product = OpenFDAProduct(
                 id=pid,
-                brand_name=brand_name,
+                brand_name=display_product_name(brand_name),
                 ingredients=tuple(OpenFDAIngredient(name=s) for s in substances),
                 route=None,
                 matched_via="name",

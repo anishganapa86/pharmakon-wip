@@ -1,0 +1,69 @@
+{
+  "rules": [
+    {
+      "substance_a": "NSAID",
+      "substance_b": "NSAID",
+      "effect": "Combining two NSAIDs does not improve pain or fever relief over either alone and increases the risk of GI bleeding, ulcers, and kidney injury.",
+      "recommendation": "Use only one NSAID (ibuprofen, naproxen, or aspirin) at a time. Ask a pharmacist before combining them.",
+      "source": "FDA OTC Drug Facts label (ibuprofen, naproxen): \"do not use with any other drug containing an NSAID\"",
+      "verified": false
+    },
+    {
+      "substance_a": "NSAID",
+      "substance_b": "warfarin",
+      "effect": "NSAIDs impair platelet function and irritate the GI lining; combined with warfarin's anticoagulant effect, this increases the risk of serious bleeding.",
+      "recommendation": "Avoid NSAIDs while on warfarin unless your prescriber has directed otherwise; ask about acetaminophen for pain instead.",
+      "source": "FDA label, Warfarin Sodium, Section 7 Drug Interactions",
+      "verified": false
+    },
+    {
+      "substance_a": "sertraline",
+      "substance_b": "NSAID",
+      "effect": "SSRIs such as sertraline impair platelet aggregation; combined with an NSAID's GI and antiplatelet effects, this increases the risk of GI bleeding.",
+      "recommendation": "Talk to your prescriber before regularly combining sertraline with an NSAID; ask about acetaminophen for pain.",
+      "source": "FDA label, Sertraline Hydrochloride, Section 7 Drug Interactions",
+      "verified": false
+    },
+    {
+      "substance_a": "sertraline",
+      "substance_b": "dextromethorphan",
+      "effect": "Both increase serotonergic activity. Combining them raises the risk of serotonin syndrome: agitation, rapid heart rate, high blood pressure, tremor, sweating, confusion.",
+      "recommendation": "Avoid combining sertraline with dextromethorphan-containing cough/cold products unless your prescriber has approved it. Seek care promptly for symptoms of serotonin syndrome.",
+      "source": "FDA label, Sertraline Hydrochloride, Section 7 Drug Interactions (serotonergic drugs)",
+      "verified": false
+    },
+    {
+      "substance_a": "lisinopril",
+      "substance_b": "NSAID",
+      "effect": "NSAIDs can reduce the blood-pressure-lowering effect of ACE inhibitors like lisinopril and, especially with regular use, increase the risk of kidney injury.",
+      "recommendation": "Use NSAIDs sparingly while on lisinopril; if regular use is needed, ask your prescriber about monitoring blood pressure and kidney function.",
+      "source": "FDA label, Lisinopril, Section 7 Drug Interactions",
+      "verified": false
+    },
+    {
+      "substance_a": "metformin",
+      "substance_b": "ethanol",
+      "effect": "Alcohol potentiates metformin's effect on lactate metabolism, increasing the risk of lactic acidosis, a rare but serious condition.",
+      "recommendation": "Avoid excessive or chronic alcohol use while taking metformin.",
+      "source": "FDA label, Metformin Hydrochloride, Section 5 Warnings and Precautions (Lactic Acidosis)",
+      "verified": false
+    },
+    {
+      "substance_a": "acetaminophen",
+      "substance_b": "ethanol",
+      "effect": "Chronic or heavy alcohol use combined with acetaminophen increases the risk of severe liver injury.",
+      "recommendation": "Ask a doctor before use if you have 3 or more alcoholic drinks per day and are taking acetaminophen.",
+      "source": "FDA OTC Drug Facts label, Acetaminophen, Liver Warning",
+      "verified": false
+    },
+    {
+      "substance_a": "diphenhydramine",
+      "substance_b": "doxylamine",
+      "effect": "Both are sedating antihistamines. Combining them increases drowsiness, dizziness, and anticholinergic side effects without added benefit.",
+      "recommendation": "Use only one sedating antihistamine product at a time.",
+      "source": "FDA OTC Drug Facts label (diphenhydramine, doxylamine): \"do not use with any other product that contains diphenhydramine or doxylamine, even one used on skin\"",
+      "verified": false
+    }
+  ],
+  "_README": "No source, no entry. Every rule must cite the specific label section it came from. These are documented interactions from FDA labels and pharmacology references, not predictions, and every one is unverified (verified: false) until a human has opened the cited source."
+}

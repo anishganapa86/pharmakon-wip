@@ -19,12 +19,23 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
-from . import logger, openfda, schedule, service, side_effects, skincare
+from . import (
+    alternatives,
+    food_guidance,
+    interactions,
+    logger,
+    my_products,
+    openfda,
+    schedule,
+    service,
+    side_effects,
+    skincare,
+)
 from .db import Base, make_engine
 from .products import PRODUCTS, decompose, search
 
@@ -117,13 +128,21 @@ class DoseRequest(BaseModel):
     quantity: float = Field(gt=0)
 
 
-def _find_product(product_id: str):
-    """The synthetic catalog, a product discovered via openFDA search, or one
-    the user pasted an ingredient list for (app/api/skincare.py)."""
+def _find_product(product_id: str, session: Session, user_id: str):
+    """The synthetic catalog, a product discovered via openFDA search, a
+    curated skincare entry (app/api/alternatives.py), one the user saved to
+    their own library (app/api/my_products.py), or one they pasted an
+    ingredient list for in the search box (app/api/skincare.py)."""
     product = PRODUCTS.get(product_id)
     if product is not None:
         return product
     product = openfda.get_discovered(product_id)
+    if product is not None:
+        return product
+    product = alternatives.get_curated_product(product_id)
+    if product is not None:
+        return product
+    product = my_products.get_loggable(session, user_id, product_id)
     if product is not None:
         return product
     return skincare.get_user_product(product_id)
@@ -149,7 +168,7 @@ def log_dose(
     registry: Reg,
     now: Now,
 ) -> dict:
-    product = _find_product(body.product_id)
+    product = _find_product(body.product_id, session, user_id)
     if product is None:
         raise HTTPException(404, f"unknown product {body.product_id!r}")
 
@@ -186,6 +205,7 @@ def list_doses(user_id: UserId, session: Db, registry: Reg) -> list[dict]:
             "product_name": ev.product_name,
             "taken_at": ev.taken_at,
             "quantity": ev.quantity,
+            "topical": bool(ev.topical_ingredients),
             "ingredients": [
                 service.ingredient_json(ing, registry) for ing in ev.ingredients
             ],
@@ -233,7 +253,7 @@ def _get_schedule(session: Session, user_id: str, schedule_id: str):
 def create_schedule(
     body: ScheduleRequest, user_id: UserId, session: Db, registry: Reg, now: Now
 ) -> dict:
-    product = _find_product(body.product_id)
+    product = _find_product(body.product_id, session, user_id)
     if product is None:
         raise HTTPException(404, f"unknown product {body.product_id!r}")
     ingredients = decompose(product, registry)
@@ -388,6 +408,7 @@ def get_curve(
             "description": entry.get("description"),
         },
         "modelable": result.modelable,
+        "parameters_verified": bool(entry.get("verified", False)),
         "reason": result.reason,
         "unit": result.unit,
         # "full" is a concentration curve; "approximate" is the amount left in
@@ -433,19 +454,29 @@ def get_alerts(
 # --- 4. GET /products/search -------------------------------------------------------
 
 
+CURATED_SKINCARE_LABEL = "From our curated skincare set"
+CURATED_SKINCARE_UNVERIFIED_NOTE = (
+    "Ingredient list copied from packaging; not yet independently verified"
+)
+MY_PRODUCT_LABEL = "My product (entered by you)"
+
+
 @app.get("/products/search")
-def search_products(q: str, registry: Reg) -> dict:
-    """Synthetic catalog first, then openFDA by name, then by what it treats.
+def search_products(q: str, registry: Reg, session: Db) -> dict:
+    """Synthetic catalog first, then curated skincare entries, then the
+    user's own saved products, then openFDA by name, then by what it treats.
 
     People search for what they HAVE ("eczema"), not just what they TAKE
     ("hydrocortisone"), so a name-only search misses them. When the catalog
     and name search together return fewer than
     `openfda.MIN_RESULTS_BEFORE_CONDITION_FALLBACK` hits, this also searches
     the label's `indications_and_usage` and `purpose` fields. Every result
-    carries `source` ("catalog" | "openfda") so the UI can mark the synthetic
-    catalog's unverified strengths as distinct from real label data, and every
-    ingredient's `unmodeled_reason` already says whether it can be modeled or
-    is only logged (see docs/api-contract.md).
+    carries `source` ("catalog" | "skincare_catalog" | "my_product" |
+    "openfda") so the UI can mark the synthetic catalog's unverified
+    strengths, and a curated/saved product's own verification state,
+    distinctly from real label data, and every ingredient's
+    `unmodeled_reason` already says whether it can be modeled or is only
+    logged (see docs/api-contract.md).
 
     The response is capped at `openfda.RESULT_LIMIT` (10) results, with
     `total` carrying the full pre-cap count so the client can show "Showing X
@@ -457,7 +488,12 @@ def search_products(q: str, registry: Reg) -> dict:
     results: list[dict] = []
     seen: set[str] = set()
 
-    def add(product, source: str) -> None:
+    def add(
+        product,
+        source: str,
+        label: str | None = None,
+        verification_note: str | None = None,
+    ) -> None:
         key = product.brand_name.strip().lower()
         if key in seen:
             return
@@ -482,11 +518,33 @@ def search_products(q: str, registry: Reg) -> dict:
                 "source": source,
                 # The synthetic catalog doesn't track route.
                 "route": getattr(product, "route", None),
+                "label": label,
+                "verification_note": verification_note,
             }
         )
 
     for product in search(q, registry):
         add(product, "catalog")
+
+    for curated in alternatives.search_curated(q):
+        add(
+            curated,
+            "skincare_catalog",
+            label=CURATED_SKINCARE_LABEL,
+            verification_note=(
+                None if curated.verified else CURATED_SKINCARE_UNVERIFIED_NOTE
+            ),
+        )
+
+    for record in my_products.search(
+        my_products.list_for_user(session, DEFAULT_USER), q
+    ):
+        add(
+            my_products.as_loggable(record),
+            "my_product",
+            label=MY_PRODUCT_LABEL,
+            verification_note=my_products.UNVERIFIED_NOTE,
+        )
 
     try:
         for product in openfda.search_by_name(q):
@@ -633,6 +691,7 @@ def get_timeline(
                 "product_id": ev.product_id,
                 "product_name": ev.product_name,
                 "quantity": ev.quantity,
+                "topical": bool(ev.topical_ingredients),
                 "ingredients": [
                     service.ingredient_json(ing, registry) for ing in ev.ingredients
                 ],
@@ -670,7 +729,18 @@ def get_timeline(
 
 class SkincareProductRequest(BaseModel):
     name: str = Field(min_length=1)
-    ingredients: list[str] = Field(min_length=1)
+    ingredients: list[str] | None = None
+    ingredients_text: str | None = None
+
+    @model_validator(mode="after")
+    def _resolve_ingredients(self) -> SkincareProductRequest:
+        if (self.ingredients is None) == (self.ingredients_text is None):
+            raise ValueError("provide exactly one of ingredients or ingredients_text")
+        if self.ingredients_text is not None:
+            self.ingredients = skincare.split_ingredients(self.ingredients_text)
+        if not self.ingredients:
+            raise ValueError("no ingredients found")
+        return self
 
 
 class SkincareCheckRequest(BaseModel):
@@ -721,6 +791,138 @@ def get_skincare_check(user_id: UserId, session: Db, now: Now) -> dict:
     return skincare.annotate_eczema_context(result, recent_skin_texts)
 
 
+# --- Skincare alternatives -----------------------------------------------------
+#
+# Curated only: app/data/skincare_products.json, hand-sourced from
+# manufacturer pages, never generated or fetched live. See
+# app/api/alternatives.py.
+
+
+def _medication_rejection(names: list[str], registry: Registry) -> JSONResponse | None:
+    bad = alternatives.medication_ingredient_names(names, registry)
+    if not bad:
+        return None
+    return _error(
+        422,
+        "validation_error",
+        f"{', '.join(sorted(set(bad)))} looks like a medication ingredient, "
+        "not a skincare ingredient. This checker covers topical/skincare "
+        "products only.",
+    )
+
+
+@app.get("/users/{id}/skincare-alternatives")
+def get_skincare_alternatives(
+    user_id: UserId, session: Db, registry: Reg, now: Now, product_id: str
+) -> dict:
+    """Alternatives for one logged product's flagged ingredients (see
+    app/api/alternatives.py), checked against everything else the user has
+    logged topically in the last 24 hours."""
+    events = service.load_doses(session, user_id)
+
+    target_ev = next(
+        (
+            ev
+            for ev in sorted(events, key=lambda e: e.taken_at, reverse=True)
+            if ev.product_id == product_id and ev.topical_ingredients
+        ),
+        None,
+    )
+    if target_ev is None:
+        if any(ev.product_id == product_id for ev in events):
+            return _error(
+                422,
+                "validation_error",
+                f"product {product_id!r} isn't a topical/skincare product; "
+                "alternatives only apply to skincare products.",
+            )
+        raise HTTPException(404, f"unknown product {product_id!r}")
+
+    rejection = _medication_rejection(list(target_ev.topical_ingredients), registry)
+    if rejection is not None:
+        return rejection
+
+    target = skincare.Product(
+        target_ev.product_name, tuple(target_ev.topical_ingredients)
+    )
+    regimen = []
+    for ev in events:
+        if ev.product_id == product_id or not ev.topical_ingredients:
+            continue
+        taken_at = datetime.fromisoformat(ev.taken_at)
+        if -24.0 <= service.hours_since(taken_at, now) <= 0.0:
+            regimen.append(
+                skincare.Product(ev.product_name, tuple(ev.topical_ingredients))
+            )
+
+    return alternatives.check_alternatives_for_product(target, regimen)
+
+
+class SkincareAlternativesRequest(BaseModel):
+    products: list[SkincareProductRequest] = Field(min_length=1)
+
+
+@app.post("/skincare-alternatives")
+def post_skincare_alternatives(
+    body: SkincareAlternativesRequest, registry: Reg
+) -> dict:
+    all_ingredients = [ing for p in body.products for ing in p.ingredients]
+    rejection = _medication_rejection(all_ingredients, registry)
+    if rejection is not None:
+        return rejection
+    products = [
+        skincare.Product(name=p.name, ingredients=tuple(p.ingredients))
+        for p in body.products
+    ]
+    return alternatives.check_alternatives_manual(products)
+
+
+# --- Medication interaction checker ---------------------------------------------
+#
+# Informational only: this never creates or feeds an app.detect alert. See
+# app/api/interactions.py and app/data/drug_interactions.json.
+
+
+class InteractionCheckRequest(BaseModel):
+    names: list[str] = Field(min_length=1)
+
+
+@app.post("/interaction-check")
+def interaction_check(body: InteractionCheckRequest, registry: Reg, now: Now) -> dict:
+    return interactions.check_manual(body.names, registry, now)
+
+
+@app.get("/users/{id}/interaction-check")
+def get_interaction_check(
+    user_id: UserId, session: Db, registry: Reg, now: Now
+) -> dict:
+    """All active scheduled medications plus doses logged in the last 24h,
+    checked pairwise (see app/api/interactions.py)."""
+    return interactions.check_regimen(session, user_id, registry, now)
+
+
+# --- Food, drink, and timing guidance --------------------------------------------
+#
+# Informational only, oral medications only, never an alert. See
+# app/api/food_guidance.py and app/data/food_drug_guidance.json.
+
+
+class FoodGuidanceRequest(BaseModel):
+    names: list[str] = Field(min_length=1)
+
+
+@app.post("/food-guidance")
+def post_food_guidance(body: FoodGuidanceRequest, registry: Reg) -> dict:
+    return food_guidance.check_manual(body.names, registry)
+
+
+@app.get("/users/{id}/food-guidance")
+def get_food_guidance(user_id: UserId, session: Db, registry: Reg, now: Now) -> dict:
+    """Active scheduled medications plus doses logged in the last 24h (see
+    app/api/interactions.py's identical regimen definition)."""
+    return food_guidance.check_regimen(session, user_id, registry, now)
+
+
 # --- POST /products/user-entered -----------------------------------------------
 
 
@@ -757,3 +959,57 @@ def create_user_entered_product(body: UserEnteredProductRequest, registry: Reg) 
         "source": "user_entered",
         "route": "TOPICAL",
     }
+
+
+# --- "My products": a persistent per-user skincare library ----------------------
+#
+# See app/api/my_products.py. Distinct from POST /products/user-entered above:
+# that one is in-process-only and unscoped by user; these rows persist in the
+# DB, are searchable later, and are never offered to anyone -- including the
+# user who entered them -- as an alternative candidate (app/api/alternatives.py
+# reads only app/data/skincare_products.json).
+
+
+class MyProductRequest(BaseModel):
+    brand: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    category: Literal["cleanser", "toner", "serum", "moisturizer", "sunscreen", "other"]
+    raw_text: str = Field(min_length=1)
+
+
+@app.post("/users/{id}/my-products", status_code=201)
+def create_my_product(
+    body: MyProductRequest, user_id: UserId, session: Db, now: Now
+) -> dict:
+    try:
+        record = my_products.create(
+            session,
+            user_id,
+            brand=body.brand,
+            name=body.name,
+            category=body.category,
+            raw_text=body.raw_text,
+            created_at=now,
+        )
+    except my_products.EmptyIngredientListError:
+        return _error(
+            422,
+            "validation_error",
+            "raw_text: no ingredients found after splitting",
+        )
+    session.commit()
+    return my_products.product_json(record)
+
+
+@app.get("/users/{id}/my-products")
+def list_my_products(user_id: UserId, session: Db) -> list[dict]:
+    return [
+        my_products.product_json(r) for r in my_products.list_for_user(session, user_id)
+    ]
+
+
+@app.delete("/users/{id}/my-products/{product_id}", status_code=204)
+def delete_my_product(product_id: str, user_id: UserId, session: Db) -> None:
+    if not my_products.delete(session, user_id, product_id):
+        raise HTTPException(404, f"unknown product {product_id!r}")
+    session.commit()

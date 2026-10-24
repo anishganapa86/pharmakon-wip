@@ -114,6 +114,32 @@ class ScheduledDose(Base):
     topical_ingredients: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
+class UserProduct(Base):
+    """A product the user entered themselves (app/api/my_products.py):
+    brand, name, category, and an ingredient list split from pasted text
+    with the same hardened splitter the curated-product importer uses.
+
+    Unverified by construction -- a user's own transcription is never
+    checked against the product, so there is no `verified` column at all
+    (unlike app/data/skincare_products.json entries, which track it
+    explicitly). Never offered to anyone, including the user who entered
+    it, as an alternative candidate: app/api/alternatives.py's candidate
+    pool is built only from app/data/skincare_products.json and never reads
+    this table.
+    """
+
+    __tablename__ = "user_products"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(String, index=True)
+    brand: Mapped[str] = mapped_column(String)
+    name: Mapped[str] = mapped_column(String)
+    category: Mapped[str] = mapped_column(String)
+    ingredients: Mapped[list] = mapped_column(JSON)
+    raw_text: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = mapped_column(String)  # ISO 8601 + offset
+
+
 class AlertRecord(Base):
     """A persisted alert. Active iff dismissed_at and resolved_at are null.
 

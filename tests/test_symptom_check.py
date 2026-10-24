@@ -55,9 +55,12 @@ class FakeOpenFDA:
             raise httpx.ConnectError("unreachable", request=request)
         for name, text in self.labels.items():
             if f'"{name}"' in search:
-                return httpx.Response(
-                    200, json={"results": [{"adverse_reactions": [text]}]}
+                label = (
+                    text
+                    if isinstance(text, dict)
+                    else {"openfda": {"route": ["ORAL"]}, "adverse_reactions": [text]}
                 )
+                return httpx.Response(200, json={"results": [label]})
         return httpx.Response(
             404, json={"error": {"code": "NOT_FOUND", "message": "No matches"}}
         )
@@ -182,6 +185,51 @@ def test_no_label_on_openfda_falls_back_to_local_list(client, openfda):
     assert match["source"] == "local_reference"
 
 
+def test_caffeine_citrate_labels_are_ignored_so_the_local_reference_answers(
+    client, openfda
+):
+    openfda.labels["CAFFEINE"] = {
+        "openfda": {
+            "generic_name": ["CAFFEINE CITRATE"],
+            "route": ["INTRAVENOUS"],
+        },
+        "adverse_reactions": ["Apnea of prematurity in infants was treated."],
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["substance"]["id"] == "caffeine"
+    assert match["source"] == "local_reference"
+
+
+def test_oral_caffeine_citrate_solution_is_also_ignored(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "openfda": {
+            "generic_name": ["CAFFEINE CITRATE"],
+            "route": ["ORAL"],
+        },
+        "adverse_reactions": ["Nausea was reported."],
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["source"] == "local_reference"
+
+
+def test_an_oral_caffeine_label_answers_when_it_lists_the_symptom(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "openfda": {"generic_name": ["CAFFEINE"], "route": ["ORAL"]},
+        "adverse_reactions": ["Headache and jitteriness were reported."],
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["source"] == "openfda_label"
+
+
 def test_a_label_that_exists_is_authoritative_over_the_local_list(client, openfda):
     # Spec: the local list is a fallback for when openFDA returns nothing.
     openfda.labels["CAFFEINE"] = "Nausea was reported."
@@ -241,3 +289,156 @@ def test_blank_or_trivial_symptom_is_422(client, openfda, symptom):
 )
 def test_mentions(text, symptom, expected):
     assert side_effects.mentions(text, symptom) is expected
+
+
+def test_symptom_match_is_never_verified(client, openfda):
+    openfda.labels["CAFFEINE"] = "Headache, dizziness, and nausea were reported."
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["source"] == "openfda_label"
+    assert match["verified"] is False
+
+
+def test_message_names_the_reference_data_limit_and_calls_it_unverified(
+    client, openfda
+):
+    openfda.labels["CAFFEINE"] = "Headache, dizziness, and nausea were reported."
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert "the 24-hour limit in our reference data (unverified)" in match["message"]
+    assert "recommended" not in match["message"].lower()
+
+
+def test_unreachable_openfda_is_reported_with_the_symptom_result(client, openfda):
+    openfda.down = True
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    body = check(client, "headache")
+
+    (reason,) = body["unchecked_reason"]
+    assert "openFDA was unreachable" in reason
+    assert "Caffeine" in reason
+
+
+def test_reachable_openfda_adds_no_unchecked_reason_to_symptom_result(client, openfda):
+    openfda.labels["CAFFEINE"] = "Headache, dizziness, and nausea were reported."
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    assert "unchecked_reason" not in check(client, "headache")
+
+
+def test_label_match_says_which_label_was_used(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "adverse_reactions": ["Headache, dizziness, and nausea were reported."],
+        "set_id": "caf-123",
+        "openfda": {"brand_name": ["NoDoz"], "route": ["ORAL"]},
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["label_product_name"] == "NoDoz"
+    assert match["label_attribution"] == (
+        "From the label for NoDoz, a caffeine product. "
+        "Not necessarily the exact product you take."
+    )
+    assert match["dailymed_url"].endswith("setid=caf-123")
+
+
+def test_adverse_reactions_for_a_salt_form_generic_name_use_the_fallback_search(
+    monkeypatch,
+):
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        search = request.url.params["search"]
+        calls.append(search)
+        if ".exact:" in search:
+            return httpx.Response(404, json={"error": {"code": "NOT_FOUND"}})
+        return httpx.Response(
+            200,
+            json={
+                "results": [
+                    {
+                        "openfda": {
+                            "generic_name": ["DONEPEZIL HYDROCHLORIDE"],
+                            "route": ["ORAL"],
+                        },
+                        "adverse_reactions": ["Nausea and diarrhea were reported."],
+                    },
+                    {
+                        "openfda": {
+                            "generic_name": ["DONEPEZIL HYDROCHLORIDE", "MEMANTINE"],
+                            "route": ["ORAL"],
+                        },
+                        "adverse_reactions": ["Combination label text."],
+                    },
+                ]
+            },
+        )
+
+    monkeypatch.setattr(
+        side_effects, "_http", httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    side_effects.clear_cache()
+
+    sections = side_effects.fetch_adverse_reaction_sections("donepezil")
+
+    assert len(calls) == 2
+    assert [s["text"] for s in sections] == ["Nausea and diarrhea were reported."]
+    side_effects.clear_cache()
+
+
+def test_label_match_shows_the_verbatim_sentence_and_dailymed_link(client, openfda):
+    openfda.labels["CAFFEINE"] = {
+        "adverse_reactions": [
+            "Insomnia was common. Headache, dizziness, and nausea were reported."
+        ],
+        "set_id": "caf-123",
+        "openfda": {"brand_name": ["NoDoz"], "route": ["ORAL"]},
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["matched_sentence"] == (
+        "Headache, dizziness, and nausea were reported."
+    )
+    assert match["quote_source"] == "fda_label_verbatim"
+    assert match["label_pointer"] is None
+    assert match["dailymed_url"].endswith("setid=caf-123")
+
+
+def test_sentence_with_a_cross_reference_is_not_quoted_but_still_linked(
+    client, openfda
+):
+    openfda.labels["CAFFEINE"] = {
+        "adverse_reactions": ["Headache was reported (See WARNINGS)."],
+        "set_id": "caf-123",
+        "openfda": {"brand_name": ["NoDoz"], "route": ["ORAL"]},
+    }
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["matched_sentence"] is None
+    assert match["quote_source"] is None
+    assert match["label_pointer"] == (
+        "The FDA label for NoDoz mentions headache in its Adverse Reactions section."
+    )
+    assert match["dailymed_url"].endswith("setid=caf-123")
+
+
+def test_local_reference_match_has_no_sentence_or_dailymed_link(client, openfda):
+    log(client, "prod_nodoz_200", 2, quantity=2)
+
+    (match,) = check(client, "headache")["matches"]
+
+    assert match["source"] == "local_reference"
+    assert match["matched_sentence"] is None
+    assert match["label_pointer"] is None
+    assert match["dailymed_url"] is None

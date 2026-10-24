@@ -9,12 +9,17 @@ import type {
   DailyLogRequest,
   DoseRequest,
   DoseResponse,
+  FoodGuidanceResponse,
+  InteractionCheckResponse,
   LoggedDoseEvent,
+  MyProductEntry,
+  MyProductRequest,
   ProductSearchResponse,
   ProductSearchResult,
   ScheduledMedication,
   ScheduleRequest,
   SideEffectProfileResponse,
+  SkincareAlternativesResponse,
   SkincareCheckResponse,
   SkincareProductRequest,
   SubstanceCurve,
@@ -27,7 +32,16 @@ import type {
 const API_BASE = "http://localhost:8000";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, init);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, init);
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") throw e;
+    throw new Error(
+      "Couldn't reach the Pharmakon server. Check that it is running, then try again.",
+      { cause: e },
+    );
+  }
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     try {
@@ -133,6 +147,16 @@ export function fetchSkincareCheck(userId: string): Promise<SkincareCheckRespons
   return request(`/users/${encodeURIComponent(userId)}/skincare-check`);
 }
 
+export function checkSkincareAlternatives(
+  products: SkincareProductRequest[],
+): Promise<SkincareAlternativesResponse> {
+  return request("/skincare-alternatives", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ products }),
+  });
+}
+
 export function createUserEnteredProduct(
   name: string,
   ingredients: string[],
@@ -142,6 +166,33 @@ export function createUserEnteredProduct(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, ingredients }),
   });
+}
+
+// --- "My products" --------------------------------------------------------------
+
+export function createMyProduct(
+  userId: string,
+  body: MyProductRequest,
+): Promise<MyProductEntry> {
+  return request(`/users/${encodeURIComponent(userId)}/my-products`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+export function fetchMyProducts(userId: string): Promise<MyProductEntry[]> {
+  return request(`/users/${encodeURIComponent(userId)}/my-products`);
+}
+
+export function deleteMyProduct(
+  userId: string,
+  productId: string,
+): Promise<void> {
+  return request(
+    `/users/${encodeURIComponent(userId)}/my-products/${encodeURIComponent(productId)}`,
+    { method: "DELETE" },
+  );
 }
 
 export function fetchTimeline(
@@ -155,6 +206,36 @@ export function fetchTimeline(
   return request(
     `/users/${encodeURIComponent(userId)}/timeline${qs ? `?${qs}` : ""}`,
   );
+}
+
+// --- Medication interaction checker ---------------------------------------------
+
+export function checkInteractions(names: string[]): Promise<InteractionCheckResponse> {
+  return request("/interaction-check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names }),
+  });
+}
+
+export function fetchInteractionCheck(
+  userId: string,
+): Promise<InteractionCheckResponse> {
+  return request(`/users/${encodeURIComponent(userId)}/interaction-check`);
+}
+
+// --- Food, drink, and timing guidance --------------------------------------------
+
+export function checkFoodGuidance(names: string[]): Promise<FoodGuidanceResponse> {
+  return request("/food-guidance", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names }),
+  });
+}
+
+export function fetchFoodGuidance(userId: string): Promise<FoodGuidanceResponse> {
+  return request(`/users/${encodeURIComponent(userId)}/food-guidance`);
 }
 
 // --- Medication schedule -------------------------------------------------------

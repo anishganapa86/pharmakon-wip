@@ -12,7 +12,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.api import main
+from app.api import alternatives, main
 from app.api.db import Base
 from app.registry.loader import Registry, load_registry
 
@@ -175,6 +175,7 @@ def test_hidden_acetaminophen_across_products_triggers_duplication(client):
             "Risk increases with alcohol use or liver impairment."
         ),
         "description": "Pain reliever and fever reducer",
+        "verified": False,
     }
     assert alert["uncounted_doses"] == []
 
@@ -209,6 +210,47 @@ def test_breaching_the_limit_triggers_urgent_and_resolves_the_caution(client):
     inactive = client.get("/users/default/alerts", params={"active": "false"}).json()
     assert [a["severity"] for a in inactive] == ["caution"]
     assert inactive[0]["resolved_at"] is not None
+
+
+def test_breach_severity_is_caution_unless_the_registry_says_urgent(client):
+    r = log(client, "prod_advil_200", 1, quantity=7)  # 1400 of 1200
+    (alert,) = r["triggered_alerts"]
+    assert alert["substance"]["id"] == "ibuprofen"
+    assert "exceeds" in alert["message"]
+    assert alert["severity"] == "caution"
+
+
+def test_approaching_the_limit_stays_caution_for_every_substance(client):
+    r = log(client, "prod_advil_200", 1, quantity=5)  # 1000 of 1200
+    (alert,) = r["triggered_alerts"]
+    assert alert["severity"] == "caution"
+    assert "approaching" in alert["message"]
+
+
+def test_severity_on_breach_defaults_to_caution_and_is_urgent_only_for_acetaminophen():
+    from app.registry.loader import load_registry
+
+    registry = load_registry()
+    urgent = [
+        e["id"]
+        for e in registry.all()
+        if registry.severity_on_breach(e["id"]) == "urgent"
+    ]
+    assert urgent == ["acetaminophen"]
+    assert registry.severity_on_breach("ibuprofen") == "caution"
+
+
+def test_registry_rejects_an_unknown_severity_on_breach():
+    from app.registry.loader import Registry
+
+    entry = {
+        "id": "x",
+        "name": "X",
+        "threshold_concentration_mg_per_l": None,
+        "severity_on_breach": "dire",
+    }
+    with pytest.raises(ValueError):
+        Registry([entry])
 
 
 def test_zero_order_substance_surfaces_as_unmodelable(client):
@@ -301,6 +343,29 @@ def test_hepatic_substance_curve_has_empty_notes(client):
     assert curve(client).json()["notes"] == []
 
 
+def test_curve_reports_parameters_unverified_for_every_unverified_substance(client):
+    assert curve(client).json()["parameters_verified"] is False
+    assert curve(client, substance_id="ethanol").json()["parameters_verified"] is False
+
+
+def test_curve_reports_parameters_verified_only_when_the_registry_entry_is(client):
+    from app.registry.loader import Registry, load_registry
+
+    entries = [dict(e) for e in load_registry().all()]
+    for entry in entries:
+        if entry["id"] == "caffeine":
+            entry["verified"] = True
+    main.app.dependency_overrides[main.get_registry] = lambda: Registry(entries)
+    try:
+        assert curve(client).json()["parameters_verified"] is True
+        assert (
+            curve(client, substance_id="ibuprofen").json()["parameters_verified"]
+            is False
+        )
+    finally:
+        main.app.dependency_overrides.pop(main.get_registry, None)
+
+
 def test_unmodelable_curve_still_carries_notes(client):
     assert curve(client, substance_id="ethanol").json()["notes"] == []
 
@@ -327,6 +392,18 @@ def test_zero_order_substance_is_200_with_modelable_false(client):
     assert body["points"] == []
     assert body["peak"] is None and body["current"] is None
     assert body["unit"] == "mg/L"
+
+
+def test_unmodelable_curve_has_null_fidelity(client):
+    body = curve(client, substance_id="ethanol").json()
+    assert body["modelable"] is False
+    assert body["fidelity"] is None
+
+
+def test_modelable_curve_still_reports_full_fidelity(client):
+    body = curve(client).json()
+    assert body["modelable"] is True
+    assert body["fidelity"] == "full"
 
 
 def test_current_is_null_when_now_is_outside_the_window(client):
@@ -456,6 +533,8 @@ def test_search_matches_brand_name_case_insensitively(client):
         "ingredients",
         "has_unmodeled_ingredients",
         "source",
+        "label",
+        "verification_note",
         "route",
     }
     assert product["source"] == "catalog"
@@ -498,6 +577,122 @@ def test_blank_search_is_422(client, q):
     r = client.get("/products/search", params={"q": q})
     assert r.status_code == 422
     assert r.json()["error"]["code"] == "validation_error"
+
+
+# --- Curated skincare products in search and logging -----------------------------
+#
+# app/data/skincare_products.json, via app/api/alternatives.search_curated --
+# the real file's committed TIRTIR entries (brand match, case-insensitive).
+
+
+def test_search_tirtir_returns_three_curated_entries(client):
+    body = client.get("/products/search", params={"q": "tirtir"}).json()
+    names = {
+        p["brand_name"] for p in body["results"] if p["source"] == "skincare_catalog"
+    }
+    assert names == {
+        "TIRTIR Milk Skin Toner",
+        "TIRTIR SOS Serum",
+        "TIRTIR Ceramic Cream",
+    }
+
+
+def test_search_by_full_displayed_curated_name_finds_exactly_that_product(client):
+    body = client.get("/products/search", params={"q": "TIRTIR Milk Skin Toner"}).json()
+    curated = [
+        p["brand_name"] for p in body["results"] if p["source"] == "skincare_catalog"
+    ]
+    assert curated == ["TIRTIR Milk Skin Toner"]
+
+
+def test_search_by_brand_and_part_of_the_name_or_spacing_and_case_still_matches(client):
+    for q in ("tirtir milk", "TIRTIR   Milk  Skin Toner", "tirtir sos serum"):
+        body = client.get("/products/search", params={"q": q}).json()
+        assert any(
+            p["source"] == "skincare_catalog"
+            and p["brand_name"].lower().startswith("tirtir")
+            for p in body["results"]
+        ), q
+
+
+def test_search_brand_plus_a_name_from_another_brand_matches_nothing_curated(client):
+    body = client.get("/products/search", params={"q": "TIRTIR Toleriane"}).json()
+    assert not [p for p in body["results"] if p["source"] == "skincare_catalog"]
+
+
+def test_search_by_full_catalog_name_finds_it(client):
+    body = client.get("/products/search", params={"q": "Tylenol Extra Strength"}).json()
+    assert [p["brand_name"] for p in body["results"] if p["source"] == "catalog"] == [
+        "Tylenol Extra Strength"
+    ]
+
+
+def test_curated_skincare_result_is_labeled_and_unverified(client):
+    body = client.get("/products/search", params={"q": "TIRTIR"}).json()
+    result = next(p for p in body["results"] if p["source"] == "skincare_catalog")
+    assert result["label"] == "From our curated skincare set"
+    assert result["verification_note"] == (
+        "Ingredient list copied from packaging; not yet independently verified"
+    )
+
+
+def test_curated_search_result_still_ineligible_as_an_alternative(client):
+    """Searchable/loggable (this feature) is independent of being offered
+    to someone else as an alternative candidate -- that's still gated by
+    verified + reference_url, unchanged (app/api/alternatives.py)."""
+    tirtir = next(c for c in alternatives.load_products() if c.brand == "TIRTIR")
+    assert tirtir.verified is False
+    assert alternatives._is_candidate_eligible(tirtir) is False
+
+
+def _find_curated(client, q, brand_name):
+    body = client.get("/products/search", params={"q": q}).json()
+    return next(
+        p
+        for p in body["results"]
+        if p["source"] == "skincare_catalog" and p["brand_name"] == brand_name
+    )
+
+
+def test_logging_a_curated_skincare_product_stores_its_ingredients(client):
+    product = _find_curated(client, "TIRTIR", "TIRTIR Milk Skin Toner")
+
+    r = client.post(
+        "/users/default/doses",
+        json={"product_id": product["id"], "taken_at": iso(0), "quantity": 1},
+    )
+    assert r.status_code == 201, r.text
+
+    (dose,) = client.get("/users/default/doses").json()
+    assert dose["product_name"] == "TIRTIR Milk Skin Toner"
+    assert len(dose["ingredients"]) == len(product["ingredients"])
+    # Cosmetic ingredient names never resolve against the PK registry --
+    # logged only, never modeled.
+    assert all(i["unmodeled_reason"] == "unmatched" for i in dose["ingredients"])
+
+
+def test_curated_skincare_dose_never_produces_a_curve(client):
+    product = _find_curated(client, "TIRTIR", "TIRTIR Milk Skin Toner")
+    client.post(
+        "/users/default/doses",
+        json={"product_id": product["id"], "taken_at": iso(0), "quantity": 1},
+    )
+
+    (dose,) = client.get("/users/default/doses").json()
+    # No substance_id at all on any ingredient -- there is nothing a curve
+    # could ever be requested for.
+    assert all(i["substance_id"] is None for i in dose["ingredients"])
+
+
+def test_logged_curated_skincare_product_appears_in_skincare_check(client):
+    product = _find_curated(client, "TIRTIR", "TIRTIR Milk Skin Toner")
+    client.post(
+        "/users/default/doses",
+        json={"product_id": product["id"], "taken_at": iso(0), "quantity": 1},
+    )
+
+    check = client.get("/users/default/skincare-check").json()
+    assert any(p["name"] == "TIRTIR Milk Skin Toner" for p in check["products"])
 
 
 # --- GET /users/{id}/doses -------------------------------------------------------

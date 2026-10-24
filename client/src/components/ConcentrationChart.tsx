@@ -37,7 +37,17 @@ function Notes({ notes }: { notes: string[] }) {
 function SubstanceHeading({ curve }: { curve: SubstanceCurve }) {
   return (
     <>
-      <h3>{curve.substance.display_name}</h3>
+      <h3>
+        {curve.substance.display_name}
+        {!curve.parameters_verified && (
+          <span
+            className="tag"
+            title="Half-life and other values in our database haven't been checked against a cited source."
+          >
+            Unverified parameters
+          </span>
+        )}
+      </h3>
       {curve.substance.description && (
         <p className="chart-subtitle muted small">{curve.substance.description}</p>
       )}

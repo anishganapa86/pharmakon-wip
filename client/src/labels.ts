@@ -40,17 +40,29 @@ export function productModelable(p: Pick<ProductSearchResult, "ingredients">): b
 /**
  * Why a product with no modelable ingredient still shows no curve. A route
  * of "TOPICAL" is real label data, not a guess -- topical-only substances are
- * out of scope for the PK model (CLAUDE.md), not unsupported by accident.
+ * out of scope for the PK model (project notes), not unsupported by accident.
  */
 export function notModeledReason(route: string | null | undefined): string {
   return route === "TOPICAL"
-    ? "Logged — not modeled (topical product)"
+    ? "Logged — not modeled (topical)"
     : "Logged — not yet in our database";
 }
 
-/** "Demo data, unverified" for the synthetic catalog; nothing for real openFDA data. */
-export function sourceLabel(p: Pick<ProductSearchResult, "source">): string | null {
-  return p.source === "catalog" ? "Demo data — unverified" : null;
+/** Shown on a medication card in place of a current-concentration reading
+ * when the substance has no PK parameters at all -- spelled out rather
+ * than left as a bare dash, which reads as "no data yet" rather than "this
+ * substance can't be charted here." */
+export const NOT_MODELED_NO_PK_DATA =
+  "Not modeled: no pharmacokinetic data for this substance in our database.";
+
+/** "Demo data, unverified" for the synthetic catalog; the server's own
+ * badge text for a curated-skincare or my-product result (see `label` on
+ * ProductSearchResult); nothing for real openFDA data. */
+export function sourceLabel(
+  p: Pick<ProductSearchResult, "source" | "label">,
+): string | null {
+  if (p.source === "catalog") return "Demo data — unverified";
+  return p.label;
 }
 
 // --- Daily log / timeline ----------------------------------------------------
@@ -115,23 +127,10 @@ export function showsBodyLocation(category: string): boolean {
 
 /** A logged dose with no modelable ingredient, shown on the timeline. Same
  * honest framing as notModeledReason, worded for the timeline card. */
-export const TIMELINE_DOSE_NOT_MODELED = "Logged — not modeled (topical/unmatched)";
+export const TIMELINE_DOSE_NOT_MODELED = "Logged — not modeled (topical)";
 
-/** Title Case for a raw openFDA label string (e.g. "GLYCERIN" -> "Glycerin").
- * Used only when there's no registry match -- ALL CAPS reads as shouting,
- * but there's no canonical registry name to show instead. */
-export function titleCaseIngredient(raw: string): string {
-  return raw
-    .toLowerCase()
-    .split(" ")
-    .map((w) => (w.length === 0 ? w : w[0].toUpperCase() + w.slice(1)))
-    .join(" ");
-}
-
-/** The name to show for a logged ingredient: the registry's canonical name
- * when resolved, else the raw label title-cased. */
 export function ingredientDisplayName(i: LoggedIngredient): string {
-  return i.display_name ?? titleCaseIngredient(i.name);
+  return i.display_name ?? i.name;
 }
 
 /** A logged ingredient as a user should read it: canonical name, its
