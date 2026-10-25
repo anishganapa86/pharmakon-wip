@@ -383,6 +383,20 @@ export async function fetchMe(): Promise<AuthUser | null> {
   }
 }
 
+async function clearBrowserCaches(): Promise<void> {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.controller?.postMessage("clear-caches");
+  }
+  if ("caches" in window) {
+    const names = await caches.keys();
+    await Promise.all(names.map((name) => caches.delete(name)));
+  }
+}
+
 export async function logout(): Promise<void> {
-  await request<void>("/auth/logout", { method: "POST" }, { redirectOn401: false });
+  try {
+    await request<void>("/auth/logout", { method: "POST" }, { redirectOn401: false });
+  } finally {
+    await clearBrowserCaches().catch(() => undefined);
+  }
 }

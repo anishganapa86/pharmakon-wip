@@ -6,7 +6,7 @@
     <title>Pharmakon – Log in</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <meta name="theme-color" content="#0b7a6b">
-    <meta name="pharmakon-api-base" content="http://localhost:8000">
+    <meta name="pharmakon-api-base" content="auto">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <style>
@@ -235,9 +235,13 @@
     </main>
 
     <script>
-        const apiBase = document
+        const configuredBase = document
             .querySelector('meta[name="pharmakon-api-base"]')
-            .content.replace(/\/+$/, "");
+            .content;
+        const onLocalhost = ["localhost", "127.0.0.1"].indexOf(window.location.hostname) !== -1;
+        const apiBase = (configuredBase === "auto"
+            ? (onLocalhost ? "http://localhost:8000" : "/api")
+            : configuredBase).replace(/\/+$/, "");
         const APP_URL = "/";
 
         function serverMessage(response, body) {

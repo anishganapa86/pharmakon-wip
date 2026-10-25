@@ -193,8 +193,15 @@ async def reject_foreign_origin(request: Request, call_next):
         and origin is not None
         and origin.rstrip("/") not in settings.cors_origins()
     ):
-        return _error(403, "forbidden", "Request origin is not allowed.")
-    return await call_next(request)
+        return _error(
+            403,
+            "forbidden",
+            "Request origin is not allowed.",
+            headers={"Cache-Control": "no-store"},
+        )
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def require_dev_docs() -> None:

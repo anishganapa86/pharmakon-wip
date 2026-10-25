@@ -1,23 +1,17 @@
 {
   "name": "Pharmakon",
   "short_name": "Pharmakon",
-  "description": "Systemic drug concentration modeling, duplication detection, and accumulation alerts. Not a medical device.",
+  "description": "Track what you take and see how it adds up. Educational and demonstrative use only. Not a medical device.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#16171d",
-  "theme_color": "#16171d",
+  "orientation": "portrait",
+  "background_color": "#f4f7f6",
+  "theme_color": "#0b7a6b",
   "icons": [
-    {
-      "src": "/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

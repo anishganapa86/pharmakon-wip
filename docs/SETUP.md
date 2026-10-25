@@ -152,12 +152,16 @@ medications into a shared instance.
 
 ### Pointing the client at the API
 
-The React app reads `VITE_API_BASE` (default `http://localhost:8000`) from
-`client/.env` at build time. The static `login.html` and `signup.html` read the
-same address from the `pharmakon-api-base` meta tag at the top of each file, so
-change both together when the API is not on `localhost:8000`. Open the app at
+The React app reads `VITE_API_BASE` (default `http://localhost:8000`) at build
+time. Set it to `/api` to go through the Vite proxy, which forwards `/api/...`
+to the API (`PHARMAKON_API_TARGET`, default `http://localhost:8000`) and is
+what the iPhone demo uses (see `docs/IPHONE_HTTPS.md`). The static
+`login.html` and `signup.html` use `http://localhost:8000` when opened on
+`localhost` or `127.0.0.1` and `/api` anywhere else. Open the app at
 `http://localhost:5173`, not `127.0.0.1`: the session cookie is `SameSite=Lax`
 and is only sent to the API when both addresses share a host name.
+`PHARMAKON_ALLOWED_HOSTS` is a comma-separated list of extra host names the
+Vite server will answer to, such as a tunnel address.
 
 ### Login throttling is per process
 
