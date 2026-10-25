@@ -139,6 +139,15 @@ Settings come from environment variables, loaded from a gitignored `.env`
 | `PHARMAKON_CORS_ORIGINS` | Comma-separated origins allowed to call the API with cookies (default: the two Vite dev origins). A `*` is ignored. A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` header is not on this list is refused with `403`. |
 | `PHARMAKON_DEV_DOCS` | Set to `1` to serve `/docs`, `/redoc` and `/openapi.json` to a logged-in user. Off by default. Read on every request. |
 
+### Pointing the client at the API
+
+The React app reads `VITE_API_BASE` (default `http://localhost:8000`) from
+`client/.env` at build time. The static `login.html` and `signup.html` read the
+same address from the `pharmakon-api-base` meta tag at the top of each file, so
+change both together when the API is not on `localhost:8000`. Open the app at
+`http://localhost:5173`, not `127.0.0.1`: the session cookie is `SameSite=Lax`
+and is only sent to the API when both addresses share a host name.
+
 ### Login throttling is per process
 
 Failed logins and sign-up attempts are counted in memory, by IP and email

@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharmakon – Create account</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <meta name="theme-color" content="#0b7a6b">
+    <meta name="pharmakon-api-base" content="http://localhost:8000">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <style>
+        :root {
+            --text: #4b5968;
+            --text-h: #0b1b2b;
+            --border: #d9e4e3;
+            --accent: #0b7a6b;
+            --accent-hover: #096558;
+            --accent-bg: rgba(11, 122, 107, 0.09);
+            --error: #d92d20;
+            --sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+
+            font: 16px/150% var(--sans);
+            color: var(--text);
+            color-scheme: light;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+
+    
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100svh;
+      background-color: #ecf6f4;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' fill='none' stroke='%230f9d8f' stroke-opacity='0.2'/%3E%3Cpath d='M28 0L28 34L0 50L0 84L28 100L56 84L56 50L28 34' fill='none' stroke='%230f9d8f' stroke-opacity='0.2'/%3E%3C/svg%3E");
+      background-attachment: fixed;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='260' viewBox='0 0 400 260'%3E%3Cg fill='none' stroke='%230b7a6b' stroke-opacity='0.5' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M150 80L210.6 115L210.6 185L150 220L89.4 185L89.4 115Z'/%3E%3Cpath d='M210.6 115L277.2 93.4L318.3 150L277.2 206.6L210.6 185'/%3E%3Cpath d='M198 126L198 174' stroke-opacity='0.3'/%3E%3Cpath d='M150 80L150 34M89.4 185L38 214M318.3 150L372 150'/%3E%3C/g%3E%3Cg fill='%23f2705a' fill-opacity='0.22' stroke='%23f2705a' stroke-opacity='0.7' stroke-width='1.8'%3E%3Ccircle cx='150' cy='25' r='10'/%3E%3Ccircle cx='277.2' cy='93.4' r='10'/%3E%3Ccircle cx='277.2' cy='206.6' r='10'/%3E%3C/g%3E%3Cg fill='%230b7a6b' fill-opacity='0.6'%3E%3Ccircle cx='150' cy='80' r='3.5'/%3E%3Ccircle cx='210.6' cy='115' r='3.5'/%3E%3Ccircle cx='210.6' cy='185' r='3.5'/%3E%3Ccircle cx='150' cy='220' r='3.5'/%3E%3Ccircle cx='89.4' cy='185' r='3.5'/%3E%3Ccircle cx='89.4' cy='115' r='3.5'/%3E%3Ccircle cx='318.3' cy='150' r='3.5'/%3E%3Ccircle cx='38' cy='214' r='4.5'/%3E%3Ccircle cx='372' cy='150' r='4.5'/%3E%3C/g%3E%3C/svg%3E"),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='300' viewBox='0 0 320 300'%3E%3Cg fill='none' stroke='%230b7a6b' stroke-opacity='0.5' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M140 80L200.6 115L200.6 185L140 220L79.4 185L79.4 115Z'/%3E%3Ccircle cx='140' cy='150' r='44' stroke-opacity='0.3'/%3E%3Cpath d='M200.6 115L255 84M79.4 185L30 214M140 220L140 268'/%3E%3C/g%3E%3Ccircle cx='265' cy='78' r='10' fill='%23f2705a' fill-opacity='0.22' stroke='%23f2705a' stroke-opacity='0.7' stroke-width='1.8'/%3E%3Cg fill='%230b7a6b' fill-opacity='0.6'%3E%3Ccircle cx='140' cy='80' r='3.5'/%3E%3Ccircle cx='200.6' cy='115' r='3.5'/%3E%3Ccircle cx='200.6' cy='185' r='3.5'/%3E%3Ccircle cx='140' cy='220' r='3.5'/%3E%3Ccircle cx='79.4' cy='185' r='3.5'/%3E%3Ccircle cx='79.4' cy='115' r='3.5'/%3E%3Ccircle cx='30' cy='214' r='4.5'/%3E%3Ccircle cx='140' cy='268' r='4.5'/%3E%3C/g%3E%3C/svg%3E"),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='300' viewBox='0 0 320 300'%3E%3Cg stroke='%230f9d8f' stroke-opacity='0.4' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M110 50L161.96 80L161.96 140L110 170L58.04 140L58.04 80Z' fill='%230f9d8f' fill-opacity='0.16'/%3E%3Cpath d='M213.9 50L265.86 80L265.86 140L213.9 170L161.94 140L161.94 80Z' fill='%230f9d8f' fill-opacity='0.08'/%3E%3Cpath d='M162 140L213.96 170L213.96 230L162 260L110.04 230L110.04 170Z' fill='%230f9d8f' fill-opacity='0.24'/%3E%3C/g%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right -80px top 110px, left -90px bottom 10px, left -50px top 150px;
+      background-size: 720px auto, 460px auto, 380px auto;
+    }
+
+        main {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            min-height: 100svh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            padding: 24px 16px;
+            box-sizing: border-box;
+        }
+
+        .brand {
+            text-align: center;
+        }
+
+        .brand h1 {
+            margin: 0;
+            font-size: 40px;
+            font-weight: 700;
+            letter-spacing: -0.8px;
+            line-height: 1.1;
+            color: var(--text-h);
+        }
+
+        .brand p {
+            margin: 6px 0 0;
+            font-size: 15px;
+        }
+
+        .login-box {
+            width: 100%;
+            max-width: 380px;
+            box-sizing: border-box;
+            padding: 28px 26px 24px;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow:
+                0 1px 2px rgba(11, 27, 43, 0.05),
+                0 12px 30px rgba(11, 27, 43, 0.1);
+        }
+
+        .login-box h2 {
+            margin: 0 0 18px;
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.1px;
+            color: var(--text-h);
+        }
+
+        .field {
+            margin: 0 0 14px;
+        }
+
+        .login-box input {
+            display: block;
+            width: 100%;
+            height: 42px;
+            padding: 0 12px;
+            margin: 0;
+            box-sizing: border-box;
+            font: inherit;
+            font-size: 16px;
+            color: var(--text-h);
+            background: #ffffff;
+            border: 1px solid #cbd5df;
+            border-radius: 8px;
+        }
+
+        .login-box input:focus-visible {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-bg);
+        }
+
+        .login-box button {
+            width: 100%;
+            height: 42px;
+            margin-top: 4px;
+            padding: 0 20px;
+            font: inherit;
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+            background: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .login-box button:hover:not(:disabled) {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+
+        .login-box button:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        .login-box button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .message {
+            margin: 14px 0 0;
+            min-height: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--error);
+        }
+
+        .message.ok {
+            color: var(--accent);
+        }
+
+        .disclaimer {
+            max-width: 440px;
+            margin: 0;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .login-box input[aria-invalid="true"] {
+            border-color: var(--error);
+        }
+
+        .field-error {
+            margin: 4px 0 0;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--error);
+        }
+
+        .field-error:empty {
+            display: none;
+        }
+
+        .switch {
+            margin: 18px 0 0;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .switch a {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .switch a:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="brand">
+            <h1>Pharmakon</h1>
+            <p>Track what you take and see how it adds up.</p>
+        </div>
+
+        <form class="login-box" id="signup-form" novalidate>
+            <h2>Create an account</h2>
+            <div class="field">
+                <input type="email" id="email" name="email" placeholder="Email" aria-label="Email" aria-describedby="email-error" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
+                <p class="field-error" id="email-error" role="alert"></p>
+            </div>
+            <div class="field">
+                <input type="password" id="password" name="password" placeholder="Password (10–128 characters)" aria-label="Password" aria-describedby="password-error" autocomplete="new-password">
+                <p class="field-error" id="password-error" role="alert"></p>
+            </div>
+            <div class="field">
+                <input type="password" id="confirm" name="confirm" placeholder="Confirm password" aria-label="Confirm password" aria-describedby="confirm-error" autocomplete="new-password">
+                <p class="field-error" id="confirm-error" role="alert"></p>
+            </div>
+            <button type="submit" id="submit">Create account</button>
+            <p class="message" id="message" role="status" aria-live="polite"></p>
+            <p class="switch">Already have an account? <a href="/login.html">Log in</a></p>
+        </form>
+
+        <p class="disclaimer">Educational and demonstrative use only. Not a medical device.</p>
+    </main>
+
+    <script>
+        const apiBase = document
+            .querySelector('meta[name="pharmakon-api-base"]')
+            .content.replace(/\/+$/, "");
+        const APP_URL = "/";
+
+        function serverMessage(response, body) {
+            if (body && body.error && body.error.message) {
+                const wait = Number(response.headers.get("Retry-After"));
+                if (response.status === 429 && wait > 0) {
+                    return body.error.message + " Try again in " + wait + " seconds.";
+                }
+                return body.error.message;
+            }
+            return "Something went wrong. Please try again.";
+        }
+
+        async function postJson(path, payload) {
+            const response = await fetch(apiBase + path, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            let body = null;
+            try {
+                body = await response.json();
+            } catch (e) {
+                body = null;
+            }
+            return { response: response, body: body };
+        }
+
+        const PASSWORD_MIN = 10;
+        const PASSWORD_MAX = 128;
+        const EMAIL_MAX = 254;
+        const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+        const form = document.getElementById("signup-form");
+        const message = document.getElementById("message");
+        const button = document.getElementById("submit");
+        const fields = {
+            email: document.getElementById("email"),
+            password: document.getElementById("password"),
+            confirm: document.getElementById("confirm")
+        };
+        const errors = {
+            email: document.getElementById("email-error"),
+            password: document.getElementById("password-error"),
+            confirm: document.getElementById("confirm-error")
+        };
+
+        function setFieldError(name, text) {
+            errors[name].textContent = text;
+            if (text) {
+                fields[name].setAttribute("aria-invalid", "true");
+            } else {
+                fields[name].removeAttribute("aria-invalid");
+            }
+        }
+
+        function checkEmail() {
+            const email = fields.email.value.trim().toLowerCase();
+            let text = "";
+            if (!email) {
+                text = "Enter your email address.";
+            } else if (email.length > EMAIL_MAX || !EMAIL_PATTERN.test(email)) {
+                text = "Enter a valid email address.";
+            }
+            setFieldError("email", text);
+            return !text;
+        }
+
+        function checkPassword() {
+            const length = fields.password.value.length;
+            let text = "";
+            if (length < PASSWORD_MIN) {
+                text = "Use at least " + PASSWORD_MIN + " characters.";
+            } else if (length > PASSWORD_MAX) {
+                text = "Use at most " + PASSWORD_MAX + " characters.";
+            }
+            setFieldError("password", text);
+            return !text;
+        }
+
+        function checkConfirm() {
+            let text = "";
+            if (!fields.confirm.value) {
+                text = "Re-enter your password.";
+            } else if (fields.confirm.value !== fields.password.value) {
+                text = "Passwords do not match.";
+            }
+            setFieldError("confirm", text);
+            return !text;
+        }
+
+        fields.email.addEventListener("blur", checkEmail);
+        fields.password.addEventListener("blur", function () {
+            checkPassword();
+            if (fields.confirm.value) {
+                checkConfirm();
+            }
+        });
+        fields.confirm.addEventListener("blur", checkConfirm);
+        fields.email.addEventListener("input", function () {
+            if (errors.email.textContent) {
+                checkEmail();
+            }
+        });
+        fields.password.addEventListener("input", function () {
+            if (errors.password.textContent) {
+                checkPassword();
+            }
+            if (errors.confirm.textContent) {
+                checkConfirm();
+            }
+        });
+        fields.confirm.addEventListener("input", function () {
+            if (errors.confirm.textContent) {
+                checkConfirm();
+            }
+        });
+
+        function showMessage(text) {
+            message.textContent = text;
+        }
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            showMessage("");
+
+            const emailOk = checkEmail();
+            const passwordOk = checkPassword();
+            const confirmOk = checkConfirm();
+            if (!(emailOk && passwordOk && confirmOk)) {
+                const first = [fields.email, fields.password, fields.confirm].find(function (field) {
+                    return field.getAttribute("aria-invalid") === "true";
+                });
+                if (first) {
+                    first.focus();
+                }
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = "Creating account…";
+
+            try {
+                const result = await postJson("/auth/signup", {
+                    email: fields.email.value.trim(),
+                    password: fields.password.value
+                });
+                if (result.response.ok) {
+                    window.location.replace(APP_URL);
+                    return;
+                }
+                const text = serverMessage(result.response, result.body);
+                if (result.response.status === 409) {
+                    setFieldError("email", text);
+                    fields.email.focus();
+                } else {
+                    showMessage(text);
+                }
+            } catch (e) {
+                showMessage("Couldn't reach the server. Check that it is running, then try again.");
+            }
+            button.disabled = false;
+            button.textContent = "Create account";
+        });
+    </script>
+</body>
+</html>

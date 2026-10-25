@@ -30,7 +30,7 @@ import type {
 } from "./types/contract";
 
 const API_BASE = (
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8000"
+  (import.meta.env.VITE_API_BASE as string | undefined) || "http://localhost:8000"
 ).replace(/\/+$/, "");
 
 export const LOGIN_PAGE = "/login.html";

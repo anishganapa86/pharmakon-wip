@@ -6,10 +6,10 @@
     <title>Pharmakon – Log in</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <meta name="theme-color" content="#0b7a6b">
+    <meta name="pharmakon-api-base" content="http://localhost:8000">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
     <style>
-        /* Same palette as the app (client/src/index.css). */
         :root {
             --text: #4b5968;
             --text-h: #0b1b2b;
@@ -19,15 +19,14 @@
             --accent-bg: rgba(11, 122, 107, 0.09);
             --error: #d92d20;
             --sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
- 
+
             font: 16px/150% var(--sans);
             color: var(--text);
             color-scheme: light;
             -webkit-font-smoothing: antialiased;
             text-rendering: optimizeLegibility;
         }
- 
-        /* Lattice + molecule backdrop, copied from the app so the pages match. */
+
     
     body {
       margin: 0;
@@ -37,7 +36,7 @@
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' fill='none' stroke='%230f9d8f' stroke-opacity='0.2'/%3E%3Cpath d='M28 0L28 34L0 50L0 84L28 100L56 84L56 50L28 34' fill='none' stroke='%230f9d8f' stroke-opacity='0.2'/%3E%3C/svg%3E");
       background-attachment: fixed;
     }
-    
+
     body::before {
       content: "";
       position: fixed;
@@ -52,7 +51,7 @@
       background-position: right -80px top 110px, left -90px bottom 10px, left -50px top 150px;
       background-size: 720px auto, 460px auto, 380px auto;
     }
-    
+
         main {
             position: relative;
             z-index: 1;
@@ -66,11 +65,11 @@
             padding: 24px 16px;
             box-sizing: border-box;
         }
- 
+
         .brand {
             text-align: center;
         }
- 
+
         .brand h1 {
             margin: 0;
             font-size: 40px;
@@ -79,12 +78,12 @@
             line-height: 1.1;
             color: var(--text-h);
         }
- 
+
         .brand p {
             margin: 6px 0 0;
             font-size: 15px;
         }
- 
+
         .login-box {
             width: 100%;
             max-width: 380px;
@@ -97,7 +96,7 @@
                 0 1px 2px rgba(11, 27, 43, 0.05),
                 0 12px 30px rgba(11, 27, 43, 0.1);
         }
- 
+
         .login-box h2 {
             margin: 0 0 18px;
             font-size: 18px;
@@ -105,13 +104,17 @@
             letter-spacing: -0.1px;
             color: var(--text-h);
         }
- 
+
+        .field {
+            margin: 0 0 14px;
+        }
+
         .login-box input {
             display: block;
             width: 100%;
             height: 42px;
             padding: 0 12px;
-            margin: 0 0 14px;
+            margin: 0;
             box-sizing: border-box;
             font: inherit;
             font-size: 16px;
@@ -120,13 +123,13 @@
             border: 1px solid #cbd5df;
             border-radius: 8px;
         }
- 
+
         .login-box input:focus-visible {
             outline: none;
             border-color: var(--accent);
             box-shadow: 0 0 0 3px var(--accent-bg);
         }
- 
+
         .login-box button {
             width: 100%;
             height: 42px;
@@ -142,22 +145,22 @@
             cursor: pointer;
             transition: background 0.15s, border-color 0.15s;
         }
- 
+
         .login-box button:hover:not(:disabled) {
             background: var(--accent-hover);
             border-color: var(--accent-hover);
         }
- 
+
         .login-box button:focus-visible {
             outline: 2px solid var(--accent);
             outline-offset: 2px;
         }
- 
+
         .login-box button:disabled {
             opacity: 0.5;
             cursor: not-allowed;
         }
- 
+
         .message {
             margin: 14px 0 0;
             min-height: 20px;
@@ -165,16 +168,48 @@
             font-weight: 500;
             color: var(--error);
         }
- 
+
         .message.ok {
             color: var(--accent);
         }
- 
+
         .disclaimer {
             max-width: 440px;
             margin: 0;
             font-size: 13px;
             text-align: center;
+        }
+
+        .login-box input[aria-invalid="true"] {
+            border-color: var(--error);
+        }
+
+        .field-error {
+            margin: 4px 0 0;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--error);
+        }
+
+        .field-error:empty {
+            display: none;
+        }
+
+        .switch {
+            margin: 18px 0 0;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .switch a {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .switch a:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+            border-radius: 2px;
         }
     </style>
 </head>
@@ -184,42 +219,93 @@
             <h1>Pharmakon</h1>
             <p>Track what you take and see how it adds up.</p>
         </div>
- 
+
         <form class="login-box" id="login-form" novalidate>
             <h2>Log in</h2>
-            <input type="text" id="username" placeholder="Username" aria-label="Username" autocomplete="username" autofocus>
-            <input type="password" id="password" placeholder="Password" aria-label="Password" autocomplete="current-password">
+            <div class="field">
+                <input type="email" id="email" name="email" placeholder="Email" aria-label="Email" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
+            </div>
+            <div class="field">
+                <input type="password" id="password" name="password" placeholder="Password" aria-label="Password" autocomplete="current-password">
+            </div>
             <button type="submit" id="submit">Log in</button>
             <p class="message" id="message" role="status" aria-live="polite"></p>
+            <p class="switch">New here? <a href="/signup.html">Create an account</a></p>
         </form>
- 
+
         <p class="disclaimer">Educational and demonstrative use only. Not a medical device.</p>
     </main>
- 
+
     <script>
-        // Where to send the user after a successful login (the app's root).
+        const apiBase = document
+            .querySelector('meta[name="pharmakon-api-base"]')
+            .content.replace(/\/+$/, "");
         const APP_URL = "/";
- 
-        document.getElementById("login-form").addEventListener("submit", function (event) {
-            event.preventDefault();
- 
-            const username = document.getElementById("username").value;
-            const password = document.getElementById("password").value;
-            const message = document.getElementById("message");
-            const button = document.getElementById("submit");
- 
-            if (username.trim().toLowerCase() === "demo" && password === "pharmakon-demo-2026") {
-                message.classList.add("ok");
-                message.textContent = "Login successful! Opening Pharmakon…";
-                button.disabled = true;
-                // replace() so the Back button doesn't return to the login page.
-                setTimeout(function () { window.location.replace(APP_URL); }, 600);
-            } else {
-                message.classList.remove("ok");
-                message.textContent = "Invalid username or password!";
+
+        function serverMessage(response, body) {
+            if (body && body.error && body.error.message) {
+                const wait = Number(response.headers.get("Retry-After"));
+                if (response.status === 429 && wait > 0) {
+                    return body.error.message + " Try again in " + wait + " seconds.";
+                }
+                return body.error.message;
             }
+            return "Something went wrong. Please try again.";
+        }
+
+        async function postJson(path, payload) {
+            const response = await fetch(apiBase + path, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
+            let body = null;
+            try {
+                body = await response.json();
+            } catch (e) {
+                body = null;
+            }
+            return { response: response, body: body };
+        }
+
+        const form = document.getElementById("login-form");
+        const message = document.getElementById("message");
+        const button = document.getElementById("submit");
+
+        function showMessage(text, ok) {
+            message.classList.toggle("ok", ok);
+            message.textContent = text;
+        }
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const email = document.getElementById("email").value.trim();
+            const password = document.getElementById("password").value;
+
+            if (!email || !password) {
+                showMessage("Enter your email and password.", false);
+                return;
+            }
+
+            button.disabled = true;
+            button.textContent = "Logging in…";
+            showMessage("", false);
+
+            try {
+                const result = await postJson("/auth/login", { email: email, password: password });
+                if (result.response.ok) {
+                    showMessage("Login successful! Opening Pharmakon…", true);
+                    window.location.replace(APP_URL);
+                    return;
+                }
+                showMessage(serverMessage(result.response, result.body), false);
+            } catch (e) {
+                showMessage("Couldn't reach the server. Check that it is running, then try again.", false);
+            }
+            button.disabled = false;
+            button.textContent = "Log in";
         });
     </script>
 </body>
 </html>
- 
