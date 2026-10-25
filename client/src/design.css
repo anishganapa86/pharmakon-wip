@@ -397,7 +397,7 @@ button.control {
   .more-menu {
     position: fixed;
     right: 12px;
-    bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(124px + env(safe-area-inset-bottom, 0px));
     z-index: 26;
     display: flex;
     flex-direction: column;

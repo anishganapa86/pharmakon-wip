@@ -24,7 +24,7 @@ function buildStamp(command: 'build' | 'serve'): Plugin {
 }
 
 export default defineConfig(({ command, mode }) => {
-  const env = loadEnv(mode, process.cwd(), '')
+  const env = loadEnv(mode, process.cwd(), ['PHARMAKON_'])
   const allowedHosts = (env.PHARMAKON_ALLOWED_HOSTS ?? '')
     .split(',')
     .map((host) => host.trim())

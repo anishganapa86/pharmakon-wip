@@ -434,7 +434,7 @@ def chat(body: ChatRequest, user_id: UserId, session: Db, generator: Gen):
         return _error(
             422, "validation_error", "messages: the last message must be from the user"
         )
-    blocked = ai_gate(generator, user_id, ai.chat_per_hour())
+    blocked = ai_gate(generator, f"chat:{user_id}", ai.chat_per_hour())
     if blocked is not None:
         return blocked
     context = ai.survey_context(survey.survey_json(session.get(UserSurvey, user_id)))
@@ -515,7 +515,7 @@ async def scan_label(request: Request, user_id: UserId, generator: Gen):
     mime = scan.sniff_mime(data)
     if mime is None:
         return _error(415, "unsupported_image", "Use a JPEG, PNG or WebP photo.")
-    blocked = ai_gate(generator, user_id, ai.scan_per_hour())
+    blocked = ai_gate(generator, f"scan:{user_id}", ai.scan_per_hour())
     if blocked is not None:
         return blocked
     try:

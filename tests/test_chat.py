@@ -380,3 +380,52 @@ def test_nothing_is_stored(make_client, stub):
     client = make_client()
     ask(client, sign_up(client))
     assert not any("chat" in t or "message" in t for t in Base.metadata.tables)
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Yes, that is safe.",
+        "It causes drowsiness.",
+        "This prevents problems.",
+        "There is no risk here.",
+        "It will cause issues.",
+        "You can take it safely.",
+    ],
+)
+def test_forbidden_words_in_a_reply_are_refused_server_side(make_client, stub, reply):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    r = ask(client, sign_up(client))
+    assert r.status_code == 502
+    assert r.json()["error"]["code"] == "ai_failed"
+
+
+def test_a_long_reply_is_cut_to_120_words(make_client, stub):
+    stub.text = json.dumps({"reply": " ".join(["word"] * 300), "suggested_tab": None})
+    client = make_client()
+    body = ask(client, sign_up(client)).json()
+    assert len(body["reply"].split()) == 120
+
+
+def test_chat_and_scan_hourly_limits_are_separate(make_client, stub, monkeypatch):
+    monkeypatch.setenv("PHARMAKON_CHAT_PER_HOUR", "1")
+    monkeypatch.setenv("PHARMAKON_SCAN_PER_HOUR", "1")
+    client = make_client()
+    uid = sign_up(client)
+    assert ask(client, uid).status_code == 200
+    assert ask(client, uid).status_code == 429
+    stub.text = json.dumps(
+        {
+            "product_name": None,
+            "brand": None,
+            "product_type": "unknown",
+            "ingredients": [],
+            "label_text_quality": "clear",
+            "notes": None,
+        }
+    )
+    scan = client.post(f"/users/{uid}/scan", content=b"\xff\xd8\xff\xe0\x00\x10JFIF")
+    assert scan.status_code == 200
+    again = client.post(f"/users/{uid}/scan", content=b"\xff\xd8\xff\xe0\x00\x10JFIF")
+    assert again.status_code == 429

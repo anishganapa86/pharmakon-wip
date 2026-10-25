@@ -38,7 +38,8 @@ const TYPE_LABELS: Record<ScanResult["product_type"], string> = {
   food_drink: "Food or drink",
   unknown: "Not sure",
 };
-const DEMO_NOTICE = "Demo only: don't enter real medical or personal information.";
+const DEMO_NOTICE =
+  "Demo only: don't enter real medical or personal information.";
 const WARNING =
   "Label reading can be wrong. Check each ingredient against the package before saving.";
 
@@ -54,7 +55,10 @@ function printedAmount(result: ScanResult, name: string): string {
   return `${found.strength}${found.unit ? ` ${found.unit}` : ""}`;
 }
 
-function roleOf(result: ScanResult, name: string): "active" | "inactive" | "unknown" {
+function roleOf(
+  result: ScanResult,
+  name: string,
+): "active" | "inactive" | "unknown" {
   const found = result.ingredients.find(
     (i) => i.name.trim().toLowerCase() === name.trim().toLowerCase(),
   );
@@ -72,11 +76,16 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
   const [name, setName] = useState(result.product_name ?? "");
   const [brand, setBrand] = useState(result.brand ?? "");
   const [type, setType] = useState(result.product_type);
-  const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("other");
-  const [text, setText] = useState(result.ingredients.map((i) => i.name).join(", "));
+  const [category, setCategory] =
+    useState<(typeof CATEGORIES)[number]>("other");
+  const [text, setText] = useState(
+    result.ingredients.map((i) => i.name).join(", "),
+  );
   const [matches, setMatches] = useState<Match>({});
   const [manual, setManual] = useState<Set<string>>(new Set());
-  const [loggedSubstances, setLoggedSubstances] = useState<Record<string, string>>({});
+  const [loggedSubstances, setLoggedSubstances] = useState<
+    Record<string, string>
+  >({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,7 +120,8 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
         const bySubstance: Record<string, string> = {};
         for (const dose of doses) {
           for (const ing of dose.ingredients) {
-            if (ing.substance_id) bySubstance[ing.substance_id] = dose.product_name;
+            if (ing.substance_id)
+              bySubstance[ing.substance_id] = dose.product_name;
           }
         }
         setLoggedSubstances(bySubstance);
@@ -122,7 +132,9 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
     };
   }, [userId]);
 
-  function status(ingredient: string): "Matched" | "Not tracked" | "Enter manually" {
+  function status(
+    ingredient: string,
+  ): "Matched" | "Not tracked" | "Enter manually" {
     const match = matches[ingredient];
     const role = roleOf(result, ingredient);
     if (match?.matched) return "Matched";
@@ -148,7 +160,7 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
       await createMyProduct(userId, {
         brand: brand.trim() || name.trim(),
         name: name.trim(),
-        category: type === "topical" ? category : "other",
+        category,
         raw_text: text,
       });
       onSaved(name.trim());
@@ -163,29 +175,42 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
       <h2 className="screen-title">Check what we read</h2>
       <p className="warning">{WARNING}</p>
       {result.label_text_quality === "partial" && (
-        <p className="muted">Part of the label was hard to read. Fill in anything missing.</p>
+        <p className="muted">
+          Part of the label was hard to read. Fill in anything missing.
+        </p>
       )}
       {result.label_text_quality === "unreadable" && (
         <p className="muted">
-          We couldn't read this label. You can type the product in by hand below.
+          We couldn't read this label. You can type the product in by hand
+          below.
         </p>
       )}
       {result.notes && <p className="muted">{result.notes}</p>}
 
       <label className="scan-field">
         <span>Product name</span>
-        <input className="control" value={name} onChange={(e) => setName(e.target.value)} />
+        <input
+          className="control"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
       </label>
       <label className="scan-field">
-        <span>Brand</span>
-        <input className="control" value={brand} onChange={(e) => setBrand(e.target.value)} />
+        <span>Brand (if blank, the product name is used)</span>
+        <input
+          className="control"
+          value={brand}
+          onChange={(e) => setBrand(e.target.value)}
+        />
       </label>
       <label className="scan-field">
         <span>What kind of product is it?</span>
         <select
           className="control"
           value={type}
-          onChange={(e) => setType(e.target.value as ScanResult["product_type"])}
+          onChange={(e) =>
+            setType(e.target.value as ScanResult["product_type"])
+          }
         >
           {Object.entries(TYPE_LABELS).map(([value, label]) => (
             <option key={value} value={value}>
@@ -194,22 +219,22 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
           ))}
         </select>
       </label>
-      {type === "topical" && (
-        <label className="scan-field">
-          <span>Category</span>
-          <select
-            className="control"
-            value={category}
-            onChange={(e) => setCategory(e.target.value as (typeof CATEGORIES)[number])}
-          >
-            {CATEGORIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
-      )}
+      <label className="scan-field">
+        <span>Category</span>
+        <select
+          className="control"
+          value={category}
+          onChange={(e) =>
+            setCategory(e.target.value as (typeof CATEGORIES)[number])
+          }
+        >
+          {CATEGORIES.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="scan-field">
         <span>Ingredients (separate with commas or new lines)</span>
         <textarea
@@ -229,10 +254,14 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
               <li key={`${n}-${i}`} className="scan-row">
                 <div className="scan-row-main">
                   <span className="scan-name">{n}</span>
-                  {amount && <span className="scan-amount">{amount} as printed</span>}
+                  {amount && (
+                    <span className="scan-amount">{amount} as printed</span>
+                  )}
                 </div>
                 <span className="scan-status">
-                  <span className={`dot ${s === "Matched" ? "dot-ok" : s === "Not tracked" ? "dot-muted" : "dot-warn"}`} />
+                  <span
+                    className={`dot ${s === "Matched" ? "dot-ok" : s === "Not tracked" ? "dot-muted" : "dot-warn"}`}
+                  />
                   {s === "Enter manually" ? (
                     <button
                       type="button"
@@ -254,7 +283,9 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
                       onBlur={(e) => {
                         const fixed = e.target.value.trim();
                         if (fixed && fixed !== n) {
-                          setText(names.map((x) => (x === n ? fixed : x)).join(", "));
+                          setText(
+                            names.map((x) => (x === n ? fixed : x)).join(", "),
+                          );
                         }
                       }}
                     />
@@ -268,20 +299,26 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
 
       {overlaps.map((o) => (
         <p key={o.n} className="muted">
-          {o.n} is already in a product you logged ({loggedSubstances[o.id as string]}).
+          {o.n} is already in a product you logged (
+          {loggedSubstances[o.id as string]}).
         </p>
       ))}
 
       <p className="muted small">
-        Saved as an entry you typed yourself. Strengths from the label are not used for
-        concentration curves.
+        Saved as an entry you typed yourself. Strengths from the label are not
+        used for concentration curves.
       </p>
       {error && <p className="error">Couldn't save: {error}</p>}
       <div className="scan-actions">
         <button type="button" className="control secondary" onClick={onCancel}>
           Cancel
         </button>
-        <button type="button" className="control button" disabled={!canSave} onClick={() => void save()}>
+        <button
+          type="button"
+          className="control button"
+          disabled={!canSave}
+          onClick={() => void save()}
+        >
           Add to my products
         </button>
       </div>
@@ -324,12 +361,14 @@ export function ScanFlow({ userId, onClose }: ScanFlowProps) {
         <section className="panel">
           <h2 className="screen-title">Scan a product</h2>
           <p className="muted">
-            Take a photo of the label. We read the printed text and show it to you to check.
-            Nothing is saved until you say so, and the photo is not stored.
+            Take a photo of the label. We read the printed text and show it to
+            you to check. Nothing is saved until you say so, and the photo is
+            not stored.
           </p>
           <p className="warning">{DEMO_NOTICE}</p>
           <p className="muted small">
-            The photo is sent to Google Gemini to read the label. Label reading can be wrong.
+            The photo is sent to Google Gemini to read the label. Label reading
+            can be wrong.
           </p>
           <div className="scan-actions">
             <button
@@ -407,7 +446,9 @@ export function ScanFlow({ userId, onClose }: ScanFlowProps) {
       )}
 
       <footer className="page-footer">
-        <small>Educational and demonstrative use only. Not a medical device.</small>
+        <small>
+          Educational and demonstrative use only. Not a medical device.
+        </small>
       </footer>
     </main>
   );

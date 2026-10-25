@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import time
 from collections import deque
 from collections.abc import Callable
@@ -175,6 +176,12 @@ def survey_context(row: dict | None) -> str:
     )
 
 
+MAX_REPLY_WORDS = 120
+FORBIDDEN_REPLY = re.compile(
+    r"\b(safe|safely|no risk|will cause|causes|prevents)\b", re.IGNORECASE
+)
+
+
 class ChatAnswer(BaseModel):
     reply: str
     suggested_tab: str | None = None
@@ -186,7 +193,10 @@ def parse_chat_answer(text: str) -> dict:
     except ValidationError as exc:
         raise AIFailure from exc
     reply = answer.reply.strip()
-    if not reply:
+    if not reply or FORBIDDEN_REPLY.search(reply):
         raise AIFailure
+    words = reply.split()
+    if len(words) > MAX_REPLY_WORDS:
+        reply = " ".join(words[:MAX_REPLY_WORDS])
     tab = answer.suggested_tab if answer.suggested_tab in TABS else None
     return {"reply": reply[:1200], "suggested_tab": tab}
