@@ -28,6 +28,7 @@ import type {
   TimelineEntry,
   TimelineQuery,
 } from "./types/contract";
+import type { Survey, SurveyAnswers, SurveyStatus } from "./survey";
 
 const API_BASE = (
   (import.meta.env.VITE_API_BASE as string | undefined) || "http://localhost:8000"
@@ -38,6 +39,7 @@ export const LOGIN_PAGE = "/login.html";
 export interface AuthUser {
   id: string;
   email: string;
+  survey_status: SurveyStatus;
 }
 
 export class ApiRequestError extends Error {
@@ -99,6 +101,21 @@ export function fetchCurve(
     resolution: query.resolution ?? "15m",
   });
   return request(`/users/${encodeURIComponent(userId)}/curve?${params}`);
+}
+
+export function fetchSurvey(userId: string): Promise<Survey> {
+  return request(`/users/${encodeURIComponent(userId)}/survey`);
+}
+
+export function saveSurvey(
+  userId: string,
+  body: SurveyAnswers & { status: "completed" | "skipped" },
+): Promise<Survey> {
+  return request(`/users/${encodeURIComponent(userId)}/survey`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export function logDose(

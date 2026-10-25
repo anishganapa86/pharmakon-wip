@@ -33,6 +33,14 @@ import {
   notModeledReason,
   productModelable,
 } from "./labels";
+import {
+  LOG_HINT,
+  TAB_HINTS,
+  showsHints,
+  startingView,
+  type Survey,
+  type View,
+} from "./survey";
 import { formatDateClock, HOUR_MS } from "./time";
 import type {
   Alert,
@@ -42,13 +50,6 @@ import type {
   ScheduledMedication,
   SubstanceCurve,
 } from "./types/contract";
-
-type View =
-  | "concentration"
-  | "timeline"
-  | "skincare"
-  | "interactions"
-  | "food";
 
 const MAX_RECENT_PRODUCTS = 5;
 
@@ -157,7 +158,16 @@ async function fetchDashboard(userId: string): Promise<Dashboard> {
   };
 }
 
-function App({ user, onLogOut }: { user: AuthUser; onLogOut: () => void }) {
+interface AppProps {
+  user: AuthUser;
+  onLogOut: () => void;
+  survey: Survey;
+  onOpenSettings: () => void;
+}
+
+function App({ user, onLogOut, survey, onOpenSettings }: AppProps) {
+  const tailoring = survey.status === "completed" ? survey : null;
+  const hints = showsHints(tailoring);
   const userId = user.id;
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,7 +180,7 @@ function App({ user, onLogOut }: { user: AuthUser; onLogOut: () => void }) {
   const [logError, setLogError] = useState<string | null>(null);
   const [logged, setLogged] = useState<string | null>(null);
 
-  const [view, setView] = useState<View>("concentration");
+  const [view, setView] = useState<View>(() => startingView(tailoring));
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
@@ -304,6 +314,13 @@ function App({ user, onLogOut }: { user: AuthUser; onLogOut: () => void }) {
             <button
               type="button"
               className="control secondary"
+              onClick={onOpenSettings}
+            >
+              Settings
+            </button>
+            <button
+              type="button"
+              className="control secondary"
               onClick={onLogOut}
             >
               Log out
@@ -324,6 +341,7 @@ function App({ user, onLogOut }: { user: AuthUser; onLogOut: () => void }) {
 
       <section className="panel">
         <h2>Log a dose</h2>
+        {hints && <p className="hint">{LOG_HINT}</p>}
         <form className="log-row" onSubmit={handleLogDose}>
           <ProductSearch
             key={searchKey}
@@ -411,6 +429,8 @@ function App({ user, onLogOut }: { user: AuthUser; onLogOut: () => void }) {
           Food & drink
         </button>
       </nav>
+
+      {hints && <p className="hint">{TAB_HINTS[view]}</p>}
 
       {view === "skincare" && <Skincare userId={userId} />}
 
