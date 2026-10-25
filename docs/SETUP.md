@@ -136,6 +136,8 @@ Settings come from environment variables, loaded from a gitignored `.env`
 | Variable | Meaning |
 |---|---|
 | `PHARMAKON_COOKIE_SECURE` | Set to `1` whenever the site is served over HTTPS so the cookie is marked `Secure`. Truthy values are `1`, `true`, `yes`, `on`. |
+| `PHARMAKON_CORS_ORIGINS` | Comma-separated origins allowed to call the API with cookies (default: the two Vite dev origins). A `*` is ignored. A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` header is not on this list is refused with `403`. |
+| `PHARMAKON_DEV_DOCS` | Set to `1` to serve `/docs`, `/redoc` and `/openapi.json` to a logged-in user. Off by default. Read on every request. |
 
 ### Login throttling is per process
 

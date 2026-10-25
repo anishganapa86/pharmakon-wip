@@ -158,10 +158,25 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=settings.cors_origins(),
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
 )
+
+STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+@app.middleware("http")
+async def reject_foreign_origin(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if (
+        request.method in STATE_CHANGING_METHODS
+        and origin is not None
+        and origin.rstrip("/") not in settings.cors_origins()
+    ):
+        return _error(403, "forbidden", "Request origin is not allowed.")
+    return await call_next(request)
 
 
 def require_dev_docs() -> None:

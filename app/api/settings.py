@@ -23,3 +23,9 @@ def env_list(name: str, default: tuple[str, ...]) -> list[str]:
 
 def cookie_secure() -> bool:
     return env_flag("PHARMAKON_COOKIE_SECURE")
+
+
+def cors_origins() -> list[str]:
+    items = env_list("PHARMAKON_CORS_ORIGINS", DEFAULT_CORS_ORIGINS)
+    cleaned = [item.rstrip("/") for item in items if item != "*"]
+    return cleaned or list(DEFAULT_CORS_ORIGINS)
