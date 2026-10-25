@@ -1,3 +1,4 @@
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -12,7 +13,7 @@ from app.api.db import AuthSession, Base, User
 pytestmark = pytest.mark.real_auth
 
 START = datetime(2026, 9, 13, 18, 0, tzinfo=UTC)
-PASSWORD = "correct horse battery"
+PASSWORD = secrets.token_urlsafe(16)
 
 
 class Clock:

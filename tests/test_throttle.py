@@ -1,3 +1,5 @@
+import secrets
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -10,7 +12,8 @@ from app.api.throttle import Limiter, Throttles, throttles
 
 pytestmark = pytest.mark.real_auth
 
-PASSWORD = "correct horse battery"
+PASSWORD = secrets.token_urlsafe(16)
+LEAKY = secrets.token_urlsafe(16)
 
 
 class FakeClock:
@@ -285,6 +288,6 @@ def test_429_does_not_log_credentials(make_client, clock, caplog):
     client = make_client()
     with caplog.at_level("DEBUG"):
         for _ in range(7):
-            attempt_login(client, email="leak@example.com", password="hunter2-hunter2")
-    assert "hunter2" not in caplog.text
+            attempt_login(client, email="leak@example.com", password=LEAKY)
+    assert LEAKY not in caplog.text
     assert "leak@example.com" not in caplog.text

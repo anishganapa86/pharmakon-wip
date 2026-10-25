@@ -1,4 +1,5 @@
 import re
+import secrets
 import uuid
 
 import pytest
@@ -16,7 +17,7 @@ pytestmark = pytest.mark.real_auth
 ALLOWLIST = frozenset(
     {("POST", "/auth/signup"), ("POST", "/auth/login"), ("GET", "/health")}
 )
-PASSWORD = "correct horse battery"
+PASSWORD = secrets.token_urlsafe(16)
 PARAM = re.compile(r"\{[^}]+\}")
 
 

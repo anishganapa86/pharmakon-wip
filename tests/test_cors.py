@@ -1,3 +1,5 @@
+import secrets
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -12,7 +14,7 @@ pytestmark = pytest.mark.real_auth
 
 ALLOWED = "http://localhost:5173"
 OTHER = "https://evil.example"
-PASSWORD = "correct horse battery"
+PASSWORD = secrets.token_urlsafe(16)
 
 
 @pytest.fixture

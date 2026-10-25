@@ -1,3 +1,4 @@
+import secrets
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -13,7 +14,8 @@ from app.api.db import AlertRecord, Base, DoseEvent, ScheduledDose, User
 from app.registry.loader import load_registry
 
 NOW = datetime(2026, 9, 13, 18, 0, tzinfo=UTC)
-PASSWORD = "demo-pass-phrase-1"
+PASSWORD = secrets.token_urlsafe(16)
+OTHER_PASSWORD = secrets.token_urlsafe(16)
 ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -64,15 +66,13 @@ def test_seeded_data_belongs_to_the_demo_user_only(db, registry):
 
 def test_seed_is_idempotent_and_keeps_the_password(db, registry):
     first = demo_seed.seed(db, registry, "demo@example.com", PASSWORD, NOW)
-    again = demo_seed.seed(
-        db, registry, "demo@example.com", "a-different-password", NOW
-    )
+    again = demo_seed.seed(db, registry, "demo@example.com", OTHER_PASSWORD, NOW)
     assert again.created_user is False
     assert again.doses_added == 0
     assert again.user_id == first.user_id
     assert len(db.scalars(select(DoseEvent)).all()) == 6
     assert auth.authenticate(db, "demo@example.com", PASSWORD) is not None
-    assert auth.authenticate(db, "demo@example.com", "a-different-password") is None
+    assert auth.authenticate(db, "demo@example.com", OTHER_PASSWORD) is None
 
 
 def test_seed_rejects_a_short_password(db, registry):
