@@ -60,8 +60,8 @@ def _signed_in_test_user(request):
     if request.node.get_closest_marker("real_auth"):
         yield
         return
-    main.app.dependency_overrides[main.current_user] = lambda: SimpleNamespace(
+    main.app.dependency_overrides[main.current_user_or_none] = lambda: SimpleNamespace(
         id="default", email="default@example.com"
     )
     yield
-    main.app.dependency_overrides.pop(main.current_user, None)
+    main.app.dependency_overrides.pop(main.current_user_or_none, None)

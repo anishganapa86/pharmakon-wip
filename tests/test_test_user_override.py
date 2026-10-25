@@ -12,5 +12,5 @@ def test_unmarked_tests_run_as_the_default_test_user():
 
 @pytest.mark.real_auth
 def test_real_auth_marker_removes_the_override():
-    assert main.current_user not in main.app.dependency_overrides
+    assert main.current_user_or_none not in main.app.dependency_overrides
     assert TestClient(main.app).get("/auth/me").status_code == 401

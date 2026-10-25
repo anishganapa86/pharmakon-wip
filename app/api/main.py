@@ -1,8 +1,9 @@
 """FastAPI app: POST /doses, GET /curve, GET /alerts (docs/api-contract.md), plus
 the medication schedule (app/api/schedule.py).
 
-v1 constraints, from the contract: a single hardcoded user ("default"), no
-authentication, and the deployment runs on seeded synthetic data only.
+Every route except POST /auth/signup, POST /auth/login and GET /health needs a
+logged-in session (app/api/auth.py). A /users/{id}/... route also needs {id}
+to be the logged-in user.
 
 Pharmakon is not a medical device. Outputs are estimates from a
 one-compartment, population-average model, for educational use only.
@@ -18,7 +19,8 @@ from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import AwareDatetime, BaseModel, Field, model_validator
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -42,8 +44,6 @@ from .db import Base, User, make_engine
 from .products import PRODUCTS, decompose, search
 from .throttle import throttles
 
-DEFAULT_USER = "default"
-
 _engine = make_engine()
 _SessionLocal = sessionmaker(bind=_engine)
 
@@ -52,17 +52,6 @@ _SessionLocal = sessionmaker(bind=_engine)
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(_engine)
     yield
-
-
-app = FastAPI(title="Pharmakon", lifespan=lifespan)
-
-# Vite's dev server. No credentials: v1 has no auth.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type"],
-)
 
 
 # --- Dependencies (overridden in tests) ---------------------------------------
@@ -81,13 +70,6 @@ def get_registry() -> Registry:
     return load_registry()
 
 
-def require_user(id: str) -> str:
-    if id != DEFAULT_USER:
-        raise HTTPException(404, f"unknown user {id!r}")
-    return id
-
-
-UserId = Annotated[str, Depends(require_user)]
 Db = Annotated[Session, Depends(get_session)]
 Reg = Annotated[Registry, Depends(get_registry)]
 Now = Annotated[datetime, Depends(get_now)]
@@ -115,13 +97,16 @@ def clear_session_cookie(response: Response) -> None:
     )
 
 
-def current_user(request: Request, response: Response, session: Db, now: Now) -> User:
+def current_user_or_none(
+    request: Request, response: Response, session: Db, now: Now
+) -> User | None:
     token = request.cookies.get(auth.COOKIE_NAME)
-    resolved = auth.resolve_session(session, token, now) if token else None
+    if not token:
+        return None
+    resolved = auth.resolve_session(session, token, now)
     if resolved is None:
-        if token:
-            session.commit()
-        raise HTTPException(401, "authentication required")
+        session.commit()
+        return None
     user, slid = resolved
     if slid:
         session.commit()
@@ -129,7 +114,81 @@ def current_user(request: Request, response: Response, session: Db, now: Now) ->
     return user
 
 
+OptionalUser = Annotated[User | None, Depends(current_user_or_none)]
+
+
+def current_user(user: OptionalUser) -> User:
+    if user is None:
+        raise HTTPException(401, "authentication required")
+    return user
+
+
 CurrentUser = Annotated[User, Depends(current_user)]
+
+PUBLIC_ROUTES = frozenset(
+    {("POST", "/auth/signup"), ("POST", "/auth/login"), ("GET", "/health")}
+)
+
+
+def require_login(request: Request, user: OptionalUser) -> None:
+    route = request.scope.get("route")
+    path = route.path if route is not None else request.url.path
+    if (request.method, path) in PUBLIC_ROUTES:
+        return
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+
+def require_user(id: str, user: CurrentUser) -> str:
+    if id != user.id:
+        raise HTTPException(403, "you can only access your own data")
+    return id
+
+
+UserId = Annotated[str, Depends(require_user)]
+
+app = FastAPI(
+    title="Pharmakon",
+    lifespan=lifespan,
+    dependencies=[Depends(require_login)],
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type"],
+)
+
+
+def require_dev_docs() -> None:
+    if not settings.env_flag("PHARMAKON_DEV_DOCS"):
+        raise HTTPException(404, "not found")
+
+
+@app.get(
+    "/openapi.json", include_in_schema=False, dependencies=[Depends(require_dev_docs)]
+)
+def openapi_schema() -> JSONResponse:
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False, dependencies=[Depends(require_dev_docs)])
+def swagger_docs() -> HTMLResponse:
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="Pharmakon API")
+
+
+@app.get("/redoc", include_in_schema=False, dependencies=[Depends(require_dev_docs)])
+def redoc_docs() -> HTMLResponse:
+    return get_redoc_html(openapi_url="/openapi.json", title="Pharmakon API")
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
 
 
 # --- Errors: {"error": {"code", "message"}} on every non-2xx -----------------
@@ -607,7 +666,7 @@ MY_PRODUCT_LABEL = "My product (entered by you)"
 
 
 @app.get("/products/search")
-def search_products(q: str, registry: Reg, session: Db) -> dict:
+def search_products(q: str, registry: Reg, session: Db, user: CurrentUser) -> dict:
     """Synthetic catalog first, then curated skincare entries, then the
     user's own saved products, then openFDA by name, then by what it treats.
 
@@ -681,9 +740,7 @@ def search_products(q: str, registry: Reg, session: Db) -> dict:
             ),
         )
 
-    for record in my_products.search(
-        my_products.list_for_user(session, DEFAULT_USER), q
-    ):
+    for record in my_products.search(my_products.list_for_user(session, user.id), q):
         add(
             my_products.as_loggable(record),
             "my_product",
@@ -714,14 +771,12 @@ class SymptomCheckRequest(BaseModel):
 
 @app.post("/symptom-check")
 def symptom_check(
-    body: SymptomCheckRequest, session: Db, registry: Reg, now: Now
+    body: SymptomCheckRequest, session: Db, registry: Reg, now: Now, user: CurrentUser
 ) -> dict:
-    """v1 has one user, so this checks DEFAULT_USER's doses."""
+    """Checks the symptom against the logged-in user's own doses."""
     if len(side_effects.normalize_symptom(body.symptom)) < 3:
         return _error(422, "validation_error", "symptom: at least 3 letters")
-    return side_effects.check_symptom(
-        session, DEFAULT_USER, registry, now, body.symptom
-    )
+    return side_effects.check_symptom(session, user.id, registry, now, body.symptom)
 
 
 # --- GET /users/{id}/side-effect-profile --------------------------------------
