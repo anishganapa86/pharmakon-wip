@@ -150,6 +150,18 @@ one daily schedule entry. Running it again leaves an existing account and its
 password alone. The doses are made up for the demo; nobody should log real
 medications into a shared instance.
 
+### The food demo scenario and the verification gate
+
+`python scripts/seed_demo_user.py --food-demo` logs Tylenol, DayQuil, coffee,
+a beer and chicken instead of the default regimen. The food-drug rules are all
+`verified: false`, so what the Interactions tab shows depends on
+`SHOW_UNVERIFIED_RULES`. With it on (`run.sh` and `run.ps1` turn it on unless
+you set it), the beer adds one food finding quoting the acetaminophen label's
+alcohol warning, the duplicate-acetaminophen card shows, and coffee and chicken
+add nothing. With it off (the `.env.example` default), the food finding and the
+curated rules are hidden, the duplicate-acetaminophen card still shows, and the
+tab says how many rules are awaiting verification.
+
 ### Pointing the client at the API
 
 The React app reads `VITE_API_BASE` (default `http://localhost:8000`) at build
