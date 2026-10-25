@@ -208,7 +208,7 @@
             const message = document.getElementById("message");
             const button = document.getElementById("submit");
  
-            if (username === "codewithmay" && password === "1234") {
+            if (username.trim().toLowerCase() === "demo" && password === "pharmakon-demo-2026") {
                 message.classList.add("ok");
                 message.textContent = "Login successful! Opening Pharmakon…";
                 button.disabled = true;
