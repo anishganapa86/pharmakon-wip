@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..registry.loader import Registry, load_registry
-from . import auth, schedule, service
+from . import auth, schedule, service, survey
 from .db import Base, DoseEvent, User, make_engine
 from .products import PRODUCTS, decompose
 
@@ -88,6 +88,19 @@ def seed(
     doses, schedules = (0, 0)
     if not dose_count:
         doses, schedules = add_regimen(session, registry, user.id, now)
+    if survey.status_for(session, user.id) == "pending":
+        survey.save(
+            session,
+            user.id,
+            survey.SurveyUpdate(
+                tracks=["medications", "supplements"],
+                goals=["avoid_interactions", "reminders"],
+                experience="some",
+                guidance="minimal",
+                status="completed",
+            ),
+            now,
+        )
     session.commit()
     return SeedResult(user.id, created, doses, schedules)
 

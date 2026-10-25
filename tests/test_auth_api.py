@@ -70,7 +70,7 @@ def test_signup_creates_account_and_session(client):
     body = r.json()
     assert set(body) == {"id", "email"}
     assert body["email"] == "person@example.com"
-    assert client.get("/auth/me").json() == body
+    assert client.get("/auth/me").json() == {**body, "survey_status": "pending"}
 
 
 def test_signup_never_echoes_password_or_hash(client):
@@ -153,9 +153,9 @@ def test_me_requires_login(client):
     assert r.json()["error"]["code"] == "unauthorized"
 
 
-def test_me_returns_only_id_and_email(client):
+def test_me_returns_id_email_and_survey_status_only(client):
     signup(client)
-    assert set(client.get("/auth/me").json()) == {"id", "email"}
+    assert set(client.get("/auth/me").json()) == {"id", "email", "survey_status"}
 
 
 def test_me_rejects_garbage_cookie(client):

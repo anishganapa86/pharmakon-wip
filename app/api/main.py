@@ -39,8 +39,9 @@ from . import (
     settings,
     side_effects,
     skincare,
+    survey,
 )
-from .db import Base, User, make_engine
+from .db import Base, User, UserSurvey, make_engine
 from .products import PRODUCTS, decompose, search
 from .throttle import throttles
 
@@ -296,6 +297,7 @@ def signup(
     if previous:
         auth.end_session(session, previous)
     token = auth.start_session(session, user.id, now)
+    survey.create_pending(session, user.id, now)
     session.commit()
     set_session_cookie(response, token)
     return user_json(user)
@@ -336,8 +338,22 @@ def logout(
 
 
 @app.get("/auth/me")
-def me(user: CurrentUser) -> dict:
-    return user_json(user)
+def me(user: CurrentUser, session: Db) -> dict:
+    return {**user_json(user), "survey_status": survey.status_for(session, user.id)}
+
+
+@app.get("/users/{id}/survey")
+def get_survey(user_id: UserId, session: Db) -> dict:
+    return survey.survey_json(session.get(UserSurvey, user_id))
+
+
+@app.put("/users/{id}/survey")
+def put_survey(
+    body: survey.SurveyUpdate, user_id: UserId, session: Db, now: Now
+) -> dict:
+    row = survey.save(session, user_id, body, now)
+    session.commit()
+    return survey.survey_json(row)
 
 
 # --- 1. POST /users/{id}/doses -------------------------------------------------
