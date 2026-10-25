@@ -8,6 +8,19 @@ import {
   labelFor,
   type SurveyAnswers,
 } from "../survey";
+import { Icon, type IconName } from "./Icon";
+
+const CHOICE_ICONS: Record<string, IconName> = {
+  medications: "pill",
+  supplements: "leaf",
+  skincare: "droplet",
+  caffeine: "coffee",
+  other: "plus",
+  stay_consistent: "clock",
+  avoid_interactions: "alert",
+  understand_ingredients: "search",
+  reminders: "bell",
+};
 
 interface SurveyProps {
   initial: SurveyAnswers | null;
@@ -24,12 +37,14 @@ function toggle<T>(list: T[], value: T): T[] {
 }
 
 interface ChoiceProps {
+  value?: string;
   label: string;
   selected: boolean;
   onClick: () => void;
 }
 
-function Choice({ label, selected, onClick }: ChoiceProps) {
+function Choice({ value, label, selected, onClick }: ChoiceProps) {
+  const icon = value ? CHOICE_ICONS[value] : undefined;
   return (
     <button
       type="button"
@@ -37,7 +52,15 @@ function Choice({ label, selected, onClick }: ChoiceProps) {
       aria-pressed={selected}
       onClick={onClick}
     >
-      {label}
+      {icon && (
+        <span className="choice-icon">
+          <Icon name={icon} size={18} />
+        </span>
+      )}
+      <span className="choice-label">{label}</span>
+      <span className="choice-box" aria-hidden="true">
+        {selected && <Icon name="check" size={14} />}
+      </span>
     </button>
   );
 }
@@ -95,6 +118,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
             {TRACK_OPTIONS.map((o) => (
               <Choice
                 key={o.value}
+                value={o.value}
                 label={o.label}
                 selected={answers.tracks.includes(o.value)}
                 onClick={() =>
@@ -115,6 +139,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
             {GOAL_OPTIONS.map((o) => (
               <Choice
                 key={o.value}
+                value={o.value}
                 label={o.label}
                 selected={answers.goals.includes(o.value)}
                 onClick={() =>
@@ -136,6 +161,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
             {EXPERIENCE_OPTIONS.map((o) => (
               <Choice
                 key={o.value}
+                value={o.value}
                 label={o.label}
                 selected={answers.experience === o.value}
                 onClick={() => setAnswers({ ...answers, experience: o.value })}
@@ -163,7 +189,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
   }
 
   return (
-    <main className="page">
+    <main className="page survey-page">
       <header className="page-header">
         <h1>Pharmakon</h1>
       </header>
@@ -199,10 +225,11 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
             <div className="survey-nav">
               <button
                 type="button"
-                className="control secondary"
+                className="survey-back"
                 disabled={saving}
                 onClick={() => setStep(QUESTION_COUNT - 1)}
               >
+                <Icon name="chevronLeft" size={20} />
                 Back
               </button>
               <button
@@ -238,15 +265,16 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
             <div className="survey-nav">
               <button
                 type="button"
-                className="control secondary"
+                className="survey-back"
                 disabled={step === 0 || saving}
                 onClick={() => setStep(step - 1)}
               >
+                <Icon name="chevronLeft" size={20} />
                 Back
               </button>
               <button
                 type="button"
-                className="control secondary"
+                className="survey-skip"
                 disabled={saving}
                 onClick={() =>
                   editing && onCancel ? onCancel() : void run(() => onSkip(answers))
@@ -256,7 +284,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
               </button>
               <button
                 type="button"
-                className="control button"
+                className="control button survey-continue"
                 disabled={!answered[step] || saving}
                 onClick={() => setStep(step + 1)}
               >

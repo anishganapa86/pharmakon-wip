@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Pharmakon – Log in</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <meta name="theme-color" content="#0b7a6b">
+    <meta name="theme-color" content="#ecf6f4">
     <meta name="pharmakon-api-base" content="auto">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Newsreader:wght@500&display=swap">
     <style>
         :root {
             --text: #4b5968;
@@ -208,6 +208,90 @@
             outline: 2px solid var(--accent);
             outline-offset: 2px;
             border-radius: 2px;
+        }
+
+        :root {
+            --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
+            --color-ink: #0b1b2b;
+            --color-text: #4b5968;
+            --color-accent: #0b7a6b;
+            --color-accent-strong: #096558;
+            --color-hairline: #e3e9e8;
+            --color-control-border: #cbd5df;
+            --color-danger: #d92d20;
+            --radius-10: 10px;
+            --radius-16: 16px;
+            --space-5: 20px;
+            --tap: 44px;
+            --ease: 180ms ease;
+        }
+
+        main {
+            padding: calc(24px + env(safe-area-inset-top, 0px)) var(--space-5) calc(24px + env(safe-area-inset-bottom, 0px));
+        }
+
+        .brand h1 {
+            font-size: 44px;
+            letter-spacing: -0.4px;
+        }
+
+        .brand p {
+            font-size: 15px;
+        }
+
+        .login-box {
+            max-width: 350px;
+            padding: var(--space-5);
+            border: 1px solid var(--color-hairline);
+            border-radius: var(--radius-16);
+            box-shadow: none;
+        }
+
+        .login-box h2 {
+            margin: 0 0 8px;
+            font-family: var(--serif);
+            font-size: 28px;
+            font-weight: 500;
+            line-height: 1.15;
+            letter-spacing: -0.2px;
+            text-wrap: balance;
+        }
+
+        .login-box input {
+            height: 42px;
+            font-size: 15px;
+            border-radius: var(--radius-10);
+            transition: border-color var(--ease);
+        }
+
+        .login-box input:focus-visible {
+            box-shadow: none;
+        }
+
+        .login-box button {
+            height: var(--tap);
+            font-size: 15px;
+            border-radius: var(--radius-10);
+        }
+
+        .login-box button:active:not(:disabled) {
+            background: var(--color-accent-strong);
+            transform: scale(0.99);
+        }
+
+        .switch a {
+            text-decoration: none;
+        }
+
+        .disclaimer {
+            max-width: 350px;
+            font-size: 13px;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            * {
+                transition-duration: 0.01ms !important;
+            }
         }
     </style>
 </head>
