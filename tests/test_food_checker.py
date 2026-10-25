@@ -619,3 +619,68 @@ def test_whole_grapefruit_no_longer_fires_the_grapefruit_juice_rule():
     )
     assert food_rules.food_findings([drug, whole], registry, NOW) == []
     assert len(food_rules.food_findings([drug, juice], registry, NOW)) == 1
+
+
+def stub_usda(monkeypatch, handler):
+    monkeypatch.setenv("USDA_FDC_API_KEY", "test-key-not-real")
+    monkeypatch.setattr(usda, "RETRY_DELAY_SECONDS", 0.0)
+    monkeypatch.setattr(
+        usda, "_http", httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+
+def test_the_retry_waits_about_a_second_because_the_gateway_rejects_an_instant_repeat():
+    assert usda.RETRY_DELAY_SECONDS >= 1.0
+    assert usda.ATTEMPTS == 2
+
+
+def test_one_transient_gateway_400_is_retried_once_and_then_succeeds(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if len(calls) == 1:
+            return httpx.Response(400, text="<html>400 Bad Request</html>")
+        return httpx.Response(200, json=usda_payload())
+
+    stub_usda(monkeypatch, handler)
+    assert len(usda.search("coffee")) == 3
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("status", [401, 403, 404, 429])
+def test_key_and_quota_errors_are_not_retried(monkeypatch, status):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(status, json={})
+
+    stub_usda(monkeypatch, handler)
+    assert usda.search("coffee") == []
+    assert len(calls) == 1
+
+
+def test_a_persistent_gateway_error_is_tried_twice_then_remembered(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(503, text="down")
+
+    stub_usda(monkeypatch, handler)
+    assert usda.search("coffee") == []
+    assert usda.search("coffee") == []
+    assert len(calls) == 2
+
+
+def test_a_timeout_is_not_retried_so_the_wait_stays_five_seconds(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        raise httpx.ReadTimeout("slow", request=request)
+
+    stub_usda(monkeypatch, handler)
+    assert usda.search("coffee") == []
+    assert len(calls) == 1

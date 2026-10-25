@@ -17,6 +17,9 @@ PAGE_SIZE = 8
 NUTRIENT_COMPONENTS = {"262": "caffeine", "221": "alcohol"}
 REPORTED_NUTRIENTS = {"262": "caffeine", "221": "alcohol", "430": "vitamin_k"}
 FAILURE_RETRY_SECONDS = 60.0
+RETRYABLE_STATUSES = frozenset({400, 500, 502, 503, 504})
+ATTEMPTS = 2
+RETRY_DELAY_SECONDS = 1.0
 
 _http = httpx.Client(timeout=TIMEOUT_SECONDS)
 _cache: dict[str, list[Product]] = {}
@@ -88,19 +91,32 @@ def search(query: str) -> list[Product]:
         return _cache[key]
     if time.monotonic() - _failed_at.get(key, -1e9) < FAILURE_RETRY_SECONDS:
         return []
-    try:
-        response = _http.get(
-            SEARCH_URL,
-            params={
-                "query": text,
-                "dataType": ",".join(DATA_TYPES),
-                "pageSize": PAGE_SIZE,
-            },
-            headers={"X-Api-Key": os.environ["USDA_FDC_API_KEY"].strip()},
-        )
-        response.raise_for_status()
-        foods = response.json().get("foods") or []
-    except (httpx.HTTPError, ValueError):
+    foods = None
+    for attempt in range(ATTEMPTS):
+        try:
+            response = _http.get(
+                SEARCH_URL,
+                params={
+                    "query": text,
+                    "dataType": ",".join(DATA_TYPES),
+                    "pageSize": PAGE_SIZE,
+                },
+                headers={"X-Api-Key": os.environ["USDA_FDC_API_KEY"].strip()},
+            )
+            response.raise_for_status()
+            foods = response.json().get("foods") or []
+            break
+        except httpx.HTTPStatusError as exc:
+            if (
+                exc.response.status_code in RETRYABLE_STATUSES
+                and attempt + 1 < ATTEMPTS
+            ):
+                time.sleep(RETRY_DELAY_SECONDS)
+                continue
+            break
+        except (httpx.HTTPError, ValueError):
+            break
+    if foods is None:
         _failed_at[key] = time.monotonic()
         return []
     products = [p for p in (_to_product(f) for f in foods) if p is not None]
