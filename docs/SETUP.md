@@ -121,3 +121,29 @@ let `.vscode/settings.json` do its job.
 
 **Notebook shows old outputs** — Restart, then Run All. Committed outputs are
 from whoever ran it last.
+
+## Accounts and sign-in
+
+Every API route except `POST /auth/signup`, `POST /auth/login` and
+`GET /health` needs a logged-in session. Sign-in is email and password; there
+is no email verification and no password reset. The session lives in an
+`HttpOnly`, `SameSite=Lax` cookie named `pharmakon_session`, valid for seven
+days and renewed while it is used.
+
+Settings come from environment variables, loaded from a gitignored `.env`
+(copy `.env.example`).
+
+| Variable | Meaning |
+|---|---|
+| `PHARMAKON_COOKIE_SECURE` | Set to `1` whenever the site is served over HTTPS so the cookie is marked `Secure`. Truthy values are `1`, `true`, `yes`, `on`. |
+
+### Login throttling is per process
+
+Failed logins and sign-up attempts are counted in memory, by IP and email
+together and by IP alone, and a lockout doubles each time it is hit again,
+with a `Retry-After` header on the `429`. The counters live inside one API
+process. Restarting the API clears them, and running several workers gives
+each worker its own counters, so the effective limit is multiplied by the
+number of workers. Run a single worker for the demo. The IP is the address of
+the direct connection, so behind a reverse proxy every visitor shares the
+proxy's address until a trusted-proxy setting is added.

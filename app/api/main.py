@@ -40,6 +40,7 @@ from . import (
 )
 from .db import Base, User, make_engine
 from .products import PRODUCTS, decompose, search
+from .throttle import throttles
 
 DEFAULT_USER = "default"
 
@@ -134,9 +135,13 @@ CurrentUser = Annotated[User, Depends(current_user)]
 # --- Errors: {"error": {"code", "message"}} on every non-2xx -----------------
 
 
-def _error(status: int, code: str, message: str) -> JSONResponse:
+def _error(
+    status: int, code: str, message: str, headers: dict[str, str] | None = None
+) -> JSONResponse:
     return JSONResponse(
-        status_code=status, content={"error": {"code": code, "message": message}}
+        status_code=status,
+        content={"error": {"code": code, "message": message}},
+        headers=headers,
     )
 
 
@@ -175,17 +180,44 @@ class LoginRequest(BaseModel):
     password: str = Field(max_length=1000)
 
 
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def throttle_pair(ip: str, email: str) -> str:
+    return f"{ip}|{email.strip().lower()[: auth.EMAIL_MAX_LENGTH]}"
+
+
+def rate_limited(retry_after: int) -> JSONResponse:
+    return _error(
+        429,
+        "rate_limited",
+        "Too many attempts. Try again later.",
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
 def user_json(user: User) -> dict:
     return {"id": user.id, "email": user.email}
 
 
 @app.post("/auth/signup", status_code=201)
-def signup(body: SignupRequest, response: Response, session: Db, now: Now) -> dict:
+def signup(
+    body: SignupRequest, request: Request, response: Response, session: Db, now: Now
+) -> dict:
+    ip = client_ip(request)
+    pair = throttle_pair(ip, body.email)
+    retry = throttles.signup_retry_after(ip, pair)
+    if retry:
+        return rate_limited(retry)
+    throttles.signup_attempted(ip)
     try:
         user = auth.create_user(session, body.email, body.password, now)
     except (auth.InvalidEmailError, auth.InvalidPasswordError) as exc:
+        throttles.signup_failed(pair)
         return _error(422, "validation_error", str(exc))
     except auth.DuplicateEmailError:
+        throttles.signup_failed(pair)
         return _error(409, "email_taken", "An account with that email already exists.")
     token = auth.start_session(session, user.id, now)
     session.commit()
@@ -197,9 +229,16 @@ def signup(body: SignupRequest, response: Response, session: Db, now: Now) -> di
 def login(
     body: LoginRequest, request: Request, response: Response, session: Db, now: Now
 ) -> dict:
+    ip = client_ip(request)
+    pair = throttle_pair(ip, body.email)
+    retry = throttles.login_retry_after(ip, pair)
+    if retry:
+        return rate_limited(retry)
     user = auth.authenticate(session, body.email, body.password)
     if user is None:
+        throttles.login_failed(ip, pair)
         return _error(401, "invalid_credentials", "Incorrect email or password.")
+    throttles.login_succeeded(pair)
     previous = request.cookies.get(auth.COOKIE_NAME)
     if previous:
         auth.end_session(session, previous)

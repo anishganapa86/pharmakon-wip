@@ -9,10 +9,12 @@ own httpx.MockTransport on top of this (see tests/test_openfda_search.py).
 
 from __future__ import annotations
 
+import time
+
 import httpx
 import pytest
 
-from app.api import label_cache, openfda
+from app.api import label_cache, openfda, throttle
 
 
 def _no_matches(request: httpx.Request) -> httpx.Response:
@@ -41,3 +43,12 @@ def _no_label_disk_cache():
 @pytest.fixture(autouse=True)
 def _show_unverified_rules(monkeypatch):
     monkeypatch.setenv("SHOW_UNVERIFIED_RULES", "1")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_throttles():
+    throttle.throttles.clock = time.monotonic
+    throttle.throttles.reset()
+    yield
+    throttle.throttles.clock = time.monotonic
+    throttle.throttles.reset()
