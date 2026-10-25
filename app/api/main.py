@@ -974,7 +974,13 @@ def search_products(q: str, registry: Reg, session: Db, user: CurrentUser) -> di
         # synthetic catalog already found rather than failing the search.
         pass
 
-    results.sort(key=lambda r: (-r["match_score"], r["brand_name"].lower()))
+    results.sort(
+        key=lambda r: (
+            -r["match_score"],
+            r["source"] != "my_product",
+            r["brand_name"].lower(),
+        )
+    )
     for result in results:
         del result["match_score"]
     return {"results": results[: openfda.RESULT_LIMIT], "total": len(results)}

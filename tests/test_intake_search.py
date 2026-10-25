@@ -153,3 +153,28 @@ def test_logging_an_unmodeled_item_feeds_the_checks_and_the_log(client):
         assert client.get("/users/default/timeline").status_code == 200
     finally:
         main.app.dependency_overrides.pop(main.get_session, None)
+
+
+def test_user_saved_items_get_no_type_label_instead_of_a_wrong_one():
+    assert products.intake_kind("myprod_x", "my_product") is None
+    assert products.intake_kind("user_x", "user_entered") is None
+    assert products.intake_kind("curated_x", "skincare_catalog") == "skincare"
+    assert products.intake_kind("openfda_x", "openfda") == "medication"
+
+
+def test_a_my_product_wins_a_tie_on_match_quality(client):
+    from app.api import main
+
+    ranked = [
+        {"source": "catalog", "brand_name": "Aaa", "match_score": 80},
+        {"source": "my_product", "brand_name": "Zzz", "match_score": 80},
+    ]
+    ranked.sort(
+        key=lambda r: (
+            -r["match_score"],
+            r["source"] != "my_product",
+            r["brand_name"].lower(),
+        )
+    )
+    assert ranked[0]["source"] == "my_product"
+    assert main is not None

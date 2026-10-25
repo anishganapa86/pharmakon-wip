@@ -211,13 +211,15 @@ SUPPLEMENT_IDS = frozenset(
 )
 
 
-def intake_kind(product_id: str, source: str) -> str:
+def intake_kind(product_id: str, source: str) -> str | None:
     if product_id in FOOD_DRINK_IDS:
         return "food_drink"
     if product_id in SUPPLEMENT_IDS:
         return "supplement"
-    if source in ("skincare_catalog", "my_product", "user_entered"):
+    if source == "skincare_catalog":
         return "skincare"
+    if source in ("my_product", "user_entered"):
+        return None
     return "medication"
 
 

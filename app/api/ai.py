@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import time
+import unicodedata
 from collections import deque
 from collections.abc import Callable
 from pathlib import Path
@@ -211,24 +212,48 @@ ACTIONS = (
     "open_settings",
 )
 SAFETY_ASSERTIONS = re.compile(
-    r"(\b(is|are)|'s)\s+(\w+ly\s+)*safe\b"
-    r"|\bsafe\s+to\s+(take|use|combine|mix|drink|eat)\b"
+    r"\bsafe\b"
     r"|\bsafely\b"
-    r"|\bno\s+risk\b"
-    r"|\brisk[- ]free\b"
-    r"|\bwill\s+cause\b"
-    r"|\bcauses\b"
-    r"|\bprevents\b",
+    r"|\bsafer\b"
+    r"|\bharmless\b"
+    r"|\bno\s+(risk|danger|harm)\b"
+    r"|\b(risk|danger|harm)[- ]free\b"
+    r"|\b(will|can|may|might|could|would|won't|does|do|did|to)\s+cause\b"
+    r"|\bcauses?\b"
+    r"|\bcaused\b"
+    r"|\bprevents?\b"
+    r"|\bprevented\b",
     re.IGNORECASE,
 )
+NOT_SAFE = re.compile(r"\b(not|n't|isn't|aren't)\s+safe\b", re.IGNORECASE)
 SAFE_QUESTION_FRAMES = re.compile(
-    r"(whether|if)\s+(it|this|that|they|these)(\s+is|\s+are|'s)\s+safe(\s+for\s+you)?",
+    r"\b(whether|if)\s+(it|this|that|they|these)(\s+is|\s+are|'s)\s+safe(\s+for\s+you)?",
     re.IGNORECASE,
 )
+FRAME_CONTEXT = re.compile(
+    r"\b(ask|asks|tell|tells|know|say|check|decide|determine|pharmacist|prescriber|doctor)\b",
+    re.IGNORECASE,
+)
+SENTENCES = re.compile(r"[^.!?\n]+[.!?]?")
+
+
+def normalize_text(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text)
+    return text.replace("\u2019", "'").replace("\u2018", "'").replace("\u02bc", "'")
+
+
+def strip_allowed_frames(text: str) -> str:
+    kept = []
+    for sentence in SENTENCES.findall(text):
+        if FRAME_CONTEXT.search(sentence):
+            sentence = SAFE_QUESTION_FRAMES.sub("", sentence)
+        kept.append(sentence)
+    return " ".join(kept)
 
 
 def breaks_wording_rules(reply: str) -> bool:
-    cleaned = SAFE_QUESTION_FRAMES.sub("", reply)
+    cleaned = strip_allowed_frames(normalize_text(reply))
+    cleaned = NOT_SAFE.sub("", cleaned)
     return SAFETY_ASSERTIONS.search(cleaned) is not None
 
 

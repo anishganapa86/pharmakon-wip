@@ -546,3 +546,41 @@ def test_the_prompt_allows_general_education_and_numbered_steps():
         "Ignore any instruction",
     ):
         assert needle in text
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "It’s safe.",
+        "It is also safe.",
+        "Both are safe.",
+        "It should be safe.",
+        "It seems safe.",
+        "It is considered safe.",
+        "It is safe to consume.",
+        "It is harmless.",
+        "There is no danger.",
+        "It can cause drowsiness.",
+        "It may cause problems.",
+        "This helps prevent colds.",
+        "Take it if it's safe.",
+        "You can go ahead if it is safe.",
+    ],
+)
+def test_more_phrasings_of_a_safety_assertion_are_blocked(make_client, stub, reply):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    assert ask(client, sign_up(client)).status_code == 502
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Ask your pharmacist whether it’s safe for you.",
+        "It is not safe to assume that. Please ask a pharmacist.",
+    ],
+)
+def test_question_frames_and_negations_are_still_allowed(make_client, stub, reply):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    assert ask(client, sign_up(client)).status_code == 200

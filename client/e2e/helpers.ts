@@ -43,10 +43,13 @@ export function medCard(page: Page, name: string): Locator {
 }
 
 export async function openTab(page: Page, name: string): Promise<void> {
-  const tab = page.getByRole('tab', { name })
-  if ((await tab.count()) > 0 && (await tab.first().isVisible())) {
-    await tab.click()
-    await expect(tab).toHaveAttribute('aria-selected', 'true')
+  const onPhone = (page.viewportSize()?.width ?? 1280) <= 640
+  if (!onPhone) {
+    await page.getByRole('tab', { name }).click()
+    await expect(page.getByRole('tab', { name })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
   } else {
     const bar = page.locator('.bottom-bar')
     if (name === 'Food & drink') {
