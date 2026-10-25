@@ -271,7 +271,9 @@ def test_atorvastatin_with_grapefruit_quotes_its_label():
     events = [
         fake_event("rx", "Atorvastatin", [("ATORVASTATIN", "atorvastatin")]),
         fake_event(
-            "prod_food_grapefruit_juice", "Grapefruit juice", [("GRAPEFRUIT", None)]
+            "prod_food_grapefruit_juice",
+            "Grapefruit juice",
+            [("GRAPEFRUIT JUICE", None)],
         ),
     ]
     findings = food_rules.food_findings(events, registry, NOW)
@@ -524,7 +526,8 @@ def test_the_curated_list_has_about_forty_foods_with_components_only_where_obvio
         for pid, p in products.FOOD_PRODUCTS.items()
     }
     assert mapped["prod_food_coffee"] == ["caffeine"]
-    assert mapped["prod_food_grapefruit_juice"] == ["grapefruit"]
+    assert mapped["prod_food_grapefruit"] == ["grapefruit"]
+    assert mapped["prod_food_grapefruit_juice"] == ["grapefruit_juice"]
     assert mapped["prod_food_kale"] == ["vitamin_k"]
     assert mapped["prod_food_soy_sauce"] == ["tyramine"]
     for neutral in (
@@ -564,3 +567,55 @@ def test_manual_checks_also_carry_explanations(client):
     assert r.status_code == 200
     for finding in r.json()["interactions"]:
         assert finding["why"]["key"] == "nsaids"
+
+
+def test_every_rule_restates_only_the_condition_in_its_quote():
+    expected = {
+        "acetaminophen-alcohol": "3 or more alcoholic drinks every day",
+        "ibuprofen-alcohol": "3 or more alcoholic drinks every day",
+        "aspirin-alcohol": "3 or more alcoholic drinks every day",
+        "diphenhydramine-alcohol": "avoid alcoholic drinks",
+        "doxylamine-alcohol": "avoid alcoholic beverages",
+        "caffeine-caffeine": "caffeine-containing medications, foods or beverages",
+        "atorvastatin-grapefruit": "more than 1.2 liters daily",
+        "warfarin-vitamin-k": "consistent intake of vitamin K",
+    }
+    rules = {r.id: r for r in food_rules.load_rules()}
+    assert set(rules) == set(expected)
+    for rule_id, phrase in expected.items():
+        rule = rules[rule_id]
+        assert phrase in rule.applies_to
+        assert rule.applies_to.startswith("The label")
+        assert not BANNED.search(rule.applies_to)
+        assert "you" not in rule.applies_to.lower().split()
+
+
+def test_a_finding_carries_the_applies_to_line_next_to_the_quote(client):
+    log(client, "tylenol")
+    log(client, "beer")
+    finding = food(check(client))[0]
+    assert finding["applies_to"] == (
+        "The label's alcohol warning refers to 3 or more alcoholic drinks every day "
+        "while using the product."
+    )
+
+
+def test_the_quotes_are_unchanged_by_the_framing_line():
+    rules = {r.id: r for r in food_rules.load_rules()}
+    assert rules["atorvastatin-grapefruit"].quote.startswith(
+        "Grapefruit juice consumption, especially excessive consumption"
+    )
+    assert rules["acetaminophen-alcohol"].quote.endswith(
+        "3 or more alcoholic drinks every day while using this product"
+    )
+
+
+def test_whole_grapefruit_no_longer_fires_the_grapefruit_juice_rule():
+    registry = load_registry()
+    drug = fake_event("rx", "Atorvastatin", [("ATORVASTATIN", "atorvastatin")])
+    whole = fake_event("prod_food_grapefruit", "Grapefruit", [("GRAPEFRUIT", None)])
+    juice = fake_event(
+        "prod_food_grapefruit_juice", "Grapefruit juice", [("GRAPEFRUIT JUICE", None)]
+    )
+    assert food_rules.food_findings([drug, whole], registry, NOW) == []
+    assert len(food_rules.food_findings([drug, juice], registry, NOW)) == 1

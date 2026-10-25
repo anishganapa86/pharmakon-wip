@@ -81,6 +81,11 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
       {interaction.quoted_text && (
         <p className="muted small label-quote">"{interaction.quoted_text}"</p>
       )}
+      {interaction.applies_to && (
+        <p className="muted small">
+          What the label says this applies to: {interaction.applies_to}
+        </p>
+      )}
       {interaction.label_attribution && (
         <p className="muted small">{interaction.label_attribution}</p>
       )}

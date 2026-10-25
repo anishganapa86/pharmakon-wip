@@ -549,6 +549,7 @@ export interface WhyExplanation {
 }
 
 export interface Interaction {
+  applies_to?: string;
   why?: WhyExplanation;
   finding_kind?: "food";
   substance_a: InteractionSubstanceRef;

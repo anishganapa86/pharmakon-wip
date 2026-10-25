@@ -196,6 +196,7 @@ COMPONENT_INGREDIENT = {
     "caffeine": "CAFFEINE",
     "alcohol": "ALCOHOL",
     "grapefruit": "GRAPEFRUIT",
+    "grapefruit_juice": "GRAPEFRUIT JUICE",
     "vitamin_k": "VITAMIN K",
     "tyramine": "TYRAMINE",
 }
@@ -212,7 +213,7 @@ FOOD_ITEMS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("wine", "Wine", ("alcohol",)),
     ("spirits", "Spirits", ("alcohol",)),
     ("grapefruit", "Grapefruit", ("grapefruit",)),
-    ("grapefruit_juice", "Grapefruit juice", ("grapefruit",)),
+    ("grapefruit_juice", "Grapefruit juice", ("grapefruit_juice",)),
     ("kale", "Kale", ("vitamin_k",)),
     ("spinach", "Spinach", ("vitamin_k",)),
     ("collard_greens", "Collard greens", ("vitamin_k",)),

@@ -29,6 +29,7 @@ class FoodRule:
     food_component: str
     food_component_name: str
     quote: str
+    applies_to: str
     section: str
     label_product_name: str
     set_id: str
@@ -42,15 +43,22 @@ def load_rules(path: Path | None = None) -> tuple[FoodRule, ...]:
     data = json.loads((path or DATA_PATH).read_text(encoding="utf-8"))
     rules = []
     for entry in data["rules"]:
-        for field in ("quote", "citation", "set_id", "source_url", "section"):
+        for field in (
+            "quote",
+            "applies_to",
+            "citation",
+            "set_id",
+            "source_url",
+            "section",
+        ):
             if not str(entry.get(field) or "").strip():
                 raise InvalidFoodRule(f"rule {entry.get('id')!r} has no {field}")
         if not entry["source_url"].startswith(DAILYMED_PREFIX):
             raise InvalidFoodRule(f"rule {entry['id']!r} is not sourced to DailyMed")
         if not isinstance(entry.get("verified"), bool):
             raise InvalidFoodRule(f"rule {entry['id']!r} has no verified flag")
-        if BANNED.search(entry["quote"]):
-            raise InvalidFoodRule(f"rule {entry['id']!r} quotes a banned phrase")
+        if BANNED.search(entry["quote"]) or BANNED.search(entry["applies_to"]):
+            raise InvalidFoodRule(f"rule {entry['id']!r} uses a banned phrase")
         missing = verification.missing_verification_fields(entry)
         if missing:
             raise InvalidFoodRule(
@@ -65,6 +73,7 @@ def load_rules(path: Path | None = None) -> tuple[FoodRule, ...]:
                 food_component=entry["food_component"],
                 food_component_name=entry["food_component_name"],
                 quote=entry["quote"],
+                applies_to=entry["applies_to"],
                 section=entry["section"],
                 label_product_name=entry["label_product_name"],
                 set_id=entry["set_id"],
@@ -152,6 +161,7 @@ def food_findings(events: list, registry: Registry, now: datetime) -> list[dict]
                 "source": rule.citation,
                 "quoted_text": rule.quote,
                 "quote_source": QUOTE_SOURCE_FDA_LABEL,
+                "applies_to": rule.applies_to,
                 "verified": rule.verified,
                 "severity": None,
                 "overlap": None,
