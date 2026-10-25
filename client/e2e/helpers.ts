@@ -43,11 +43,25 @@ export function medCard(page: Page, name: string): Locator {
 }
 
 export async function openTab(page: Page, name: string): Promise<void> {
-  await page.getByRole('tab', { name }).click()
-  await expect(page.getByRole('tab', { name })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
+  const tab = page.getByRole('tab', { name })
+  if ((await tab.count()) > 0 && (await tab.first().isVisible())) {
+    await tab.click()
+    await expect(tab).toHaveAttribute('aria-selected', 'true')
+  } else {
+    const bar = page.locator('.bottom-bar')
+    if (name === 'Food & drink') {
+      await bar.getByRole('button', { name: 'More' }).click()
+      await page.locator('.more-menu').getByRole('button', { name }).click()
+      await expect(bar.getByRole('button', { name: 'More' })).toHaveClass(/active/)
+    } else {
+      const label = name === 'Concentration' ? 'Home' : name
+      await bar.getByRole('button', { name: label }).click()
+      await expect(bar.getByRole('button', { name: label })).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+    }
+  }
   await checkpoint(page, `tab ${name}`)
 }
 
