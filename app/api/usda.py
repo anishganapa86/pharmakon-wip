@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 import httpx
 
@@ -13,10 +14,14 @@ SEARCH_URL = "https://api.nal.usda.gov/fdc/v1/foods/search"
 DATA_TYPES = ["Foundation", "SR Legacy", "Survey (FNDDS)"]
 TIMEOUT_SECONDS = 5.0
 PAGE_SIZE = 8
-NUTRIENT_COMPONENTS = {"262": "caffeine", "221": "alcohol", "430": "vitamin_k"}
+NUTRIENT_COMPONENTS = {"262": "caffeine", "221": "alcohol"}
+REPORTED_NUTRIENTS = {"262": "caffeine", "221": "alcohol", "430": "vitamin_k"}
+FAILURE_RETRY_SECONDS = 60.0
 
 _http = httpx.Client(timeout=TIMEOUT_SECONDS)
 _cache: dict[str, list[Product]] = {}
+_failed_at: dict[str, float] = {}
+_nutrients: dict[str, dict[str, float]] = {}
 _discovered: dict[str, Product] = {}
 
 
@@ -26,6 +31,8 @@ def enabled() -> bool:
 
 def clear_cache() -> None:
     _cache.clear()
+    _failed_at.clear()
+    _nutrients.clear()
     _discovered.clear()
 
 
@@ -41,6 +48,20 @@ def _components(food: dict) -> list[str]:
         if key and isinstance(value, (int, float)) and value > 0 and key not in found:
             found.append(key)
     return found
+
+
+def reported_nutrients(food: dict) -> dict[str, float]:
+    found: dict[str, float] = {}
+    for nutrient in food.get("foodNutrients") or []:
+        key = REPORTED_NUTRIENTS.get(str(nutrient.get("nutrientNumber")))
+        value = nutrient.get("value")
+        if key and isinstance(value, (int, float)) and value > 0:
+            found[key] = float(value)
+    return found
+
+
+def get_nutrients(product_id: str) -> dict[str, float]:
+    return _nutrients.get(product_id, {})
 
 
 def _to_product(food: dict) -> Product | None:
@@ -65,6 +86,8 @@ def search(query: str) -> list[Product]:
     key = text.lower()
     if key in _cache:
         return _cache[key]
+    if time.monotonic() - _failed_at.get(key, -1e9) < FAILURE_RETRY_SECONDS:
+        return []
     try:
         response = _http.get(
             SEARCH_URL,
@@ -78,9 +101,12 @@ def search(query: str) -> list[Product]:
         response.raise_for_status()
         foods = response.json().get("foods") or []
     except (httpx.HTTPError, ValueError):
+        _failed_at[key] = time.monotonic()
         return []
     products = [p for p in (_to_product(f) for f in foods) if p is not None]
-    for product in products:
-        _discovered[product.id] = product
+    for food, product in zip(foods, [_to_product(f) for f in foods], strict=True):
+        if product is not None:
+            _discovered[product.id] = product
+            _nutrients[product.id] = reported_nutrients(food)
     _cache[key] = products
     return products

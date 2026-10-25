@@ -961,8 +961,9 @@ def search_products(q: str, registry: Reg, session: Db, user: CurrentUser) -> di
         else:
             add(product, "catalog")
 
-    for product in usda.search(q):
-        add(product, "usda", label=food_label(product.id))
+    if not any(r["kind"] == "medication" for r in results):
+        for product in usda.search(q):
+            add(product, "usda", label=food_label(product.id))
 
     for curated in alternatives.search_curated(q):
         add(
@@ -1027,6 +1028,7 @@ def search_foods(q: str, registry: Reg) -> dict:
                 "id": product.id,
                 "name": product.brand_name,
                 "components": components,
+                "nutrients": usda.get_nutrients(product.id),
                 "source": food_label(product.id),
             }
         )

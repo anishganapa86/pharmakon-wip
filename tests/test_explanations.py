@@ -171,6 +171,46 @@ def test_the_food_rules_and_explanations_quote_the_same_label_text():
     assert acet["quote"] in rules["acetaminophen-alcohol"].quote
 
 
+def test_explanations_contain_no_benefit_claims():
+    for entry in all_entries():
+        assert not explanations.EFFICACY.search(entry["what_this_means"]), entry[
+            "title"
+        ]
+
+
+def test_an_ingredient_entry_is_not_shown_for_an_unrelated_pairing():
+    finding = {
+        "substance_a": {"id": "acetaminophen"},
+        "substance_b": {"id": "warfarin"},
+        "message": "m",
+    }
+    assert (
+        explanations.why_for_interaction(finding, shared_class=False)["kind"]
+        == "category"
+    )
+    phenyl = {
+        "substance_a": {"id": "phenylephrine"},
+        "substance_b": {"id": "metformin"},
+    }
+    assert (
+        explanations.why_for_interaction(phenyl, shared_class=False)["kind"]
+        == "category"
+    )
+
+
+def test_the_additive_category_uses_only_the_curated_effect_text():
+    quote_only = {
+        "substance_a": {"id": "metformin"},
+        "substance_b": {"id": "lisinopril"},
+        "quoted_text": "do not use for sleeplessness",
+        "message": "m",
+    }
+    assert (
+        explanations.why_for_interaction(quote_only, False)["key"]
+        == "mentioned_together"
+    )
+
+
 def test_registry_ids_in_ingredient_entries_exist():
     ids = {e["id"] for e in load_registry().all()}
     for entry in data()["ingredients"].values():

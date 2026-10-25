@@ -17,11 +17,19 @@ class InvalidExplanation(ValueError):
     pass
 
 
+EFFICACY = re.compile(
+    r"\b(supports?|improves?|treats?|cures?|relieves?|helps?\s+with|used\s+(to|for))\b",
+    re.I,
+)
+
+
 def _check_text(where: str, text: str) -> None:
     if not text.strip():
         raise InvalidExplanation(f"{where} is empty")
     if BANNED.search(text):
         raise InvalidExplanation(f"{where} uses a banned phrase")
+    if EFFICACY.search(text):
+        raise InvalidExplanation(f"{where} makes a benefit claim")
 
 
 def _check_entry(name: str, entry: dict) -> None:
@@ -100,19 +108,20 @@ def category_for_interaction(finding: dict, shared_class: bool) -> str:
         return "food_or_alcohol"
     if shared_class:
         return "same_drug_class"
-    text = " ".join(
-        str(finding.get(k) or "") for k in ("effect", "quoted_text", "message")
-    )
-    if SLEEPY_OR_STIMULANT.search(text):
+    if SLEEPY_OR_STIMULANT.search(str(finding.get("effect") or "")):
         return "additive_effect"
     return "mentioned_together"
 
 
 def why_for_interaction(finding: dict, shared_class: bool) -> dict:
-    ids = [finding["substance_a"]["id"], finding["substance_b"]["id"]]
-    return ingredient_for(ids) or category(
-        category_for_interaction(finding, shared_class)
-    )
+    a = finding["substance_a"]["id"]
+    b = finding["substance_b"]["id"]
+    if finding.get("finding_kind") == "food":
+        matched = ingredient_for([a])
+    else:
+        first, second = ingredient_for([a]), ingredient_for([b])
+        matched = first if first and second and first["key"] == second["key"] else None
+    return matched or category(category_for_interaction(finding, shared_class))
 
 
 def why_for_duplicate(substance_ids: list[str]) -> dict:

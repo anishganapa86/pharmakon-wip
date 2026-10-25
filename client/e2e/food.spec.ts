@@ -1,24 +1,33 @@
 import { expect, test } from './fixtures.ts'
 import { API_URL, LOGGED_OUT, newCredentials } from './auth-state.ts'
 import { openTab, shot } from './helpers.ts'
-import type { Page } from '@playwright/test'
+import type { BrowserContext, Page } from '@playwright/test'
 
 test.use({ storageState: LOGGED_OUT, viewport: { width: 390, height: 844 } })
 
 const CLOSING = 'A pharmacist can tell you what this means for you.'
 
-async function startFresh(page: Page): Promise<string> {
-  const created = await page.request.post(`${API_URL}/auth/signup`, {
-    data: newCredentials(),
-  })
+let userId = ''
+let savedCookies: Parameters<BrowserContext['addCookies']>[0] = []
+
+test.describe.configure({ mode: 'serial' })
+
+test.beforeAll(async ({ playwright }) => {
+  const api = await playwright.request.newContext({ baseURL: API_URL })
+  const created = await api.post('/auth/signup', { data: newCredentials() })
   expect(created.status()).toBe(201)
-  const { id } = (await created.json()) as { id: string }
-  const skipped = await page.request.put(`${API_URL}/users/${id}/survey`, {
+  userId = ((await created.json()) as { id: string }).id
+  const skipped = await api.put(`/users/${userId}/survey`, {
     data: { tracks: [], goals: [], experience: null, guidance: null, status: 'skipped' },
   })
   expect(skipped.status()).toBe(200)
-  return id
-}
+  savedCookies = (await api.storageState()).cookies
+  await api.dispose()
+})
+
+test.beforeEach(async ({ context }) => {
+  await context.addCookies(savedCookies)
+})
 
 async function logItem(page: Page, id: string, productId: string, hoursAgo: number) {
   const response = await page.request.post(`${API_URL}/users/${id}/doses`, {
@@ -41,7 +50,7 @@ async function openInteractions(page: Page) {
 test('the demo scenario: duplicate acetaminophen, then coffee, beer and chicken', async ({
   page,
 }) => {
-  const id = await startFresh(page)
+  const id = userId
   await logItem(page, id, 'prod_tylenol_es_500', 8)
   await logItem(page, id, 'prod_dayquil_liquicap', 6)
 
@@ -79,7 +88,7 @@ test('the demo scenario: duplicate acetaminophen, then coffee, beer and chicken'
 test('Why this matters is collapsed on a phone, opens with a button and keeps its sources', async ({
   page,
 }) => {
-  const id = await startFresh(page)
+  const id = userId
   await logItem(page, id, 'prod_tylenol_es_500', 8)
   await logItem(page, id, 'prod_dayquil_liquicap', 6)
   await openInteractions(page)
@@ -111,7 +120,7 @@ test('Why this matters is collapsed on a phone, opens with a button and keeps it
 
 test('the Why this matters toggle starts open on a desktop screen', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
-  const id = await startFresh(page)
+  const id = userId
   await logItem(page, id, 'prod_tylenol_es_500', 8)
   await logItem(page, id, 'prod_dayquil_liquicap', 6)
   await openInteractions(page)
@@ -124,7 +133,6 @@ test('the Why this matters toggle starts open on a desktop screen', async ({ pag
 test('the log intake search returns foods typed as Food & drink beside medications', async ({
   page,
 }) => {
-  await startFresh(page)
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Log intake' })).toBeVisible()
   await page.getByRole('combobox', { name: 'Product' }).fill('coffee')

@@ -369,9 +369,72 @@ def test_usda_search_maps_nutrients_to_components(usda_calls):
         i.name for i in by_name["Coffee, brewed, prepared with tap water"].ingredients
     ] == ["CAFFEINE"]
     assert [i.name for i in by_name["Beer, regular, all"].ingredients] == ["ALCOHOL"]
-    assert [i.name for i in by_name["Kale, raw"].ingredients] == ["VITAMIN K"]
+    assert [i.name for i in by_name["Kale, raw"].ingredients] == ["KALE, RAW"]
     assert all(i.strength_mg is None for p in found for i in p.ingredients)
     assert by_name["Kale, raw"].id == "usda_169999"
+
+
+def test_usda_vitamin_k_is_reported_but_never_becomes_a_component(usda_calls):
+    found = {p.brand_name: p for p in usda.search("kale")}
+    kale = found["Kale, raw"]
+    assert [i.name for i in kale.ingredients] == ["KALE, RAW"]
+    assert usda.get_nutrients(kale.id) == {"vitamin_k": 389.6}
+
+
+def test_a_common_food_with_trace_vitamin_k_gets_no_component_and_no_finding(
+    client, monkeypatch
+):
+    payload = {
+        "foods": [
+            {
+                "fdcId": 331960,
+                "description": "Chicken, broilers, raw",
+                "foodNutrients": [{"nutrientNumber": "430", "value": 0.3}],
+            }
+        ]
+    }
+
+    def handler(request):
+        return httpx.Response(200, json=payload)
+
+    monkeypatch.setenv("USDA_FDC_API_KEY", "test-key-not-real")
+    monkeypatch.setattr(
+        usda, "_http", httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    (chicken,) = usda.search("chicken")
+    assert [i.name for i in chicken.ingredients] == ["CHICKEN, BROILERS, RAW"]
+    assert usda.get_nutrients(chicken.id) == {"vitamin_k": 0.3}
+    events = [
+        fake_event("rx2", "Warfarin", [("WARFARIN", "warfarin")]),
+        fake_event(
+            chicken.id,
+            chicken.brand_name,
+            [(i.name, None) for i in chicken.ingredients],
+        ),
+    ]
+    assert food_rules.food_findings(events, load_registry(), NOW) == []
+
+
+def test_usda_failures_are_not_retried_on_every_keystroke(monkeypatch):
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        raise httpx.ConnectTimeout("slow", request=request)
+
+    monkeypatch.setenv("USDA_FDC_API_KEY", "k")
+    monkeypatch.setattr(
+        usda, "_http", httpx.Client(transport=httpx.MockTransport(handler))
+    )
+    assert usda.search("coffee") == []
+    assert usda.search("coffee") == []
+    assert len(calls) == 1
+
+
+def test_a_medication_search_does_not_send_the_text_to_usda(client, usda_calls):
+    r = client.get("/products/search", params={"q": "tylenol"})
+    assert r.status_code == 200
+    assert usda_calls == []
 
 
 def test_usda_only_sends_the_search_text_and_the_allowed_data_types(usda_calls):
@@ -450,7 +513,7 @@ def test_the_foods_endpoint_uses_usda_when_it_is_available(client, usda_calls):
     assert {x["source"] for x in body["results"]} == {"Source: USDA FoodData Central"}
 
 
-def test_the_foods_endpoint_needs_a_query_and_a_login(client):
+def test_the_foods_endpoint_needs_a_query(client):
     assert client.get("/foods/search", params={"q": " "}).status_code == 422
 
 
