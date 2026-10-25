@@ -1163,3 +1163,22 @@ body:has(.scan-capture)::before {
 .scan-capture .page-footer {
   color: #c4d0d5;
 }
+
+@media (max-width: 640px) {
+  .more-menu {
+    z-index: 35;
+  }
+}
+
+.med-add {
+  margin-top: var(--space-3);
+}
+
+.panel-title-row {
+  margin-bottom: var(--space-1);
+}
+
+.page > .panel + .panel,
+.page > section + section {
+  margin-top: 0;
+}
