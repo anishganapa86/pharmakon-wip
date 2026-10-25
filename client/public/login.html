@@ -212,7 +212,6 @@
                 message.classList.add("ok");
                 message.textContent = "Login successful! Opening Pharmakon…";
                 button.disabled = true;
-                try { localStorage.setItem("pharmakon_logged_in", "true"); } catch (e) {}
                 // replace() so the Back button doesn't return to the login page.
                 setTimeout(function () { window.location.replace(APP_URL); }, 600);
             } else {

@@ -25,6 +25,41 @@
   }
 }
 
+.page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.account {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.account-email {
+  max-width: 220px;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.control.secondary {
+  padding: 0 16px;
+  color: var(--accent);
+  border-color: var(--accent-border);
+  cursor: pointer;
+  font-weight: 600;
+
+  &:hover {
+    background: var(--accent-bg);
+  }
+}
+
 .page-header h1 {
   margin: 0;
   color: var(--text-h);

@@ -29,18 +29,49 @@ import type {
   TimelineQuery,
 } from "./types/contract";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = (
+  (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://localhost:8000"
+).replace(/\/+$/, "");
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export const LOGIN_PAGE = "/login.html";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
+export function redirectToLogin(): void {
+  window.location.replace(LOGIN_PAGE);
+}
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  options: { redirectOn401?: boolean } = {},
+): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include" });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") throw e;
     throw new Error(
       "Couldn't reach the Pharmakon server. Check that it is running, then try again.",
       { cause: e },
     );
+  }
+  if (res.status === 401 && options.redirectOn401 !== false) {
+    redirectToLogin();
+    throw new ApiRequestError("Your session has ended. Please log in again.", 401);
   }
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
@@ -50,7 +81,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Non-JSON error body; keep the status line.
     }
-    throw new Error(message);
+    throw new ApiRequestError(message, res.status);
   }
   if (res.status === 204) return undefined as T; // no body, e.g. DELETE
   return (await res.json()) as T;
@@ -272,4 +303,17 @@ export function takeScheduled(
   return request(`${scheduleBase(userId)}/${encodeURIComponent(scheduleId)}/take`, {
     method: "POST",
   });
+}
+
+export async function fetchMe(): Promise<AuthUser | null> {
+  try {
+    return await request<AuthUser>("/auth/me", undefined, { redirectOn401: false });
+  } catch (e) {
+    if (e instanceof ApiRequestError && e.status === 401) return null;
+    throw e;
+  }
+}
+
+export async function logout(): Promise<void> {
+  await request<void>("/auth/logout", { method: "POST" }, { redirectOn401: false });
 }

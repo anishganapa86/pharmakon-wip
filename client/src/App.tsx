@@ -9,6 +9,7 @@ import {
   fetchSchedule,
   fetchSkincareCheck,
   logDose,
+  type AuthUser,
 } from "./api";
 import { AlertList } from "./components/AlertList";
 import {
@@ -49,7 +50,6 @@ type View =
   | "interactions"
   | "food";
 
-const USER_ID = "default";
 const MAX_RECENT_PRODUCTS = 5;
 
 function errorMessage(e: unknown): string {
@@ -88,12 +88,12 @@ interface Dashboard {
  * hours back if there is none) to six hours past now, or 24 when anything is
  * scheduled, so the next scheduled dose shows up in the projection.
  */
-async function fetchDashboard(): Promise<Dashboard> {
+async function fetchDashboard(userId: string): Promise<Dashboard> {
   const nowMs = Date.now();
   const [doses, alerts, schedule] = await Promise.all([
-    fetchDoses(USER_ID),
-    fetchAlerts(USER_ID),
-    fetchSchedule(USER_ID),
+    fetchDoses(userId),
+    fetchAlerts(userId),
+    fetchSchedule(userId),
   ]);
   const recentLogged = recentProducts(doses);
 
@@ -138,7 +138,7 @@ async function fetchDashboard(): Promise<Dashboard> {
   };
   const curves = await Promise.all(
     substances.map((substance_id) =>
-      fetchCurve(USER_ID, {
+      fetchCurve(userId, {
         substance_id,
         from: new Date(window.fromMs).toISOString(),
         to: new Date(window.toMs).toISOString(),
@@ -157,7 +157,8 @@ async function fetchDashboard(): Promise<Dashboard> {
   };
 }
 
-function App() {
+function App({ user, onLogOut }: { user: AuthUser; onLogOut: () => void }) {
+  const userId = user.id;
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -182,20 +183,38 @@ function App() {
   // effect. Callers that re-load set `loading` themselves.
   const load = useCallback(
     () =>
-      fetchDashboard()
+      fetchDashboard(userId)
         .then((d) => {
           setDashboard(d);
           setError(null);
         })
         .catch((e: unknown) => setError(errorMessage(e)))
         .finally(() => setLoading(false)),
-    [],
+    [userId],
+  );
+
+  const refreshFoodGuidanceChips = useCallback(
+    () =>
+      fetchFoodGuidance(userId)
+        .then((check) => {
+          const chips = new Map<string, FoodChip>();
+          for (const f of check.guidance) {
+            if (f.class !== "take_with_food" && f.class !== "take_with_food_if_upset")
+              continue;
+            const name = f.name.trim().toLowerCase();
+            if (f.class === "take_with_food" || !chips.has(name))
+              chips.set(name, f.class);
+          }
+          setWithFoodNames(chips);
+        })
+        .catch(() => undefined),
+    [userId],
   );
 
   useEffect(() => {
     void load();
     void refreshFoodGuidanceChips();
-  }, [load]);
+  }, [load, refreshFoodGuidanceChips]);
 
   function reload() {
     setLoading(true);
@@ -206,7 +225,7 @@ function App() {
   // dose that was already recorded.
   async function refreshSkincareNotice() {
     try {
-      const check = await fetchSkincareCheck(USER_ID);
+      const check = await fetchSkincareCheck(userId);
       setSkincareNotice(
         check.incompatibilities.length > 0 || check.irritants.length > 0,
       );
@@ -217,26 +236,10 @@ function App() {
 
   async function refreshInteractionsNotice() {
     try {
-      const check = await fetchInteractionCheck(USER_ID);
+      const check = await fetchInteractionCheck(userId);
       setInteractionsNotice(check.interactions.length > 0);
     } catch {
       // Leave the existing notice state as-is.
-    }
-  }
-
-  async function refreshFoodGuidanceChips() {
-    try {
-      const check = await fetchFoodGuidance(USER_ID);
-      const chips = new Map<string, FoodChip>();
-      for (const f of check.guidance) {
-        if (f.class !== "take_with_food" && f.class !== "take_with_food_if_upset")
-          continue;
-        const name = f.name.trim().toLowerCase();
-        if (f.class === "take_with_food" || !chips.has(name)) chips.set(name, f.class);
-      }
-      setWithFoodNames(chips);
-    } catch {
-      // Leave the existing chip state as-is.
     }
   }
 
@@ -260,7 +263,7 @@ function App() {
     setLogError(null);
     setLogged(null);
     try {
-      await logDose(USER_ID, {
+      await logDose(userId, {
         product_id: p.id,
         taken_at: new Date().toISOString(),
         quantity: qtyToLog,
@@ -292,11 +295,25 @@ function App() {
   return (
     <main className="page">
       <header className="page-header">
-        <h1>Pharmakon</h1>
+        <div className="page-header-row">
+          <h1>Pharmakon</h1>
+          <div className="account">
+            <span className="account-email" title={user.email}>
+              {user.email}
+            </span>
+            <button
+              type="button"
+              className="control secondary"
+              onClick={onLogOut}
+            >
+              Log out
+            </button>
+          </div>
+        </div>
       </header>
 
       <Schedule
-        userId={USER_ID}
+        userId={userId}
         medications={dashboard?.schedule ?? null}
         recent={dashboard?.recent ?? []}
         onChanged={() => void handleScheduleChanged()}
@@ -310,7 +327,7 @@ function App() {
         <form className="log-row" onSubmit={handleLogDose}>
           <ProductSearch
             key={searchKey}
-            userId={USER_ID}
+            userId={userId}
             selected={product}
             onSelect={(p) => {
               setProduct(p);
@@ -395,11 +412,11 @@ function App() {
         </button>
       </nav>
 
-      {view === "skincare" && <Skincare userId={USER_ID} />}
+      {view === "skincare" && <Skincare userId={userId} />}
 
-      {view === "interactions" && <Interactions userId={USER_ID} />}
+      {view === "interactions" && <Interactions userId={userId} />}
 
-      {view === "food" && <FoodGuidance userId={USER_ID} />}
+      {view === "food" && <FoodGuidance userId={userId} />}
 
       {view === "timeline" && (
         <>
@@ -411,7 +428,7 @@ function App() {
             </p>
             <h2>Add to your timeline</h2>
             <LogForm
-              userId={USER_ID}
+              userId={userId}
               onLogged={() => setTimelineKey((k) => k + 1)}
             />
           </section>
@@ -420,7 +437,7 @@ function App() {
             <h2>Timeline</h2>
             <Timeline
               key={timelineKey}
-              userId={USER_ID}
+              userId={userId}
               onDeleted={() => setTimelineKey((k) => k + 1)}
             />
           </section>
@@ -472,7 +489,7 @@ function App() {
                 ))}
               </div>
             )}
-            <SideEffectProfile key={sideEffectKey} userId={USER_ID} />
+            <SideEffectProfile key={sideEffectKey} userId={userId} />
           </section>
 
           <section className="panel">
