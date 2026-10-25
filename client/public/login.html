@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pharmakon – Log in</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <meta name="theme-color" content="#0b7a6b">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <style>
+        /* Same palette as the app (client/src/index.css). */
+        :root {
+            --text: #4b5968;
+            --text-h: #0b1b2b;
+            --border: #d9e4e3;
+            --accent: #0b7a6b;
+            --accent-hover: #096558;
+            --accent-bg: rgba(11, 122, 107, 0.09);
+            --error: #d92d20;
+            --sans: 'Inter', system-ui, 'Segoe UI', Roboto, sans-serif;
+ 
+            font: 16px/150% var(--sans);
+            color: var(--text);
+            color-scheme: light;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+        }
+ 
+        /* Lattice + molecule backdrop, copied from the app so the pages match. */
+    
+    body {
+      margin: 0;
+      min-height: 100vh;
+      min-height: 100svh;
+      background-color: #ecf6f4;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='100' viewBox='0 0 56 100'%3E%3Cpath d='M28 66L0 50L0 16L28 0L56 16L56 50L28 66L28 100' fill='none' stroke='%230f9d8f' stroke-opacity='0.2'/%3E%3Cpath d='M28 0L28 34L0 50L0 84L28 100L56 84L56 50L28 34' fill='none' stroke='%230f9d8f' stroke-opacity='0.2'/%3E%3C/svg%3E");
+      background-attachment: fixed;
+    }
+    
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='260' viewBox='0 0 400 260'%3E%3Cg fill='none' stroke='%230b7a6b' stroke-opacity='0.5' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M150 80L210.6 115L210.6 185L150 220L89.4 185L89.4 115Z'/%3E%3Cpath d='M210.6 115L277.2 93.4L318.3 150L277.2 206.6L210.6 185'/%3E%3Cpath d='M198 126L198 174' stroke-opacity='0.3'/%3E%3Cpath d='M150 80L150 34M89.4 185L38 214M318.3 150L372 150'/%3E%3C/g%3E%3Cg fill='%23f2705a' fill-opacity='0.22' stroke='%23f2705a' stroke-opacity='0.7' stroke-width='1.8'%3E%3Ccircle cx='150' cy='25' r='10'/%3E%3Ccircle cx='277.2' cy='93.4' r='10'/%3E%3Ccircle cx='277.2' cy='206.6' r='10'/%3E%3C/g%3E%3Cg fill='%230b7a6b' fill-opacity='0.6'%3E%3Ccircle cx='150' cy='80' r='3.5'/%3E%3Ccircle cx='210.6' cy='115' r='3.5'/%3E%3Ccircle cx='210.6' cy='185' r='3.5'/%3E%3Ccircle cx='150' cy='220' r='3.5'/%3E%3Ccircle cx='89.4' cy='185' r='3.5'/%3E%3Ccircle cx='89.4' cy='115' r='3.5'/%3E%3Ccircle cx='318.3' cy='150' r='3.5'/%3E%3Ccircle cx='38' cy='214' r='4.5'/%3E%3Ccircle cx='372' cy='150' r='4.5'/%3E%3C/g%3E%3C/svg%3E"),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='300' viewBox='0 0 320 300'%3E%3Cg fill='none' stroke='%230b7a6b' stroke-opacity='0.5' stroke-width='1.8' stroke-linejoin='round'%3E%3Cpath d='M140 80L200.6 115L200.6 185L140 220L79.4 185L79.4 115Z'/%3E%3Ccircle cx='140' cy='150' r='44' stroke-opacity='0.3'/%3E%3Cpath d='M200.6 115L255 84M79.4 185L30 214M140 220L140 268'/%3E%3C/g%3E%3Ccircle cx='265' cy='78' r='10' fill='%23f2705a' fill-opacity='0.22' stroke='%23f2705a' stroke-opacity='0.7' stroke-width='1.8'/%3E%3Cg fill='%230b7a6b' fill-opacity='0.6'%3E%3Ccircle cx='140' cy='80' r='3.5'/%3E%3Ccircle cx='200.6' cy='115' r='3.5'/%3E%3Ccircle cx='200.6' cy='185' r='3.5'/%3E%3Ccircle cx='140' cy='220' r='3.5'/%3E%3Ccircle cx='79.4' cy='185' r='3.5'/%3E%3Ccircle cx='79.4' cy='115' r='3.5'/%3E%3Ccircle cx='30' cy='214' r='4.5'/%3E%3Ccircle cx='140' cy='268' r='4.5'/%3E%3C/g%3E%3C/svg%3E"),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='300' viewBox='0 0 320 300'%3E%3Cg stroke='%230f9d8f' stroke-opacity='0.4' stroke-width='1.5' stroke-linejoin='round'%3E%3Cpath d='M110 50L161.96 80L161.96 140L110 170L58.04 140L58.04 80Z' fill='%230f9d8f' fill-opacity='0.16'/%3E%3Cpath d='M213.9 50L265.86 80L265.86 140L213.9 170L161.94 140L161.94 80Z' fill='%230f9d8f' fill-opacity='0.08'/%3E%3Cpath d='M162 140L213.96 170L213.96 230L162 260L110.04 230L110.04 170Z' fill='%230f9d8f' fill-opacity='0.24'/%3E%3C/g%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right -80px top 110px, left -90px bottom 10px, left -50px top 150px;
+      background-size: 720px auto, 460px auto, 380px auto;
+    }
+    
+        main {
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+            min-height: 100svh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            padding: 24px 16px;
+            box-sizing: border-box;
+        }
+ 
+        .brand {
+            text-align: center;
+        }
+ 
+        .brand h1 {
+            margin: 0;
+            font-size: 40px;
+            font-weight: 700;
+            letter-spacing: -0.8px;
+            line-height: 1.1;
+            color: var(--text-h);
+        }
+ 
+        .brand p {
+            margin: 6px 0 0;
+            font-size: 15px;
+        }
+ 
+        .login-box {
+            width: 100%;
+            max-width: 380px;
+            box-sizing: border-box;
+            padding: 28px 26px 24px;
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            box-shadow:
+                0 1px 2px rgba(11, 27, 43, 0.05),
+                0 12px 30px rgba(11, 27, 43, 0.1);
+        }
+ 
+        .login-box h2 {
+            margin: 0 0 18px;
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: -0.1px;
+            color: var(--text-h);
+        }
+ 
+        .login-box input {
+            display: block;
+            width: 100%;
+            height: 42px;
+            padding: 0 12px;
+            margin: 0 0 14px;
+            box-sizing: border-box;
+            font: inherit;
+            font-size: 16px;
+            color: var(--text-h);
+            background: #ffffff;
+            border: 1px solid #cbd5df;
+            border-radius: 8px;
+        }
+ 
+        .login-box input:focus-visible {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-bg);
+        }
+ 
+        .login-box button {
+            width: 100%;
+            height: 42px;
+            margin-top: 4px;
+            padding: 0 20px;
+            font: inherit;
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+            background: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+ 
+        .login-box button:hover:not(:disabled) {
+            background: var(--accent-hover);
+            border-color: var(--accent-hover);
+        }
+ 
+        .login-box button:focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 2px;
+        }
+ 
+        .login-box button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+ 
+        .message {
+            margin: 14px 0 0;
+            min-height: 20px;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--error);
+        }
+ 
+        .message.ok {
+            color: var(--accent);
+        }
+ 
+        .disclaimer {
+            max-width: 440px;
+            margin: 0;
+            font-size: 13px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="brand">
+            <h1>Pharmakon</h1>
+            <p>Track what you take and see how it adds up.</p>
+        </div>
+ 
+        <form class="login-box" id="login-form" novalidate>
+            <h2>Log in</h2>
+            <input type="text" id="username" placeholder="Username" aria-label="Username" autocomplete="username" autofocus>
+            <input type="password" id="password" placeholder="Password" aria-label="Password" autocomplete="current-password">
+            <button type="submit" id="submit">Log in</button>
+            <p class="message" id="message" role="status" aria-live="polite"></p>
+        </form>
+ 
+        <p class="disclaimer">Educational and demonstrative use only. Not a medical device.</p>
+    </main>
+ 
+    <script>
+        // Where to send the user after a successful login (the app's root).
+        const APP_URL = "/";
+ 
+        document.getElementById("login-form").addEventListener("submit", function (event) {
+            event.preventDefault();
+ 
+            const username = document.getElementById("username").value;
+            const password = document.getElementById("password").value;
+            const message = document.getElementById("message");
+            const button = document.getElementById("submit");
+ 
+            if (username === "codewithmay" && password === "1234") {
+                message.classList.add("ok");
+                message.textContent = "Login successful! Opening Pharmakon…";
+                button.disabled = true;
+                try { localStorage.setItem("pharmakon_logged_in", "true"); } catch (e) {}
+                // replace() so the Back button doesn't return to the login page.
+                setTimeout(function () { window.location.replace(APP_URL); }, 600);
+            } else {
+                message.classList.remove("ok");
+                message.textContent = "Invalid username or password!";
+            }
+        });
+    </script>
+</body>
+</html>
+ 
