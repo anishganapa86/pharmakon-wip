@@ -53,24 +53,101 @@ empty. This is where the cause of a caveat is shown, e.g. "No serum creatinine
 on file, so population clearance was used" or a threshold lowered for hepatic
 impairment. Never show a warning without showing its cause (spec §8).
 
-### Authentication and data — v1 constraint
+### Authentication and data
 
-There is **no authentication in v1.** This is acceptable only under a hard
-constraint:
+Every route needs a logged-in session except the three public routes below.
+Accounts are email and password; there is no email verification and no
+password reset.
 
-> **The deployed demo runs on seeded synthetic data only. Neither Anish nor
-> Punya — nor anyone else — logs real medications into the public instance.**
+**Public routes (the allowlist).** Exactly these three, and nothing else:
 
-This is a constraint on how the system is operated, not a TODO. Any
-deployment that accepts real personal medication data requires
-authentication first, and that is a contract change.
+| Route | Purpose |
+|---|---|
+| `POST /auth/signup` | Create an account and start a session. |
+| `POST /auth/login` | Start a session. |
+| `GET /health` | Liveness check; returns `{"status": "ok"}`. |
+
+**Session.** A successful sign-up or login sets a cookie named
+`pharmakon_session`: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Max-Age` seven
+days, and `Secure` when `PHARMAKON_COOKIE_SECURE` is on. The value is a random
+token; the server stores only its SHA-256 hash. The expiry slides: a request
+made a minute or more after the last one renews it. A login issues a new token
+and retires any session cookie the request presented. Clients send
+`credentials: "include"` on every request.
+
+**Passwords.** 10 to 128 characters, no composition rules, hashed with
+argon2id. Email is trimmed and lowercased; it is unique case-insensitively.
+
+**Cross-origin and writes.** The API answers credentialed cross-origin
+requests only for the origins in `PHARMAKON_CORS_ORIGINS` (never `*`). A
+`POST`, `PUT`, `PATCH` or `DELETE` that carries an `Origin` header not on that
+list is refused with `403` before it runs.
+
+**Ownership.** `{id}` in `/users/{id}/...` is the logged-in user's `id`. Any
+other value, including one that belongs to nobody, returns `403`, not `404`, so
+a response never says whether another account exists.
+
+**Throttling.** Sign-up and login attempts are counted in memory by IP and
+email together and by IP alone. Repeated failures return `429` with a
+`Retry-After` header (seconds) and a lockout that doubles each time it is hit
+again. The counters live in one API process; see `docs/SETUP.md`.
+
+**Data.** The demo still runs on seeded synthetic data only; nobody logs real
+medications into a shared instance. Accounts do not change that. They keep one
+person's data apart from another's, and they do not make a public instance a
+safe place for real medication records.
+
+**Not per user.** Two stores are process-global, not per user, and are lost
+when the API restarts:
+
+- `openfda.get_discovered` holds products found through an openFDA search.
+  The id is a hash of the brand and substance names, so anyone can compute it.
+- `skincare.register_user_product` holds ingredient lists pasted through
+  `POST /products/user-entered`. The id is random (`user_` plus 12 hex
+  characters) but is not tied to the account that created it.
+
+Any logged-in user who has a product id can log that product. The openFDA
+entries are public label data; the pasted ingredient lists are user-entered
+text. Per-user scoping is a follow-up.
+
+#### `POST /auth/signup`
+
+Request: `{ "email": string, "password": string }`. Response `201`:
+`{ "id": string, "email": string }`, with the session cookie set.
+
+| Status | `error.code` | When |
+|---|---|---|
+| `409` | `email_taken` | An account with that email exists. |
+| `422` | `validation_error` | Email not an address, or password outside 10 to 128 characters. |
+| `429` | `rate_limited` | Throttled; see `Retry-After`. |
+
+#### `POST /auth/login`
+
+Request: `{ "email": string, "password": string }`. Response `200`:
+`{ "id": string, "email": string }`, with the session cookie set.
+
+| Status | `error.code` | When |
+|---|---|---|
+| `401` | `invalid_credentials` | Unknown email or wrong password. The status, code and message are identical for both, and an unknown email still runs one password hash, so timing does not tell the two apart. |
+| `429` | `rate_limited` | Throttled; see `Retry-After`. |
+
+#### `POST /auth/logout`
+
+Requires a session. Response `204`. Deletes the session on the server and
+clears the cookie.
+
+#### `GET /auth/me`
+
+Requires a session. Response `200`: `{ "id": string, "email": string }`.
+Nothing else is returned.
 
 ### Notation
 
 - **required** — always present; never `null`.
 - **optional** — may be omitted from requests.
 - **nullable** — always present in responses, but the value may be `null`.
-- `{id}` is the user id, an opaque string. **[filled in]**
+- `{id}` is the user id, an opaque string. It must be the logged-in user's own `id`;
+  see [Authentication and data](#authentication-and-data). **[filled in]**
 
 ---
 
@@ -578,7 +655,7 @@ same enum as [Ingredient](#4-product-search)).
 `POST /symptom-check`
 
 Checks the free-text symptom against every substance the user logged in the
-last 24 hours. v1 has one user, so this reads `default`'s doses. A substance
+last 24 hours. It reads the logged-in user's doses. A substance
 matches only when **all three** hold:
 
 1. the symptom is listed in the adverse_reactions section of a
@@ -625,7 +702,11 @@ The spec does not define errors. Proposed shape for every non-2xx response:
 
 | Status | When |
 |---|---|
-| `404` | Unknown user, product, or substance. |
+| `401` | No session, an expired or unknown session, or (on `/auth/login`) wrong credentials. |
+| `403` | `{id}` is not the logged-in user's id, including an id that belongs to nobody; or a write whose `Origin` header is not an allowed origin. |
+| `404` | Unknown product or substance. |
+| `409` | `POST /auth/signup` with an email that already has an account. |
+| `429` | Too many sign-up or login attempts; `Retry-After` gives the seconds to wait. |
 | `422` | Validation failure (missing field, bad enum, `resolution` not `15m`/`1h`, `active` not `true`/`false`/`all`, timestamp without offset, `to` ≤ `from`, non-positive number). |
 
 An unmodelable substance on `/curve` is **not** an error; it returns `200`
@@ -643,7 +724,7 @@ with `modelable: false`.
 | 4 | `active` | `true` \| `false` \| `all`, default `true`; `false` returns only inactive alerts. |
 | 5 | Alert `notes` | Required array on every alert, may be empty (spec §8: never show a warning without its cause). `payload` is not part of the contract. |
 | 6 | Unmatched ingredients | Loggable (spec §5). `substance_id: null`, excluded from PK and duplication, product flagged with `has_unmodeled_ingredients`. Never silently dropped. |
-| 7 | Auth | None in v1. Hard constraint: the public deployment runs on seeded synthetic data only; nobody logs real medications into it. |
+| 7 | Auth | Superseded by decision 19. Originally none in v1, under the hard constraint that the public deployment runs on seeded synthetic data only; that constraint still stands. |
 | 8 | Recognized ingredient, unknown strength | Loggable, unmodeled. `substance_id` resolves, `amount_mg` is `null`, excluded from PK and the 24h duplication sum. Per-ingredient `unmodeled_reason: "unknown_strength"`, distinct from `"unmatched"`. UI names the uncounted ingredient. |
 | 9 | What makes an alert inactive | Dismissal (`dismissed_at`) or recomputation no longer producing it (`resolved_at`). No auto-expiry; the recompute decides, not a timer. |
 | 10 | Dismissal | Not in v1. `dismissed_at` stays in the schema, always `null`; only recomputation sets an alert inactive. Intended future shape: `POST /users/{id}/alerts/{alert_id}/dismiss`. |
@@ -655,6 +736,7 @@ with `modelable: false`.
 | 16 | Product-level severity | `caution`. Escalates to `urgent` when the same product also contributes a counted dose of a substance whose counted 24h total is at or past the approach fraction. |
 | 17 | Escalation traceability | Escalating doses are listed in `contributing_doses` on the product-level alert, and `notes` still names the substance and total. A null `substance` may therefore come with non-empty `contributing_doses`. |
 | 18 | Alert explanations | Alert `substance` gains `threshold_explanation` (nullable, registry-sourced, alert-only -- not on `/curve`'s `substance`). "What to do" guidance is derived client-side from `severity` alone, not sent by the server. |
+| 19 | Authentication | Email and password accounts with a server-side session in an `HttpOnly`, `SameSite=Lax` cookie. Every route needs a session except `POST /auth/signup`, `POST /auth/login` and `GET /health`. `/users/{id}/...` returns `403` unless `{id}` is the logged-in user's id. No email verification and no password reset. The seeded-synthetic-data-only rule for a public instance is unchanged. |
 
 ## Implementation follow-ups
 
