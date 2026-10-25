@@ -17,6 +17,7 @@ import {
   type TimeWindow,
 } from "./components/ConcentrationChart";
 import { FoodGuidance } from "./components/FoodGuidance";
+import { Hero } from "./components/Hero";
 import { Interactions } from "./components/Interactions";
 import { LogForm } from "./components/LogForm";
 import { ProductName } from "./components/ProductName";
@@ -36,6 +37,7 @@ import {
 import {
   LOG_HINT,
   TAB_HINTS,
+  TAB_LABELS,
   scrollsToSchedule,
   showsHints,
   startingView,
@@ -53,6 +55,7 @@ import type {
 } from "./types/contract";
 
 const MAX_RECENT_PRODUCTS = 5;
+const BOTTOM_TABS: View[] = ["concentration", "timeline", "skincare", "interactions"];
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -201,6 +204,7 @@ function App({
     setHandledNonce(tabRequest.nonce);
     setView(tabRequest.view);
   }
+  const [moreOpen, setMoreOpen] = useState(false);
   const scheduleRef = useRef<HTMLDivElement>(null);
   const jumpToSchedule = scrollsToSchedule(tailoring);
   useEffect(() => {
@@ -328,7 +332,7 @@ function App({
   }
 
   return (
-    <main className="page">
+    <main className={`page view-${view}`}>
       <header className="page-header">
         <div className="page-header-row">
           <h1>Pharmakon</h1>
@@ -345,7 +349,7 @@ function App({
             </button>
             <button
               type="button"
-              className="control secondary"
+              className="control secondary logout"
               onClick={onLogOut}
             >
               Log out
@@ -354,7 +358,11 @@ function App({
         </div>
       </header>
 
-      <div ref={scheduleRef}>
+      {view === "concentration" && dashboard && (
+        <Hero alerts={dashboard.alerts} doseCount={dashboard.doseCount} />
+      )}
+
+      <div ref={scheduleRef} className="schedule-wrap">
       <Schedule
         userId={userId}
         medications={dashboard?.schedule ?? null}
@@ -366,7 +374,7 @@ function App({
       />
       </div>
 
-      <section className="panel">
+      <section className="panel log-panel">
         <div className="panel-title-row">
           <h2>Log a dose</h2>
           <button type="button" className="control secondary" onClick={onOpenScan}>
@@ -461,6 +469,66 @@ function App({
           Food & drink
         </button>
       </nav>
+
+      <nav className="bottom-bar" aria-label="Main">
+        {BOTTOM_TABS.map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            className={view === tab ? "bottom-item active" : "bottom-item"}
+            aria-current={view === tab ? "page" : undefined}
+            onClick={() => {
+              setView(tab);
+              setMoreOpen(false);
+            }}
+          >
+            {tab === "concentration" ? "Home" : TAB_LABELS[tab]}
+          </button>
+        ))}
+        <button
+          type="button"
+          className={moreOpen || view === "food" ? "bottom-item active" : "bottom-item"}
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen(!moreOpen)}
+        >
+          More
+        </button>
+      </nav>
+
+      {moreOpen && (
+        <div className="more-menu">
+          <button
+            type="button"
+            onClick={() => {
+              setView("food");
+              setMoreOpen(false);
+            }}
+          >
+            {TAB_LABELS.food}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMoreOpen(false);
+              onOpenScan();
+            }}
+          >
+            Scan
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMoreOpen(false);
+              onOpenSettings();
+            }}
+          >
+            Settings
+          </button>
+          <button type="button" className="more-logout" onClick={onLogOut}>
+            Log out
+          </button>
+        </div>
+      )}
 
       {hints && <p className="hint">{TAB_HINTS[view]}</p>}
 

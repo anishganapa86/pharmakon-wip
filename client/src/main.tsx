@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import { AppShell } from './components/AppShell.tsx'
 import { AuthGate } from './components/AuthGate.tsx'
+import './design.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

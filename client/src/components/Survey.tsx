@@ -89,7 +89,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
     if (step === 0) {
       return (
         <>
-          <h2 id="survey-question">What do you want to keep track of?</h2>
+          <h2 id="survey-question" className="screen-title">What do you want to keep track of?</h2>
           <p className="muted small">Pick all that apply.</p>
           <div className="choice-list" role="group" aria-labelledby="survey-question">
             {TRACK_OPTIONS.map((o) => (
@@ -109,7 +109,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
     if (step === 1) {
       return (
         <>
-          <h2 id="survey-question">What matters most to you?</h2>
+          <h2 id="survey-question" className="screen-title">What matters most to you?</h2>
           <p className="muted small">Pick all that apply.</p>
           <div className="choice-list" role="group" aria-labelledby="survey-question">
             {GOAL_OPTIONS.map((o) => (
@@ -129,7 +129,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
     if (step === 2) {
       return (
         <>
-          <h2 id="survey-question">
+          <h2 id="survey-question" className="screen-title">
             How familiar are you with tracking what you take?
           </h2>
           <div className="choice-list" role="group" aria-labelledby="survey-question">
@@ -147,7 +147,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
     }
     return (
       <>
-        <h2 id="survey-question">How much guidance do you want?</h2>
+        <h2 id="survey-question" className="screen-title">How much guidance do you want?</h2>
         <div className="choice-list" role="group" aria-labelledby="survey-question">
           {GUIDANCE_OPTIONS.map((o) => (
             <Choice
@@ -171,7 +171,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
       <section className="panel survey">
         {done ? (
           <>
-            <h2>All set</h2>
+            <h2 className="screen-title">All set</h2>
             <dl className="survey-summary">
               <dt>Keeping track of</dt>
               <dd>

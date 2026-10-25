@@ -124,7 +124,7 @@ export function AskSheet({ userId, onOpenTab }: AskSheetProps) {
             onClick={(e) => e.stopPropagation()}
           >
             <header className="ask-header">
-              <h2>Ask Pharmakon</h2>
+              <h2 className="screen-title">Ask Pharmakon</h2>
               <button
                 type="button"
                 className="ask-close"

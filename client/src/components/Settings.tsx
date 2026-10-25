@@ -11,12 +11,13 @@ import {
 import { Survey } from "./Survey";
 
 interface SettingsProps {
+  onLogOut: () => void;
   survey: SurveyData;
   onBack: () => void;
   onSave: (answers: SurveyAnswers) => Promise<void>;
 }
 
-export function Settings({ survey, onBack, onSave }: SettingsProps) {
+export function Settings({ survey, onBack, onSave, onLogOut }: SettingsProps) {
   const [editing, setEditing] = useState(false);
 
   if (editing) {
@@ -48,7 +49,7 @@ export function Settings({ survey, onBack, onSave }: SettingsProps) {
       </header>
 
       <section className="panel">
-        <h2>Settings</h2>
+        <h2 className="screen-title">Settings</h2>
         <h3>Your preferences</h3>
         <dl className="survey-summary">
           <dt>Keeping track of</dt>
@@ -82,6 +83,10 @@ export function Settings({ survey, onBack, onSave }: SettingsProps) {
           Edit my preferences
         </button>
       </section>
+
+      <button type="button" className="logout-row" onClick={onLogOut}>
+        Log out
+      </button>
 
       <footer className="page-footer">
         <small>Educational and demonstrative use only. Not a medical device.</small>

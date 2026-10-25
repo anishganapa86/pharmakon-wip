@@ -61,7 +61,7 @@ function FindingCard({ finding }: { finding: FoodGuidanceFinding }) {
         <span className="tag">{CLASS_LABELS[finding.class]}</span>
       </p>
       {finding.quote !== null ? (
-        <p className="muted small">"{finding.quote}"</p>
+        <p className="muted small label-quote">"{finding.quote}"</p>
       ) : (
         finding.pointer !== null && (
           <p className="muted small">

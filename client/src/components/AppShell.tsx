@@ -43,6 +43,12 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
     };
   }, [user.id, attempt]);
 
+  const plainBackground = load.kind === "ready" && load.survey.status !== "pending";
+  useEffect(() => {
+    document.body.classList.toggle("plain", plainBackground);
+    return () => document.body.classList.remove("plain");
+  }, [plainBackground]);
+
   function retry() {
     setLoad({ kind: "loading" });
     setAttempt((n) => n + 1);
@@ -115,6 +121,7 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
       {screen === "settings" && (
         <Settings
           survey={survey}
+          onLogOut={onLogOut}
           onBack={() => setScreen("app")}
           onSave={(answers) => save(answers, "completed")}
         />

@@ -72,7 +72,7 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
         <p className="muted small">{interaction.recommendation}</p>
       )}
       {interaction.quoted_text && (
-        <p className="muted small">"{interaction.quoted_text}"</p>
+        <p className="muted small label-quote">"{interaction.quoted_text}"</p>
       )}
       {interaction.label_attribution && (
         <p className="muted small">{interaction.label_attribution}</p>

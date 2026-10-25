@@ -160,7 +160,7 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
 
   return (
     <section className="panel scan-review">
-      <h2>Check what we read</h2>
+      <h2 className="screen-title">Check what we read</h2>
       <p className="warning">{WARNING}</p>
       {result.label_text_quality === "partial" && (
         <p className="muted">Part of the label was hard to read. Fill in anything missing.</p>
@@ -322,7 +322,7 @@ export function ScanFlow({ userId, onClose }: ScanFlowProps) {
 
       {(stage.kind === "pick" || stage.kind === "reading") && (
         <section className="panel">
-          <h2>Scan a product</h2>
+          <h2 className="screen-title">Scan a product</h2>
           <p className="muted">
             Take a photo of the label. We read the printed text and show it to you to check.
             Nothing is saved until you say so, and the photo is not stored.
@@ -396,7 +396,7 @@ export function ScanFlow({ userId, onClose }: ScanFlowProps) {
 
       {stage.kind === "saved" && (
         <section className="panel">
-          <h2>Added</h2>
+          <h2 className="screen-title">Added</h2>
           <p>{stage.name} is now in My products on the Skincare tab.</p>
           <div className="scan-actions">
             <button type="button" className="control button" onClick={onClose}>
