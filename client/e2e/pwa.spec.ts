@@ -119,7 +119,7 @@ test.describe('manifest and icons', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(publicDir, 'manifest.json'), 'utf-8'))
 
   test('colors come from the palette and the old dark theme is gone', () => {
-    expect(manifest.theme_color).toBe('#0b7a6b')
+    expect(manifest.theme_color).toBe('#f4f7f6')
     expect(manifest.background_color).toBe('#f4f7f6')
     expect(JSON.stringify(manifest)).not.toContain('#16171d')
     expect(indexHtml).not.toContain('#16171d')

@@ -197,6 +197,17 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
       <section className="panel survey">
         {done ? (
           <>
+            <div className="survey-top">
+                <button
+                  type="button"
+                  className="survey-back"
+                  disabled={saving}
+                  onClick={() => setStep(QUESTION_COUNT - 1)}
+                >
+                  <Icon name="chevronLeft" size={20} />
+                  Back
+                </button>
+            </div>
             <h2 className="screen-title">All set</h2>
             <dl className="survey-summary">
               <dt>Keeping track of</dt>
@@ -225,15 +236,6 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
             <div className="survey-nav">
               <button
                 type="button"
-                className="survey-back"
-                disabled={saving}
-                onClick={() => setStep(QUESTION_COUNT - 1)}
-              >
-                <Icon name="chevronLeft" size={20} />
-                Back
-              </button>
-              <button
-                type="button"
                 className="control button"
                 disabled={saving}
                 onClick={() => void run(() => onFinish(answers))}
@@ -244,6 +246,27 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
           </>
         ) : (
           <>
+            <div className="survey-top">
+                <button
+                  type="button"
+                  className="survey-back"
+                  disabled={step === 0 || saving}
+                  onClick={() => setStep(step - 1)}
+                >
+                  <Icon name="chevronLeft" size={20} />
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="survey-skip"
+                  disabled={saving}
+                  onClick={() =>
+                    editing && onCancel ? onCancel() : void run(() => onSkip(answers))
+                  }
+                >
+                  {editing ? "Cancel" : "Skip"}
+                </button>
+            </div>
             <p className="survey-step">
               Step {step + 1} of {QUESTION_COUNT}
             </p>
@@ -263,25 +286,6 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
             {renderQuestion()}
             {error && <p className="error">Couldn't save: {error}</p>}
             <div className="survey-nav">
-              <button
-                type="button"
-                className="survey-back"
-                disabled={step === 0 || saving}
-                onClick={() => setStep(step - 1)}
-              >
-                <Icon name="chevronLeft" size={20} />
-                Back
-              </button>
-              <button
-                type="button"
-                className="survey-skip"
-                disabled={saving}
-                onClick={() =>
-                  editing && onCancel ? onCancel() : void run(() => onSkip(answers))
-                }
-              >
-                {editing ? "Cancel" : "Skip"}
-              </button>
               <button
                 type="button"
                 className="control button survey-continue"
