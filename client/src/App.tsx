@@ -27,6 +27,7 @@ import { SideEffectProfile } from "./components/SideEffectProfile";
 import { Skincare } from "./components/Skincare";
 import { SymptomCheck } from "./components/SymptomCheck";
 import { Timeline } from "./components/Timeline";
+import { Icon, type IconName } from "./components/Icon";
 import { TopicalIngredients } from "./components/TopicalIngredients";
 import {
   ingredientLabel,
@@ -55,6 +56,13 @@ import type {
 } from "./types/contract";
 
 const MAX_RECENT_PRODUCTS = 5;
+const TAB_ICONS: Record<string, IconName> = {
+  concentration: "home",
+  timeline: "clock",
+  skincare: "sparkle",
+  interactions: "alert",
+};
+
 const BOTTOM_TABS: View[] = ["concentration", "timeline", "skincare", "interactions"];
 
 function errorMessage(e: unknown): string {
@@ -487,7 +495,8 @@ function App({
               setMoreOpen(false);
             }}
           >
-            {tab === "concentration" ? "Home" : TAB_LABELS[tab]}
+            <Icon name={TAB_ICONS[tab]} size={22} />
+            <span>{tab === "concentration" ? "Home" : TAB_LABELS[tab]}</span>
           </button>
         ))}
         <button
@@ -496,7 +505,8 @@ function App({
           aria-expanded={moreOpen}
           onClick={() => setMoreOpen(!moreOpen)}
         >
-          More
+          <Icon name="menu" size={22} />
+          <span>More</span>
         </button>
       </nav>
 

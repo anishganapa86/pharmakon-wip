@@ -11,8 +11,8 @@
   font: inherit;
   font-size: 15px;
   font-weight: 600;
-  color: #fff;
-  background: #0b1b2b;
+  color: var(--color-surface);
+  background: var(--color-ink);
   border: 0;
   border-radius: 22px;
   cursor: pointer;
@@ -23,7 +23,7 @@
 .ask-open:focus-visible,
 .ask-send:focus-visible,
 .ask-close:focus-visible {
-  outline: 2px solid #0b7a6b;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -45,8 +45,8 @@
   max-width: 520px;
   max-height: min(78vh, 640px);
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom, 0px));
-  background: #fff;
-  border: 1px solid #e3e9e8;
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline);
   border-bottom: 0;
   border-radius: 14px 14px 0 0;
 }
@@ -61,7 +61,7 @@
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: #0b1b2b;
+  color: var(--color-ink);
 }
 
 .ask-close {
@@ -71,7 +71,7 @@
   width: 44px;
   height: 44px;
   margin: -8px -10px -8px 0;
-  color: #4b5968;
+  color: var(--color-text);
   background: none;
   border: 0;
   cursor: pointer;
@@ -80,7 +80,7 @@
 .ask-notice {
   margin: 4px 0 12px;
   font-size: 13px;
-  color: #6b7a8a;
+  color: var(--color-muted);
 }
 
 .ask-log {
@@ -104,9 +104,9 @@
   padding: 0 14px;
   font: inherit;
   font-size: 14px;
-  color: #0b1b2b;
-  background: #fff;
-  border: 1px solid #d5dddc;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-button-border);
   border-radius: 10px;
   cursor: pointer;
 }
@@ -117,8 +117,8 @@
   margin: 0;
   padding: 8px 12px;
   font-size: 15px;
-  color: #0b1b2b;
-  background: #eceff0;
+  color: var(--color-ink);
+  background: var(--color-chip);
   border-radius: 12px;
   overflow-wrap: anywhere;
 }
@@ -129,16 +129,16 @@
   margin: 0;
   font-size: 15px;
   line-height: 1.5;
-  color: #0b1b2b;
+  color: var(--color-ink);
   overflow-wrap: anywhere;
 }
 
 .ask-pending {
-  color: #6b7a8a;
+  color: var(--color-muted);
 }
 
 .ask-error p {
-  color: #b42318;
+  color: var(--color-danger);
 }
 
 .ask-open {
@@ -148,9 +148,9 @@
   font: inherit;
   font-size: 14px;
   font-weight: 600;
-  color: #0b7a6b;
-  background: #fff;
-  border: 1px solid #d5dddc;
+  color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-button-border);
   border-radius: 10px;
   cursor: pointer;
 }
@@ -159,7 +159,7 @@
   display: flex;
   gap: 8px;
   padding-top: 8px;
-  border-top: 1px solid #e3e9e8;
+  border-top: 1px solid var(--color-hairline);
 }
 
 .ask-composer input {
@@ -170,14 +170,14 @@
   padding: 0 12px;
   font: inherit;
   font-size: 16px;
-  color: #0b1b2b;
-  background: #fff;
-  border: 1px solid #d5dddc;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-button-border);
   border-radius: 10px;
 }
 
 .ask-composer input:focus-visible {
-  outline: 2px solid #0b7a6b;
+  outline: 2px solid var(--color-accent);
   outline-offset: 1px;
 }
 
@@ -187,8 +187,8 @@
   font: inherit;
   font-size: 15px;
   font-weight: 600;
-  color: #fff;
-  background: #0b7a6b;
+  color: var(--color-surface);
+  background: var(--color-accent);
   border: 0;
   border-radius: 10px;
   cursor: pointer;

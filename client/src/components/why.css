@@ -1,7 +1,7 @@
 .why {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px solid #e3e9e8;
+  border-top: 1px solid var(--color-hairline);
 }
 
 .why-toggle {
@@ -10,7 +10,7 @@
   font: inherit;
   font-size: 15px;
   font-weight: 600;
-  color: #0b7a6b;
+  color: var(--color-accent);
   background: none;
   border: 0;
   cursor: pointer;
@@ -22,7 +22,7 @@
 
 .why-toggle:focus-visible,
 .why-call:focus-visible {
-  outline: 2px solid #0b7a6b;
+  outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
 
@@ -30,12 +30,12 @@
   margin: 0 0 8px;
   font-size: 14px;
   line-height: 1.5;
-  color: #4b5968;
+  color: var(--color-text);
 }
 
 .why-part {
   font-weight: 600;
-  color: #0b1b2b;
+  color: var(--color-ink);
 }
 
 .why-body .why-quote {
@@ -43,13 +43,13 @@
   font-family: "Newsreader", Georgia, serif;
   font-size: 16px;
   font-style: italic;
-  color: #0b1b2b;
+  color: var(--color-ink);
   border-left: 1px solid #c9d2d1;
 }
 
 .why-body .why-source {
   font-size: 12.5px;
-  color: #6b7a8a;
+  color: var(--color-muted);
 }
 
 .why-call {
@@ -58,5 +58,5 @@
   min-height: 44px;
   font-size: 15px;
   font-weight: 600;
-  color: #b42318;
+  color: var(--color-danger);
 }

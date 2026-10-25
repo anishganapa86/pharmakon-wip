@@ -80,10 +80,7 @@
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 24px 26px 22px;
-  background: #fff;
-  box-shadow:
-    0 1px 2px rgba(11, 27, 43, 0.05),
-    0 12px 30px rgba(11, 27, 43, 0.1);
+  background: var(--color-surface);
 
   &>h2 {
     margin-bottom: 16px;
@@ -111,12 +108,12 @@
 }
 
 .error {
-  color: #d92d20;
+  color: var(--color-danger);
   margin-top: 8px;
 }
 
 .warning {
-  color: #b54708;
+  color: var(--color-warn-text);
   margin-top: 8px;
 }
 
@@ -156,8 +153,8 @@
   font: inherit;
   font-size: 16px;
   color: var(--text-h);
-  background: #fff;
-  border: 1px solid #cbd5df;
+  background: var(--color-surface);
+  border: 1px solid var(--color-control-border);
   border-radius: 8px;
 
   &:focus-visible {
@@ -177,7 +174,7 @@
 
 .button {
   padding: 0 20px;
-  color: #fff;
+  color: var(--color-surface);
   background: var(--accent);
   border-color: var(--accent);
   cursor: pointer;
@@ -285,11 +282,11 @@
   margin: 0;
   padding: 4px;
   list-style: none;
-  background: #fff;
+  background: var(--color-surface);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .search-result {
@@ -396,7 +393,7 @@
 }
 
 .tag-modelable {
-  background: rgba(11, 122, 107, 0.08);
+  background: var(--color-accent-tint);
   border-color: var(--accent-border);
   color: var(--accent);
 }
@@ -416,15 +413,15 @@
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.01em;
-  color: #fff;
+  color: var(--color-surface);
 }
 
 .badge-urgent {
-  background: #d92d20;
+  background: var(--color-danger);
 }
 
 .badge-caution {
-  background: #b54708;
+  background: var(--color-warn-text);
 }
 
 .badge-info {
@@ -478,7 +475,7 @@
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f9fbfc;
+  background: var(--color-surface);
 
   &>p {
     color: var(--text-h);
@@ -554,7 +551,7 @@
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f9fbfc;
+  background: var(--color-surface);
 }
 
 .history-head {
@@ -621,7 +618,7 @@
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f9fbfc;
+  background: var(--color-surface);
 }
 
 .side-effect-head {
@@ -682,7 +679,7 @@
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f9fbfc;
+  background: var(--color-surface);
   margin-bottom: 10px;
 
   &>p {
@@ -714,8 +711,8 @@
 }
 
 .effect-tag-clear {
-  border-color: #067647;
-  color: #067647;
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 /* --- View tabs: segmented control ------------------------------------------------- */
@@ -725,10 +722,9 @@
   display: inline-flex;
   gap: 2px;
   padding: 4px;
-  background: #fff;
+  background: var(--color-surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 1px 2px rgba(11, 27, 43, 0.05);
 }
 
 .view-tab {
@@ -753,7 +749,7 @@
   }
 
   &.active {
-    color: #fff;
+    color: var(--color-surface);
     background: var(--accent);
   }
 }
@@ -805,14 +801,14 @@
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  background: #fff;
+  background: var(--color-surface);
 }
 
 .timeline-item {
   padding: 10px 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f9fbfc;
+  background: var(--color-surface);
 }
 
 .timeline-item-dose {
@@ -824,11 +820,11 @@
 }
 
 .timeline-item-scheduled-taken {
-  --dot: #067647;
+  --dot: var(--color-accent);
 }
 
 .timeline-item-scheduled-missed {
-  --dot: #d92d20;
+  --dot: var(--color-danger);
 }
 
 .timeline-item-head::before {
@@ -872,7 +868,7 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  color: #fff;
+  color: var(--color-surface);
   text-transform: capitalize;
 }
 
@@ -911,7 +907,7 @@
   padding: 14px 16px;
   border: 1px solid var(--border);
   border-radius: 10px;
-  background: #f9fbfc;
+  background: var(--color-surface);
 
   & p,
   & ul {
@@ -962,15 +958,15 @@
 }
 
 .med-status-taken_today {
-  color: #067647;
+  color: var(--color-accent);
 }
 
 .med-status-due {
-  color: #b54708;
+  color: var(--color-warn-text);
 }
 
 .med-status-overdue {
-  color: #d92d20;
+  color: var(--color-danger);
 }
 
 .med-next {
@@ -991,16 +987,16 @@
 }
 
 .med-slot-taken {
-  color: #067647;
+  color: var(--color-accent);
 }
 
 .med-slot-due {
-  color: #b54708;
+  color: var(--color-warn-text);
 }
 
 .med-slot-overdue,
 .med-slot-missed {
-  color: #d92d20;
+  color: var(--color-danger);
 }
 
 .med-actions {
@@ -1111,8 +1107,8 @@
   font-size: 16px;
   text-align: left;
   color: var(--text-h);
-  background: #fff;
-  border: 1px solid #cbd5df;
+  background: var(--color-surface);
+  border: 1px solid var(--color-control-border);
   border-radius: 10px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
