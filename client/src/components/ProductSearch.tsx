@@ -4,6 +4,7 @@ import { splitIngredientsPreview } from "../ingredientSplit";
 import {
   ingredientLabel,
   productModelable,
+  kindLabel,
   sourceLabel,
   truncateProductName,
 } from "../labels";
@@ -314,7 +315,7 @@ export function ProductSearch({
       <input
         className="control search-input"
         type="search"
-        placeholder="Search a product, e.g. NyQuil"
+        placeholder="Search a medication, supplement, food or drink"
         value={query}
         onChange={(e) => handleChange(e.target.value)}
         onFocus={() => setOpen(true)}
@@ -366,15 +367,10 @@ export function ProductSearch({
               >
                 <span className="search-brand">
                   {p.brand_name}
-                  <span
-                    className={
-                      productModelable(p)
-                        ? "tag tag-modelable"
-                        : "tag tag-logged-only"
-                    }
-                  >
-                    {productModelable(p) ? "Modeled" : "Logged only"}
-                  </span>
+                  {kindLabel(p) && <span className="search-kind">{kindLabel(p)}</span>}
+                  {(p.modeled ?? productModelable(p)) && (
+                    <span className="search-estimate">Concentration estimate</span>
+                  )}
                   {sourceLabel(p) && <span className="tag tag-source">{sourceLabel(p)}</span>}
                 </span>
                 <span className="search-ingredients">

@@ -13,13 +13,13 @@ function escapeRegExp(text: string): string {
 }
 
 export function exactBrand(brand: string): RegExp {
-  return new RegExp(`^${escapeRegExp(brand)}(Modeled|Logged only)`, 'i')
+  return new RegExp(`^${escapeRegExp(brand)}(Medication|Supplement|Food & drink|Skincare|Concentration estimate|Demo data|My product|From our)`, 'i')
 }
 
 export function logPanel(page: Page): Locator {
   return page
     .locator('section.panel')
-    .filter({ has: page.getByRole('heading', { name: 'Log a dose' }) })
+    .filter({ has: page.getByRole('heading', { name: 'Log intake' }) })
 }
 
 export function alertsPanel(page: Page): Locator {

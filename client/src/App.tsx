@@ -376,7 +376,7 @@ function App({
 
       <section className="panel log-panel">
         <div className="panel-title-row">
-          <h2>Log a dose</h2>
+          <h2>Log intake</h2>
           <button type="button" className="control secondary" onClick={onOpenScan}>
             Scan
           </button>
@@ -639,7 +639,7 @@ function App({
                       </div>
                       {d.topical && <TopicalIngredients ingredients={d.ingredients} />}
                       {modeled ? (
-                        <span className="tag tag-modelable">Modeled</span>
+                        <span className="search-estimate">Concentration estimate</span>
                       ) : (
                         <span className="tag tag-logged-only">
                           {d.topical

@@ -439,3 +439,15 @@ button.control {
 .page:not(.view-concentration) > .log-panel {
   order: 9;
 }
+
+.search-kind,
+.search-estimate {
+  margin-left: 8px;
+  font-size: 12.5px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.search-estimate {
+  color: var(--text);
+}

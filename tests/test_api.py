@@ -534,6 +534,8 @@ def test_search_matches_brand_name_case_insensitively(client):
         "ingredients",
         "has_unmodeled_ingredients",
         "source",
+        "kind",
+        "modeled",
         "label",
         "verification_note",
         "route",

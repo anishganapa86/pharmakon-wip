@@ -212,7 +212,11 @@ export interface ProductSearchResult {
   // there's nothing to caveat (catalog/openfda), or when a skincare_catalog
   // entry has actually been verified.
   verification_note: string | null;
+  kind?: IntakeKind;
+  modeled?: boolean;
 }
+
+export type IntakeKind = "medication" | "supplement" | "food_drink" | "skincare";
 
 /** `results` is capped at 10; `total` is the full count before that cap, so
  * the client can show "Showing X of Y results" and rely on continued typing

@@ -91,7 +91,8 @@ export function scrollsToSchedule(
   );
 }
 
-export const LOG_HINT = "Search for what you took, set how many, then press Log.";
+export const LOG_HINT =
+  "Search for anything you took, ate or drank, set how many, then press Log.";
 
 export const TAB_HINTS: Record<View, string> = {
   concentration:

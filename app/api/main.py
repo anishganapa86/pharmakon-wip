@@ -52,7 +52,7 @@ from . import (
     survey,
 )
 from .db import Base, User, UserSurvey, make_engine
-from .products import PRODUCTS, decompose, search
+from .products import PRODUCTS, decompose, intake_kind, match_score, search
 from .throttle import throttles
 
 _engine = make_engine()
@@ -930,6 +930,11 @@ def search_products(q: str, registry: Reg, session: Db, user: CurrentUser) -> di
                     i["unmodeled_reason"] is not None for i in ingredients
                 ),
                 "source": source,
+                "kind": intake_kind(product.id, source),
+                "modeled": any(i["unmodeled_reason"] is None for i in ingredients),
+                "match_score": match_score(
+                    q, product.brand_name, [i["name"] for i in ingredients]
+                ),
                 # The synthetic catalog doesn't track route.
                 "route": getattr(product, "route", None),
                 "label": label,
@@ -969,6 +974,9 @@ def search_products(q: str, registry: Reg, session: Db, user: CurrentUser) -> di
         # synthetic catalog already found rather than failing the search.
         pass
 
+    results.sort(key=lambda r: (-r["match_score"], r["brand_name"].lower()))
+    for result in results:
+        del result["match_score"]
     return {"results": results[: openfda.RESULT_LIMIT], "total": len(results)}
 
 

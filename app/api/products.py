@@ -13,6 +13,7 @@ unresolved string is `unmatched`; it is never hand-mapped here.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from ..registry.loader import Registry
@@ -75,6 +76,36 @@ PRODUCTS: dict[str, Product] = {
                 LabelIngredient("ACETAMINOPHEN", None),
                 LabelIngredient("PHENYLEPHRINE HCL", 5),
             ),
+        ),
+        Product(
+            "prod_food_coffee",
+            "Coffee",
+            (LabelIngredient("CAFFEINE", None),),
+        ),
+        Product(
+            "prod_food_tea",
+            "Tea",
+            (LabelIngredient("CAFFEINE", None),),
+        ),
+        Product(
+            "prod_food_chicken",
+            "Chicken",
+            (LabelIngredient("CHICKEN", None),),
+        ),
+        Product(
+            "prod_supp_vitamin_c",
+            "Vitamin C",
+            (LabelIngredient("ASCORBIC ACID", None),),
+        ),
+        Product(
+            "prod_supp_vitamin_d",
+            "Vitamin D",
+            (LabelIngredient("CHOLECALCIFEROL", None),),
+        ),
+        Product(
+            "prod_supp_fish_oil",
+            "Fish oil",
+            (LabelIngredient("FISH OIL", None),),
         ),
         # ~14 g ethanol, one US standard drink.
         Product(
@@ -170,6 +201,40 @@ PRODUCTS: dict[str, Product] = {
         ),
     ]
 }
+
+
+FOOD_DRINK_IDS = frozenset(
+    {"prod_example_beer", "prod_food_coffee", "prod_food_tea", "prod_food_chicken"}
+)
+SUPPLEMENT_IDS = frozenset(
+    {"prod_supp_vitamin_c", "prod_supp_vitamin_d", "prod_supp_fish_oil"}
+)
+
+
+def intake_kind(product_id: str, source: str) -> str:
+    if product_id in FOOD_DRINK_IDS:
+        return "food_drink"
+    if product_id in SUPPLEMENT_IDS:
+        return "supplement"
+    if source in ("skincare_catalog", "my_product", "user_entered"):
+        return "skincare"
+    return "medication"
+
+
+def match_score(query: str, name: str, ingredient_names: list[str]) -> int:
+    needle = query.strip().lower()
+    lowered = name.lower()
+    if lowered == needle:
+        return 100
+    if lowered.startswith(needle):
+        return 80
+    if any(word.startswith(needle) for word in re.split(r"\W+", lowered)):
+        return 60
+    if needle in lowered:
+        return 40
+    if any(needle in ingredient.lower() for ingredient in ingredient_names):
+        return 30
+    return 10
 
 
 def search(q: str, registry: Registry) -> list[Product]:
