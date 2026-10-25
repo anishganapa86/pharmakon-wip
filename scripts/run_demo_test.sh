@@ -140,6 +140,9 @@ for label in "${labels[@]}"; do
   else
     (cd client && npx playwright test -c e2e/playwright.config.ts --project=desktop) || OVERALL=1
     if [ "$skip_phone" = 0 ]; then
+      stop_servers
+      start_api "${label}_phone" || OVERALL=1
+      start_web || OVERALL=1
       (cd client && npx playwright test -c e2e/playwright.config.ts --project=phone) || OVERALL=1
     fi
   fi
