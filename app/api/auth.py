@@ -70,6 +70,10 @@ def _get_dummy_hash() -> str:
     return _dummy_hash
 
 
+def warm_dummy_hash() -> None:
+    _get_dummy_hash()
+
+
 def burn_verification(password: str) -> None:
     verify_password(_get_dummy_hash(), password)
 

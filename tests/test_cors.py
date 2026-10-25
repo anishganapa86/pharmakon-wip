@@ -190,3 +190,8 @@ def test_env_override_is_read_per_request(client, monkeypatch):
         "/auth/login", json=signup_body("a@example.com"), headers={"Origin": ALLOWED}
     )
     assert old.status_code == 403
+
+
+def test_retry_after_is_readable_by_browser_scripts(client):
+    r = client.get("/health", headers={"Origin": ALLOWED})
+    assert "retry-after" in r.headers["access-control-expose-headers"].lower()

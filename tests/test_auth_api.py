@@ -266,3 +266,22 @@ def test_sessions_are_independent_per_user(client):
     signup(other, "b@example.com")
     assert client.get("/auth/me").json()["email"] == "a@example.com"
     assert other.get("/auth/me").json()["email"] == "b@example.com"
+
+
+def test_signup_retires_a_session_cookie_the_browser_already_holds(client, maker):
+    signup(client, "a@example.com")
+    old = client.cookies[auth.COOKIE_NAME]
+    r = client.post(
+        "/auth/signup", json={"email": "b@example.com", "password": PASSWORD}
+    )
+    assert r.status_code == 201
+    assert r.cookies[auth.COOKIE_NAME] != old
+    with maker() as s:
+        hashes = {row.token_hash for row in s.scalars(select(AuthSession))}
+    assert auth.hash_token(old) not in hashes
+
+
+def test_the_dummy_hash_is_warmed_at_startup(monkeypatch):
+    monkeypatch.setattr(auth, "_dummy_hash", None)
+    auth.warm_dummy_hash()
+    assert auth._dummy_hash is not None

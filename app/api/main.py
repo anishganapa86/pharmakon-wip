@@ -51,6 +51,7 @@ _SessionLocal = sessionmaker(bind=_engine)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(_engine)
+    auth.warm_dummy_hash()
     yield
 
 
@@ -162,6 +163,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type"],
+    expose_headers=["Retry-After"],
 )
 
 STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
@@ -290,6 +292,9 @@ def signup(
     except auth.DuplicateEmailError:
         throttles.signup_failed(pair)
         return _error(409, "email_taken", "An account with that email already exists.")
+    previous = request.cookies.get(auth.COOKIE_NAME)
+    if previous:
+        auth.end_session(session, previous)
     token = auth.start_session(session, user.id, now)
     session.commit()
     set_session_cookie(response, token)

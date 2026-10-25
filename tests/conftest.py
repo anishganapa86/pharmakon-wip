@@ -9,13 +9,27 @@ own httpx.MockTransport on top of this (see tests/test_openfda_search.py).
 
 from __future__ import annotations
 
+import importlib
+import os
 import time
 from types import SimpleNamespace
 
 import httpx
 import pytest
 
-from app.api import label_cache, main, openfda, throttle
+for _name in (
+    "PHARMAKON_CORS_ORIGINS",
+    "PHARMAKON_COOKIE_SECURE",
+    "PHARMAKON_DEV_DOCS",
+    "PHARMAKON_DEMO_EMAIL",
+    "PHARMAKON_DEMO_PASSWORD",
+):
+    os.environ[_name] = ""
+
+label_cache = importlib.import_module("app.api.label_cache")
+main = importlib.import_module("app.api.main")
+openfda = importlib.import_module("app.api.openfda")
+throttle = importlib.import_module("app.api.throttle")
 
 
 def _no_matches(request: httpx.Request) -> httpx.Response:

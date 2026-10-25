@@ -87,6 +87,8 @@ def run_script(env_extra, tmp_path):
         "SYSTEMROOT": "C:\\Windows",
         "PHARMAKON_DB_URL": f"sqlite:///{tmp_path / 'seed.db'}",
         "PHARMAKON_LABEL_CACHE_DIR": "",
+        "PHARMAKON_DEMO_EMAIL": "",
+        "PHARMAKON_DEMO_PASSWORD": "",
         **env_extra,
     }
     return subprocess.run(

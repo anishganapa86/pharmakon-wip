@@ -1,5 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { fetchMe, logout, redirectToLogin, type AuthUser } from "../api";
+import {
+  ApiRequestError,
+  fetchMe,
+  logout,
+  redirectToLogin,
+  type AuthUser,
+} from "../api";
 import { LoadingNote } from "./LoadingNote";
 
 type GateState =
@@ -11,13 +17,25 @@ interface AuthGateProps {
   children: (user: AuthUser, logOut: () => void) => ReactNode;
 }
 
-function logOut(): void {
-  logout().catch(() => undefined).finally(redirectToLogin);
-}
-
 export function AuthGate({ children }: AuthGateProps) {
   const [state, setState] = useState<GateState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+
+  function logOut() {
+    setLogoutError(null);
+    logout()
+      .then(redirectToLogin)
+      .catch((e: unknown) => {
+        if (e instanceof ApiRequestError && e.status === 401) {
+          redirectToLogin();
+          return;
+        }
+        setLogoutError(
+          "Couldn't log you out. You are still signed in. Try again.",
+        );
+      });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -48,7 +66,16 @@ export function AuthGate({ children }: AuthGateProps) {
   }
 
   if (state.kind === "ready") {
-    return <>{children(state.user, logOut)}</>;
+    return (
+      <>
+        {logoutError && (
+          <p className="error" role="alert">
+            {logoutError}
+          </p>
+        )}
+        {children(state.user, logOut)}
+      </>
+    );
   }
 
   return (
