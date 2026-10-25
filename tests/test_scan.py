@@ -148,7 +148,7 @@ def test_the_model_gets_the_scan_prompt_schema_and_token_cap(make_client, stub):
     client = make_client()
     post_image(client, sign_up(client), make_jpeg())
     call = stub.calls[0]
-    assert call["schema"] is scan.ScanResult
+    assert call["schema"] is scan.GEMINI_SCHEMA
     assert call["max_output_tokens"] == scan.MAX_OUTPUT_TOKENS
     assert call["system"] == scan.load_prompt()
     assert "Never infer" in call["system"]
@@ -279,9 +279,8 @@ def test_a_partial_label_passes_through(make_client, stub):
         "{}",
         json.dumps({**GOOD, "product_type": "weapon"}),
         json.dumps({**GOOD, "label_text_quality": "great"}),
-        json.dumps({**GOOD, "ingredients": [{"name": ""}]}),
-        json.dumps({**GOOD, "ingredients": [{"name": "x"}] * 81}),
-        json.dumps({**GOOD, "product_name": "x" * 201}),
+        json.dumps({**GOOD, "ingredients": "water"}),
+        json.dumps({**GOOD, "ingredients": [{"name": "x", "role": "boss"}]}),
     ],
 )
 def test_malformed_model_output_is_502_with_the_manual_entry_message(
@@ -412,3 +411,39 @@ def test_ingredient_matching_needs_login(make_client):
         make_client().post("/ingredients/match", json={"names": ["a"]}).status_code
         == 401
     )
+
+
+def test_a_truncated_model_answer_is_200_partial_not_502(make_client, stub):
+    full = json.dumps(GOOD)
+    stub.text = full[: full.index("Stearic") + 6]
+    client = make_client()
+    r = post_image(client, sign_up(client), make_jpeg())
+    assert r.status_code == 200
+    body = r.json()
+    assert body["label_text_quality"] == "partial"
+    assert [i["name"] for i in body["ingredients"]] == ["Acetaminophen"]
+
+
+def test_a_partial_model_answer_is_200_with_what_was_printed(make_client, stub):
+    stub.text = json.dumps(
+        {
+            "product_name": None,
+            "brand": None,
+            "product_type": "unknown",
+            "ingredients": [
+                {
+                    "name": "Acetaminophen",
+                    "strength": 500,
+                    "unit": "mg",
+                    "role": "active",
+                }
+            ],
+            "label_text_quality": "partial",
+            "notes": None,
+        }
+    )
+    client = make_client()
+    body = post_image(client, sign_up(client), make_jpeg()).json()
+    assert body["label_text_quality"] == "partial"
+    assert body["ingredients"][0]["strength"] == "500"
+    assert body["product_name"] is None

@@ -523,7 +523,7 @@ async def scan_label(request: Request, user_id: UserId, generator: Gen):
             generator.generate,
             system=scan.load_prompt(),
             contents=scan.image_contents(data, mime),
-            schema=scan.ScanResult,
+            schema=scan.GEMINI_SCHEMA,
             max_output_tokens=scan.MAX_OUTPUT_TOKENS,
         )
         return scan.parse_scan(text)

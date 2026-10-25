@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -9,6 +10,8 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ValidationError
+
+logger = logging.getLogger("pharmakon.ai")
 
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
 TIMEOUT_MS = 20_000
@@ -41,7 +44,7 @@ class Generator(Protocol):
         *,
         system: str,
         contents: list[Any],
-        schema: type[BaseModel],
+        schema: type[BaseModel] | dict,
         max_output_tokens: int,
     ) -> str: ...
 
@@ -52,7 +55,7 @@ class GeminiGenerator:
         *,
         system: str,
         contents: list[Any],
-        schema: type[BaseModel],
+        schema: type[BaseModel] | dict,
         max_output_tokens: int,
     ) -> str:
         from google import genai
@@ -84,12 +87,33 @@ class GeminiGenerator:
                 ),
             )
         except errors.APIError as exc:
-            if getattr(exc, "code", None) == 429:
+            code = getattr(exc, "code", None)
+            logger.warning(
+                "gemini request failed: %s code=%s status=%s",
+                type(exc).__name__,
+                code,
+                getattr(exc, "status", None),
+            )
+            if code == 429:
                 raise AIQuotaExceeded from exc
             raise AIFailure from exc
         except Exception as exc:
+            logger.warning("gemini request failed: %s", type(exc).__name__)
             raise AIFailure from exc
         text = response.text
+        candidate = response.candidates[0] if response.candidates else None
+        finish = getattr(candidate, "finish_reason", None)
+        if not text or str(finish).rsplit(".", 1)[-1] != "STOP":
+            usage = response.usage_metadata
+            logger.warning(
+                "gemini finish=%s text_chars=%s prompt_tokens=%s "
+                "output_tokens=%s thought_tokens=%s",
+                finish,
+                len(text or ""),
+                getattr(usage, "prompt_token_count", None),
+                getattr(usage, "candidates_token_count", None),
+                getattr(usage, "thoughts_token_count", None),
+            )
         if not text:
             raise AIFailure
         return text
