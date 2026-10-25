@@ -161,10 +161,11 @@ h2 {
 }
 
 .page-header h1 {
-  font-size: var(--fs-44);
-  font-weight: var(--fw-bold);
+  font-family: var(--font-serif);
+  font-size: var(--fs-34);
+  font-weight: var(--fw-medium);
   line-height: var(--lh-tight);
-  letter-spacing: var(--ls-tight);
+  letter-spacing: var(--ls-title);
 }
 
 .screen-title {
@@ -633,14 +634,23 @@ button.control {
   letter-spacing: var(--ls-tight);
 }
 
+.survey-page {
+  min-height: 100svh;
+  box-sizing: border-box;
+}
+
+body:has(.survey-page:not(.survey-done))::before {
+  display: none;
+}
+
+.survey-page .panel.survey {
+  position: relative;
+  flex: 1 1 auto;
+  padding-top: calc(var(--tap) + var(--space-2));
+}
+
 .survey-nav {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas:
-    "back skip"
-    "go go";
-  gap: var(--space-3) var(--space-4);
-  margin-top: var(--space-4);
+  display: contents;
 }
 
 .survey-back,
@@ -659,14 +669,18 @@ button.control {
   cursor: pointer;
 }
 
+.survey-back,
+.survey-skip {
+  position: absolute;
+  top: 0;
+}
+
 .survey-back {
-  grid-area: back;
-  justify-self: start;
+  left: 0;
 }
 
 .survey-skip {
-  grid-area: skip;
-  justify-self: end;
+  right: 0;
 }
 
 .survey-back:disabled {
@@ -675,44 +689,47 @@ button.control {
 }
 
 .survey-nav .control.button {
-  grid-area: go;
+  flex: none;
   width: 100%;
+  margin-top: auto;
 }
 
-.survey-nav .survey-continue {
-  grid-area: go;
+.survey-page .choice-list {
+  margin-bottom: var(--space-5);
+}
+
+.survey-page .panel.survey > .muted {
+  margin-top: var(--space-2);
 }
 
 .survey-summary {
-  padding: var(--space-4) var(--space-4);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0 var(--space-4);
+  padding: var(--space-3) var(--space-4);
   margin: var(--space-4) 0;
   background: var(--color-surface);
   border: 1px solid var(--color-hairline);
   border-radius: var(--radius-16);
 }
 
-.survey-summary dt {
-  float: left;
-  clear: left;
-  width: 42%;
+.survey-summary dt,
+.survey-summary dd {
+  margin: 0;
   padding: 10px 0;
   font-size: var(--fs-15);
+  line-height: var(--lh-snug);
+}
+
+.survey-summary dt {
   font-weight: var(--fw-medium);
   color: var(--color-ink);
 }
 
 .survey-summary dd {
-  margin: 0;
-  padding: 10px 0;
   text-align: right;
   font-size: var(--fs-14);
   color: var(--color-text);
-}
-
-.survey-summary::after {
-  content: "";
-  display: block;
-  clear: both;
 }
 
 .search-kind,
@@ -933,4 +950,216 @@ button.control {
   .page {
     padding-top: calc(var(--space-4) + var(--safe-top));
   }
+}
+
+.ask-backdrop {
+  background: var(--color-scrim);
+  animation: fade-in var(--ease);
+}
+
+.ask-sheet {
+  max-width: 520px;
+  max-height: min(86vh, 720px);
+  padding: 0 0 var(--safe-bottom);
+  border: 0;
+  border-radius: 24px 24px 0 0;
+  animation: sheet-up var(--ease);
+}
+
+.ask-sheet::before {
+  content: "";
+  flex: none;
+  align-self: center;
+  width: 36px;
+  height: 5px;
+  margin: var(--space-2) 0 var(--space-3);
+  background: var(--color-track);
+  border-radius: var(--radius-pill);
+}
+
+.ask-header {
+  align-items: flex-start;
+  padding: 0 var(--gutter);
+}
+
+.ask-header h2 {
+  font-family: var(--font-serif);
+  font-size: var(--fs-26);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-title);
+}
+
+.ask-close {
+  width: var(--tap);
+  height: var(--tap);
+  margin: -6px -6px 0 0;
+  background: none;
+}
+
+.ask-close .icon {
+  box-sizing: content-box;
+  padding: 8px;
+  background: var(--color-chip);
+  border-radius: 50%;
+}
+
+.ask-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2) var(--gutter) var(--space-3);
+  font-size: var(--fs-14);
+  line-height: var(--lh-snug);
+  color: var(--color-warn-text);
+  border-bottom: 1px solid var(--color-hairline);
+}
+
+.ask-notice .icon {
+  margin-top: 1px;
+}
+
+.ask-log {
+  padding: var(--space-4) var(--gutter);
+  gap: var(--space-4);
+}
+
+.ask-chips {
+  flex-direction: row;
+}
+
+.ask-chip,
+.ask-open {
+  min-height: var(--tap);
+  padding: 0 var(--space-4);
+  font-size: var(--fs-14);
+  font-weight: var(--fw-semibold);
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-button-border);
+  border-radius: var(--radius-10);
+  transition: background var(--ease);
+}
+
+.ask-chip:active,
+.ask-open:active {
+  background: var(--color-canvas);
+}
+
+.ask-user {
+  max-width: 75%;
+  padding: var(--space-3) 14px;
+  background: var(--color-chip);
+  border-radius: var(--radius-16);
+}
+
+.ask-reply p,
+.ask-error p,
+.ask-pending {
+  font-size: var(--fs-15);
+}
+
+.ask-composer {
+  align-items: center;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-top: 0;
+}
+
+.ask-composer input {
+  background: var(--color-canvas);
+  border: 0;
+  border-radius: var(--radius-12);
+}
+
+.ask-composer input:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 1.5px var(--color-accent);
+}
+
+.ask-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--tap);
+  padding: 0;
+  background: var(--color-ink);
+  border-radius: 50%;
+  transition: opacity var(--ease), transform var(--ease);
+}
+
+.ask-send:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.ask-send:disabled {
+  opacity: 0.35;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0;
+  }
+
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+body:has(.scan-capture) {
+  background: linear-gradient(180deg, #2a3a42 0%, var(--color-overlay-dark) 70%) fixed;
+}
+
+body:has(.scan-capture)::before {
+  display: none;
+}
+
+.scan-capture {
+  color: #dfe7ea;
+}
+
+.scan-capture .page-header h1,
+.scan-capture .page-header::after,
+.scan-capture .screen-title,
+.scan-capture .muted,
+.scan-capture .page-footer {
+  color: #fff;
+}
+
+.scan-capture .page-header::after {
+  color: #c4d0d5;
+}
+
+.scan-capture .panel {
+  background: transparent;
+  border: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.scan-capture .warning {
+  color: #f5cf86;
+}
+
+.scan-capture .control.secondary {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: transparent;
+}
+
+.scan-capture .page-footer {
+  color: #c4d0d5;
 }

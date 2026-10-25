@@ -189,7 +189,7 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
   }
 
   return (
-    <main className="page survey-page">
+    <main className={done ? "page survey-page survey-done" : "page survey-page"}>
       <header className="page-header">
         <h1>Pharmakon</h1>
       </header>

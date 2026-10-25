@@ -347,7 +347,7 @@ export function ScanFlow({ userId, onClose }: ScanFlowProps) {
   }
 
   return (
-    <main className="page">
+    <main className="page scan-capture">
       <header className="page-header">
         <div className="page-header-row">
           <h1>Pharmakon</h1>
