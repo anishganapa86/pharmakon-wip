@@ -241,9 +241,6 @@ async def validation_error(_req: Request, exc: RequestValidationError) -> JSONRe
     return _error(422, code, message)
 
 
-# --- Authentication ------------------------------------------------------------
-
-
 class SignupRequest(BaseModel):
     email: str = Field(max_length=1000)
     password: str = Field(max_length=1000)

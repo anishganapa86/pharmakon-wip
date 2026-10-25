@@ -17,7 +17,7 @@ fi
 
 export SHOW_UNVERIFIED_RULES="${SHOW_UNVERIFIED_RULES:-1}"
 
-uvicorn app.api.main:app --port 8000 --reload &
+uvicorn app.api.main:app --port 8000 --reload --log-level warning &
 UVICORN_PID=$!
 trap 'kill "$UVICORN_PID" 2>/dev/null || true; wait "$UVICORN_PID" 2>/dev/null || true' EXIT
 

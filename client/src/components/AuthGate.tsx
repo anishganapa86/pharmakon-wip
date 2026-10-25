@@ -11,13 +11,8 @@ interface AuthGateProps {
   children: (user: AuthUser, logOut: () => void) => ReactNode;
 }
 
-async function logOut(): Promise<void> {
-  try {
-    await logout();
-  } catch {
-    // A failed logout request still ends the visit on this device.
-  }
-  redirectToLogin();
+function logOut(): void {
+  logout().catch(() => undefined).finally(redirectToLogin);
 }
 
 export function AuthGate({ children }: AuthGateProps) {
@@ -53,7 +48,7 @@ export function AuthGate({ children }: AuthGateProps) {
   }
 
   if (state.kind === "ready") {
-    return <>{children(state.user, () => void logOut())}</>;
+    return <>{children(state.user, logOut)}</>;
   }
 
   return (
