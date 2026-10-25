@@ -25,6 +25,9 @@ function parseNames(text: string): string[] {
 function pharmacistQuestions(interaction: Interaction): string[] {
   const a = interaction.substance_a.display_name;
   const b = interaction.substance_b.display_name;
+  if (interaction.finding_kind === "food") {
+    return [`What should I know about ${b.toLowerCase()} while I use ${a}?`];
+  }
   return [
     `Is it OK for me to take both ${a} and ${b}?`,
     "Which one should I use?",
@@ -66,6 +69,9 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
         {" + "}
         <strong>{b.display_name}</strong>
         {b.description && <span className="muted small"> — {b.description}</span>}
+        {interaction.finding_kind === "food" && (
+          <span className="tag tag-food">Food</span>
+        )}
       </p>
       <p>{interaction.effect ?? interaction.message}</p>
       {interaction.recommendation && (

@@ -50,9 +50,19 @@ from . import (
     side_effects,
     skincare,
     survey,
+    usda,
 )
 from .db import Base, User, UserSurvey, make_engine
-from .products import PRODUCTS, decompose, intake_kind, match_score, search
+from .products import (
+    INGREDIENT_COMPONENT,
+    PRODUCTS,
+    decompose,
+    food_label,
+    intake_kind,
+    is_food,
+    match_score,
+    search,
+)
 from .throttle import throttles
 
 _engine = make_engine()
@@ -553,6 +563,9 @@ def _find_product(product_id: str, session: Session, user_id: str):
     product = openfda.get_discovered(product_id)
     if product is not None:
         return product
+    product = usda.get_discovered(product_id)
+    if product is not None:
+        return product
     product = alternatives.get_curated_product(product_id)
     if product is not None:
         return product
@@ -943,7 +956,13 @@ def search_products(q: str, registry: Reg, session: Db, user: CurrentUser) -> di
         )
 
     for product in search(q, registry):
-        add(product, "catalog")
+        if is_food(product.id):
+            add(product, "food_list", label=food_label(product.id))
+        else:
+            add(product, "catalog")
+
+    for product in usda.search(q):
+        add(product, "usda", label=food_label(product.id))
 
     for curated in alternatives.search_curated(q):
         add(
@@ -984,6 +1003,34 @@ def search_products(q: str, registry: Reg, session: Db, user: CurrentUser) -> di
     for result in results:
         del result["match_score"]
     return {"results": results[: openfda.RESULT_LIMIT], "total": len(results)}
+
+
+@app.get("/foods/search")
+def search_foods(q: str, registry: Reg) -> dict:
+    if not q.strip():
+        return _error(422, "validation_error", "q: must not be empty")
+    found = usda.search(q)
+    source = "usda" if found else "food_list"
+    if not found:
+        found = [p for p in search(q, registry) if is_food(p.id)]
+    results = []
+    for product in found[:10]:
+        components = sorted(
+            {
+                INGREDIENT_COMPONENT[i.name]
+                for i in product.ingredients
+                if i.name in INGREDIENT_COMPONENT
+            }
+        )
+        results.append(
+            {
+                "id": product.id,
+                "name": product.brand_name,
+                "components": components,
+                "source": food_label(product.id),
+            }
+        )
+    return {"results": results, "source": source}
 
 
 # --- POST /symptom-check ------------------------------------------------------------

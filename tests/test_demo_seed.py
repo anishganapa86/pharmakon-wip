@@ -161,3 +161,27 @@ def test_script_rejects_a_short_password_without_echoing_it(tmp_path):
     )
     assert result.returncode == 2
     assert "tiny" not in result.stdout + result.stderr.replace("password must", "")
+
+
+def test_the_optional_food_scenario_logs_the_five_demo_items(db, registry):
+    result = demo_seed.seed(
+        db, registry, "demo@example.com", PASSWORD, NOW, food_scenario=True
+    )
+    names = [d.product_name for d in db.scalars(select(DoseEvent))]
+    assert sorted(names) == sorted(
+        [
+            "Tylenol Extra Strength",
+            "DayQuil",
+            "Coffee",
+            "Example Beer (12 oz)",
+            "Chicken",
+        ]
+    )
+    assert result.doses_added == 5
+    assert result.schedules_added == 0
+
+
+def test_the_food_scenario_is_not_the_default(db, registry):
+    demo_seed.seed(db, registry, "demo@example.com", PASSWORD, NOW)
+    names = {d.product_name for d in db.scalars(select(DoseEvent))}
+    assert "Coffee" not in names and "Chicken" not in names

@@ -28,6 +28,7 @@ for _name in (
     "PHARMAKON_CHAT_PER_HOUR",
     "PHARMAKON_SCAN_PER_HOUR",
     "PHARMAKON_AI_DAILY_CAP",
+    "USDA_FDC_API_KEY",
 ):
     os.environ[_name] = ""
 
@@ -36,6 +37,7 @@ main = importlib.import_module("app.api.main")
 openfda = importlib.import_module("app.api.openfda")
 throttle = importlib.import_module("app.api.throttle")
 ai = importlib.import_module("app.api.ai")
+usda = importlib.import_module("app.api.usda")
 
 
 def _no_matches(request: httpx.Request) -> httpx.Response:
@@ -64,6 +66,13 @@ def _no_label_disk_cache():
 @pytest.fixture(autouse=True)
 def _show_unverified_rules(monkeypatch):
     monkeypatch.setenv("SHOW_UNVERIFIED_RULES", "1")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_usda():
+    usda.clear_cache()
+    yield
+    usda.clear_cache()
 
 
 @pytest.fixture(autouse=True)

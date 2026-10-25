@@ -41,7 +41,15 @@ from sqlalchemy.orm import Session
 
 from ..pk.individualize import Patient
 from ..registry.loader import Registry, normalize, strip_salt_tokens
-from . import label_cache, label_source, products, schedule, service, verification
+from . import (
+    food_rules,
+    label_cache,
+    label_source,
+    products,
+    schedule,
+    service,
+    verification,
+)
 from .db import DoseEvent
 from .provenance import QUOTE_SOURCE_FDA_LABEL
 from .quote_text import (
@@ -1039,6 +1047,14 @@ def check_regimen(
     )
     result["duplicate_ingredients"] = _duplicate_ingredient_findings(
         occurrences, registry, shadow
+    )
+    food = food_rules.food_findings(events, registry, now)
+    if food:
+        result["interactions"] = [*result["interactions"], *food]
+        result["message"] = None
+    result.pop("rules_awaiting_verification", None)
+    verification.attach_notice(
+        result, unverified_rule_count() + food_rules.unverified_count()
     )
     return result
 

@@ -71,12 +71,42 @@ def add_regimen(
     return len(DEMO_DOSES), 1
 
 
+FOOD_SCENARIO = (
+    ("prod_tylenol_es_500", 1.0, 8.0),
+    ("prod_dayquil_liquicap", 1.0, 6.0),
+    ("prod_food_coffee", 1.0, 4.0),
+    ("prod_example_beer", 1.0, 2.0),
+    ("prod_food_chicken", 1.0, 1.0),
+)
+
+
+def add_food_scenario(
+    session: Session, registry: Registry, user_id: str, now: datetime
+) -> int:
+    for product_id, quantity, hours_ago in FOOD_SCENARIO:
+        product = PRODUCTS[product_id]
+        service.record_dose(
+            session,
+            registry,
+            user_id,
+            product_id=product.id,
+            product_name=product.brand_name,
+            taken_at=now - timedelta(hours=hours_ago),
+            quantity=quantity,
+            ingredients=decompose(product, registry),
+            topical_ingredients=None,
+            now=now,
+        )
+    return len(FOOD_SCENARIO)
+
+
 def seed(
     session: Session,
     registry: Registry,
     email: str,
     password: str,
     now: datetime,
+    food_scenario: bool = False,
 ) -> SeedResult:
     cleaned = auth.normalize_email(email)
     existing = session.scalar(select(User).where(User.email == cleaned))
@@ -86,7 +116,9 @@ def seed(
         select(func.count()).select_from(DoseEvent).where(DoseEvent.user_id == user.id)
     )
     doses, schedules = (0, 0)
-    if not dose_count:
+    if food_scenario and not dose_count:
+        doses = add_food_scenario(session, registry, user.id, now)
+    elif not dose_count:
         doses, schedules = add_regimen(session, registry, user.id, now)
     if survey.status_for(session, user.id) == "pending":
         survey.save(
@@ -105,7 +137,8 @@ def seed(
     return SeedResult(user.id, created, doses, schedules)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    food_scenario = "--food-demo" in (argv if argv is not None else sys.argv[1:])
     email = os.environ.get(EMAIL_ENV, "").strip()
     password = os.environ.get(PASSWORD_ENV, "")
     if not email or not password:
@@ -123,7 +156,14 @@ def main() -> int:
     engine = make_engine()
     Base.metadata.create_all(engine)
     with Session(engine) as session:
-        result = seed(session, load_registry(), email, password, datetime.now(UTC))
+        result = seed(
+            session,
+            load_registry(),
+            email,
+            password,
+            datetime.now(UTC),
+            food_scenario=food_scenario,
+        )
     state = "created" if result.created_user else "already exists"
     print(
         f"Demo user {auth.normalize_email(email)} {state}; "

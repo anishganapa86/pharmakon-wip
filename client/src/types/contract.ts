@@ -189,6 +189,8 @@ export interface Ingredient {
  * app/api/my_products.py) -- distinct from "user_entered", which is
  * in-process-only and never searchable again. */
 export type ProductSource =
+  | "food_list"
+  | "usda"
   | "catalog"
   | "openfda"
   | "user_entered"
@@ -532,6 +534,7 @@ export interface OverlapWindow {
 }
 
 export interface Interaction {
+  finding_kind?: "food";
   substance_a: InteractionSubstanceRef;
   substance_b: InteractionSubstanceRef;
   effect: string | null; // curated only
