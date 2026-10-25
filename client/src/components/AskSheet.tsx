@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "./ask.css";
+import { Icon } from "./Icon";
 import { ApiRequestError, sendChat, type ChatTurn } from "../api";
 import {
   ACTION_LABELS,
@@ -33,19 +34,6 @@ function friendly(error: unknown): string {
     return "The assistant couldn't answer. Try again.";
   }
   return error instanceof Error ? error.message : "The assistant couldn't answer. Try again.";
-}
-
-function ChatIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path
-        d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.2 3.6c-.6.5-1.8.1-1.8-.8V5.5Z"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
 }
 
 export function AskSheet({ userId, view, onOpenTab, onAction }: AskSheetProps) {
@@ -113,7 +101,7 @@ export function AskSheet({ userId, view, onOpenTab, onAction }: AskSheetProps) {
     <>
       {!open && (
         <button type="button" className="ask-button" onClick={() => setOpen(true)}>
-          <ChatIcon />
+          <Icon name="message" size={18} />
           Ask
         </button>
       )}
@@ -134,12 +122,13 @@ export function AskSheet({ userId, view, onOpenTab, onAction }: AskSheetProps) {
                 aria-label="Close"
                 onClick={() => setOpen(false)}
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                  <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                </svg>
+                <Icon name="x" size={16} />
               </button>
             </header>
-            <p className="ask-notice">{NOTICE}</p>
+            <p className="ask-notice">
+              <Icon name="info" size={16} />
+              {NOTICE}
+            </p>
             <div className="ask-log" ref={logRef} aria-live="polite">
               {entries.length === 0 && (
                 <div className="ask-chips">
@@ -219,8 +208,8 @@ export function AskSheet({ userId, view, onOpenTab, onAction }: AskSheetProps) {
                 aria-label="Your question"
                 onChange={(e) => setDraft(e.target.value)}
               />
-              <button type="submit" className="ask-send" disabled={sending || !draft.trim()}>
-                Send
+              <button type="submit" className="ask-send" aria-label="Send" disabled={sending || !draft.trim()}>
+                <Icon name="arrowUp" size={18} />
               </button>
             </form>
           </section>
