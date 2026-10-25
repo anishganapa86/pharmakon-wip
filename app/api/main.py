@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -26,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from ..registry.loader import Registry, load_registry
 from . import (
     alternatives,
+    auth,
     food_guidance,
     interactions,
     logger,
@@ -33,10 +34,11 @@ from . import (
     openfda,
     schedule,
     service,
+    settings,
     side_effects,
     skincare,
 )
-from .db import Base, make_engine
+from .db import Base, User, make_engine
 from .products import PRODUCTS, decompose, search
 
 DEFAULT_USER = "default"
@@ -90,6 +92,45 @@ Reg = Annotated[Registry, Depends(get_registry)]
 Now = Annotated[datetime, Depends(get_now)]
 
 
+def set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        auth.COOKIE_NAME,
+        token,
+        max_age=int(auth.SESSION_TTL.total_seconds()),
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure(),
+        path="/",
+    )
+
+
+def clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(
+        auth.COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure(),
+        path="/",
+    )
+
+
+def current_user(request: Request, response: Response, session: Db, now: Now) -> User:
+    token = request.cookies.get(auth.COOKIE_NAME)
+    resolved = auth.resolve_session(session, token, now) if token else None
+    if resolved is None:
+        if token:
+            session.commit()
+        raise HTTPException(401, "authentication required")
+    user, slid = resolved
+    if slid:
+        session.commit()
+        set_session_cookie(response, token)
+    return user
+
+
+CurrentUser = Annotated[User, Depends(current_user)]
+
+
 # --- Errors: {"error": {"code", "message"}} on every non-2xx -----------------
 
 
@@ -101,7 +142,9 @@ def _error(status: int, code: str, message: str) -> JSONResponse:
 
 @app.exception_handler(StarletteHTTPException)
 async def http_error(_req: Request, exc: StarletteHTTPException) -> JSONResponse:
-    code = "not_found" if exc.status_code == 404 else "http_error"
+    code = {401: "unauthorized", 403: "forbidden", 404: "not_found"}.get(
+        exc.status_code, "http_error"
+    )
     return _error(exc.status_code, code, str(exc.detail))
 
 
@@ -117,6 +160,69 @@ async def validation_error(_req: Request, exc: RequestValidationError) -> JSONRe
         f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in errors
     )
     return _error(422, code, message)
+
+
+# --- Authentication ------------------------------------------------------------
+
+
+class SignupRequest(BaseModel):
+    email: str = Field(max_length=1000)
+    password: str = Field(max_length=1000)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(max_length=1000)
+    password: str = Field(max_length=1000)
+
+
+def user_json(user: User) -> dict:
+    return {"id": user.id, "email": user.email}
+
+
+@app.post("/auth/signup", status_code=201)
+def signup(body: SignupRequest, response: Response, session: Db, now: Now) -> dict:
+    try:
+        user = auth.create_user(session, body.email, body.password, now)
+    except (auth.InvalidEmailError, auth.InvalidPasswordError) as exc:
+        return _error(422, "validation_error", str(exc))
+    except auth.DuplicateEmailError:
+        return _error(409, "email_taken", "An account with that email already exists.")
+    token = auth.start_session(session, user.id, now)
+    session.commit()
+    set_session_cookie(response, token)
+    return user_json(user)
+
+
+@app.post("/auth/login")
+def login(
+    body: LoginRequest, request: Request, response: Response, session: Db, now: Now
+) -> dict:
+    user = auth.authenticate(session, body.email, body.password)
+    if user is None:
+        return _error(401, "invalid_credentials", "Incorrect email or password.")
+    previous = request.cookies.get(auth.COOKIE_NAME)
+    if previous:
+        auth.end_session(session, previous)
+    token = auth.start_session(session, user.id, now)
+    session.commit()
+    set_session_cookie(response, token)
+    return user_json(user)
+
+
+@app.post("/auth/logout", status_code=204)
+def logout(
+    request: Request, response: Response, session: Db, user: CurrentUser
+) -> None:
+    token = request.cookies.get(auth.COOKIE_NAME)
+    if token:
+        auth.end_session(session, token)
+        session.commit()
+    clear_session_cookie(response)
+
+
+@app.get("/auth/me")
+def me(user: CurrentUser) -> dict:
+    return user_json(user)
 
 
 # --- 1. POST /users/{id}/doses -------------------------------------------------
