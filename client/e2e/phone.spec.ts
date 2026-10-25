@@ -1,5 +1,7 @@
 import { expect, test } from './fixtures.ts'
+import { LOGGED_OUT } from './auth-state.ts'
 import {
+  hasHorizontalOverflow,
   knownBug,
   logDose,
   medCard,
@@ -142,3 +144,28 @@ for (const tab of TABS) {
     }
   })
 }
+
+test.describe('logged out', () => {
+  test.use({ storageState: LOGGED_OUT })
+
+  for (const url of ['/login.html', '/signup.html']) {
+    test(`phone ${url} fits a 390px screen`, async ({ page }) => {
+      await page.goto(url)
+      await expect(page.getByRole('button').first()).toBeVisible()
+      expect(await hasHorizontalOverflow(page)).toBe(false)
+      const small = await page.evaluate(
+        ([minTarget, minFont]) =>
+          Array.from(document.querySelectorAll('input, button'))
+            .filter((el) => {
+              const box = el.getBoundingClientRect()
+              const font = parseFloat(getComputedStyle(el).fontSize)
+              return box.height < minTarget || font < minFont
+            })
+            .map((el) => el.tagName.toLowerCase() + '#' + el.id),
+        [MIN_TARGET_PX, MIN_FONT_PX] as const,
+      )
+      expect(small).toEqual([])
+      await shot(page, `phone-${url.slice(1).replace('.html', '')}`)
+    })
+  }
+})

@@ -17,14 +17,20 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-if [ ! -f .venv/bin/activate ]; then
+if [ -f .venv/bin/activate ]; then
+  source .venv/bin/activate
+elif [ -f .venv/Scripts/activate ]; then
+  source .venv/Scripts/activate
+else
   echo "No .venv found. See docs/SETUP.md." >&2
   exit 1
 fi
-source .venv/bin/activate
 
 mkdir -p reports/runs
 SCRATCH="$(mktemp -d)"
+if command -v cygpath >/dev/null 2>&1; then
+  SCRATCH="$(cygpath -m "$SCRATCH")"
+fi
 API_PID=""
 WEB_PID=""
 OVERALL=0
@@ -78,7 +84,7 @@ start_api() {
   fi
   uvicorn app.api.main:app --port 8000 --log-level warning >"$SCRATCH/api_$tag.log" 2>&1 &
   API_PID=$!
-  wait_for "http://localhost:8000/products/search?q=nodoz" "API"
+  wait_for "http://localhost:8000/health" "API"
 }
 
 start_web() {

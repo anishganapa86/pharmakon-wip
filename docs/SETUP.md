@@ -139,6 +139,17 @@ Settings come from environment variables, loaded from a gitignored `.env`
 | `PHARMAKON_CORS_ORIGINS` | Comma-separated origins allowed to call the API with cookies (default: the two Vite dev origins). A `*` is ignored. A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` header is not on this list is refused with `403`. |
 | `PHARMAKON_DEV_DOCS` | Set to `1` to serve `/docs`, `/redoc` and `/openapi.json` to a logged-in user. Off by default. Read on every request. |
 
+### A demo account
+
+`python scripts/seed_demo_user.py` creates one account from
+`PHARMAKON_DEMO_EMAIL` and `PHARMAKON_DEMO_PASSWORD` (set both in `.env`; the
+script refuses to run if either is missing and never prints the password) and
+gives it a small synthetic regimen: six doses over the last ten hours that add
+up to a hidden acetaminophen duplication across Tylenol, DayQuil and NyQuil, and
+one daily schedule entry. Running it again leaves an existing account and its
+password alone. The doses are made up for the demo; nobody should log real
+medications into a shared instance.
+
 ### Pointing the client at the API
 
 The React app reads `VITE_API_BASE` (default `http://localhost:8000`) from

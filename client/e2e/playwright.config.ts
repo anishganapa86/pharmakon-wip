@@ -1,5 +1,6 @@
 import path from 'node:path'
 import { defineConfig, devices } from '@playwright/test'
+import { AUTH_FILE } from './auth-state.ts'
 
 const runDir =
   process.env.DEMO_RUN_DIR ??
@@ -9,6 +10,7 @@ const gateOnly = process.env.DEMO_GATE_ONLY === '1'
 export default defineConfig({
   testDir: import.meta.dirname,
   testMatch: /.*\.spec\.ts/,
+  globalSetup: path.join(import.meta.dirname, 'global-setup.ts'),
   outputDir: path.join(import.meta.dirname, 'test-results'),
   fullyParallel: false,
   workers: 1,
@@ -24,6 +26,7 @@ export default defineConfig({
   use: {
     baseURL: process.env.DEMO_BASE_URL ?? 'http://localhost:5173',
     serviceWorkers: 'block',
+    storageState: AUTH_FILE,
     trace: 'off',
     screenshot: 'off',
     video: 'off',
@@ -31,7 +34,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      testMatch: /(flow|gate)\.spec\.ts/,
+      testMatch: /(flow|gate|auth)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
     {

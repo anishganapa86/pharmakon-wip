@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { checkpoint, recordBug, recordShot } from './fixtures.ts'
 
-export const API_URL = process.env.DEMO_API_URL ?? 'http://localhost:8000'
+export { API_URL } from './auth-state.ts'
 
 export async function shot(page: Page, name: string): Promise<void> {
   await checkpoint(page, name)
