@@ -8,6 +8,8 @@ from sqlalchemy.pool import StaticPool
 from app.api import auth
 from app.api.db import AuthSession, Base, User
 
+pytestmark = pytest.mark.real_auth
+
 NOW = datetime(2026, 9, 13, 18, 0, tzinfo=UTC)
 GOOD_PASSWORD = "correct horse battery"
 

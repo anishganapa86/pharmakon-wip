@@ -8,6 +8,8 @@ from app.api import main
 from app.api.db import Base
 from app.api.throttle import Limiter, Throttles, throttles
 
+pytestmark = pytest.mark.real_auth
+
 PASSWORD = "correct horse battery"
 
 

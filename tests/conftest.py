@@ -10,11 +10,12 @@ own httpx.MockTransport on top of this (see tests/test_openfda_search.py).
 from __future__ import annotations
 
 import time
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
-from app.api import label_cache, openfda, throttle
+from app.api import label_cache, main, openfda, throttle
 
 
 def _no_matches(request: httpx.Request) -> httpx.Response:
@@ -52,3 +53,15 @@ def _fresh_throttles():
     yield
     throttle.throttles.clock = time.monotonic
     throttle.throttles.reset()
+
+
+@pytest.fixture(autouse=True)
+def _signed_in_test_user(request):
+    if request.node.get_closest_marker("real_auth"):
+        yield
+        return
+    main.app.dependency_overrides[main.current_user] = lambda: SimpleNamespace(
+        id="default", email="default@example.com"
+    )
+    yield
+    main.app.dependency_overrides.pop(main.current_user, None)
