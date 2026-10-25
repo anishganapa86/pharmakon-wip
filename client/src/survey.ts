@@ -73,6 +73,24 @@ export function showsHints(
   return answers !== null && answers.guidance === "step_by_step";
 }
 
+export const TAB_LABELS: Record<View, string> = {
+  concentration: "Concentration",
+  timeline: "Timeline",
+  skincare: "Skincare",
+  interactions: "Interactions",
+  food: "Food & drink",
+};
+
+export function scrollsToSchedule(
+  answers: Pick<SurveyAnswers, "tracks" | "goals"> | null,
+): boolean {
+  return (
+    answers !== null &&
+    answers.goals.includes("reminders") &&
+    startingView(answers) === "concentration"
+  );
+}
+
 export const LOG_HINT = "Search for what you took, set how many, then press Log.";
 
 export const TAB_HINTS: Record<View, string> = {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import {
   fetchAlerts,
@@ -36,6 +36,7 @@ import {
 import {
   LOG_HINT,
   TAB_HINTS,
+  scrollsToSchedule,
   showsHints,
   startingView,
   type Survey,
@@ -158,14 +159,20 @@ async function fetchDashboard(userId: string): Promise<Dashboard> {
   };
 }
 
+export interface TabRequest {
+  view: View;
+  nonce: number;
+}
+
 interface AppProps {
+  tabRequest: TabRequest | null;
   user: AuthUser;
   onLogOut: () => void;
   survey: Survey;
   onOpenSettings: () => void;
 }
 
-function App({ user, onLogOut, survey, onOpenSettings }: AppProps) {
+function App({ user, onLogOut, survey, onOpenSettings, tabRequest }: AppProps) {
   const tailoring = survey.status === "completed" ? survey : null;
   const hints = showsHints(tailoring);
   const userId = user.id;
@@ -181,6 +188,16 @@ function App({ user, onLogOut, survey, onOpenSettings }: AppProps) {
   const [logged, setLogged] = useState<string | null>(null);
 
   const [view, setView] = useState<View>(() => startingView(tailoring));
+  const [handledNonce, setHandledNonce] = useState(0);
+  if (tabRequest && tabRequest.nonce !== handledNonce) {
+    setHandledNonce(tabRequest.nonce);
+    setView(tabRequest.view);
+  }
+  const scheduleRef = useRef<HTMLDivElement>(null);
+  const jumpToSchedule = scrollsToSchedule(tailoring);
+  useEffect(() => {
+    if (jumpToSchedule) scheduleRef.current?.scrollIntoView({ block: "start" });
+  }, [jumpToSchedule]);
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
@@ -329,6 +346,7 @@ function App({ user, onLogOut, survey, onOpenSettings }: AppProps) {
         </div>
       </header>
 
+      <div ref={scheduleRef}>
       <Schedule
         userId={userId}
         medications={dashboard?.schedule ?? null}
@@ -338,6 +356,7 @@ function App({ user, onLogOut, survey, onOpenSettings }: AppProps) {
         onViewInteractions={() => setView("interactions")}
         withFoodNames={withFoodNames}
       />
+      </div>
 
       <section className="panel">
         <h2>Log a dose</h2>

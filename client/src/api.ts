@@ -103,6 +103,24 @@ export function fetchCurve(
   return request(`/users/${encodeURIComponent(userId)}/curve?${params}`);
 }
 
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatAnswer {
+  reply: string;
+  suggested_tab: string | null;
+}
+
+export function sendChat(userId: string, messages: ChatTurn[]): Promise<ChatAnswer> {
+  return request(`/users/${encodeURIComponent(userId)}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: messages.slice(-10) }),
+  });
+}
+
 export function fetchSurvey(userId: string): Promise<Survey> {
   return request(`/users/${encodeURIComponent(userId)}/survey`);
 }

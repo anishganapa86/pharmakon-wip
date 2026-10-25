@@ -21,12 +21,13 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import AwareDatetime, BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
 from . import (
+    ai,
     alternatives,
     auth,
     food_guidance,
@@ -72,9 +73,14 @@ def get_registry() -> Registry:
     return load_registry()
 
 
+def get_generator() -> ai.Generator:
+    return ai.GeminiGenerator()
+
+
 Db = Annotated[Session, Depends(get_session)]
 Reg = Annotated[Registry, Depends(get_registry)]
 Now = Annotated[datetime, Depends(get_now)]
+Gen = Annotated[ai.Generator, Depends(get_generator)]
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -354,6 +360,85 @@ def put_survey(
     row = survey.save(session, user_id, body, now)
     session.commit()
     return survey.survey_json(row)
+
+
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1000)
+
+
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    messages: list[ChatMessage] = Field(min_length=1, max_length=40)
+
+
+CHAT_TURNS = 10
+CHAT_MAX_OUTPUT_TOKENS = 400
+
+
+def ai_gate(
+    generator: ai.Generator, user_id: str, per_hour: int
+) -> JSONResponse | None:
+    if isinstance(generator, ai.GeminiGenerator) and not ai.has_key():
+        return _error(503, "ai_unavailable", ai.UNAVAILABLE_MESSAGE)
+    blocked = ai.usage.try_use(user_id, per_hour)
+    if blocked is None:
+        return None
+    kind, wait = blocked
+    if kind == "daily":
+        return _error(
+            429,
+            "ai_daily_cap",
+            "The demo assistant has reached its daily limit. Try again tomorrow.",
+            headers={"Retry-After": str(wait)},
+        )
+    return _error(
+        429,
+        "rate_limited",
+        "You've reached the hourly limit for the demo assistant. Try again later.",
+        headers={"Retry-After": str(wait)},
+    )
+
+
+def ai_failure(exc: Exception) -> JSONResponse:
+    if isinstance(exc, ai.AIUnavailable):
+        return _error(503, "ai_unavailable", ai.UNAVAILABLE_MESSAGE)
+    if isinstance(exc, ai.AIQuotaExceeded):
+        return _error(429, "ai_busy", ai.BUSY_MESSAGE)
+    return _error(502, "ai_failed", ai.FAILED_MESSAGE)
+
+
+@app.post("/users/{id}/chat")
+def chat(body: ChatRequest, user_id: UserId, session: Db, generator: Gen):
+    recent = body.messages[-CHAT_TURNS:]
+    if recent[-1].role != "user":
+        return _error(
+            422, "validation_error", "messages: the last message must be from the user"
+        )
+    blocked = ai_gate(generator, user_id, ai.chat_per_hour())
+    if blocked is not None:
+        return blocked
+    context = ai.survey_context(survey.survey_json(session.get(UserSurvey, user_id)))
+    contents = [
+        {
+            "role": "user" if m.role == "user" else "model",
+            "parts": [{"text": m.content}],
+        }
+        for m in recent
+    ]
+    try:
+        text = generator.generate(
+            system=ai.load_system_prompt(context),
+            contents=contents,
+            schema=ai.ChatAnswer,
+            max_output_tokens=CHAT_MAX_OUTPUT_TOKENS,
+        )
+        return ai.parse_chat_answer(text)
+    except (ai.AIUnavailable, ai.AIQuotaExceeded, ai.AIFailure) as exc:
+        return ai_failure(exc)
 
 
 # --- 1. POST /users/{id}/doses -------------------------------------------------

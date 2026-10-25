@@ -23,6 +23,11 @@ for _name in (
     "PHARMAKON_DEV_DOCS",
     "PHARMAKON_DEMO_EMAIL",
     "PHARMAKON_DEMO_PASSWORD",
+    "GEMINI_API_KEY",
+    "PHARMAKON_AI_MODEL",
+    "PHARMAKON_CHAT_PER_HOUR",
+    "PHARMAKON_SCAN_PER_HOUR",
+    "PHARMAKON_AI_DAILY_CAP",
 ):
     os.environ[_name] = ""
 
@@ -30,6 +35,7 @@ label_cache = importlib.import_module("app.api.label_cache")
 main = importlib.import_module("app.api.main")
 openfda = importlib.import_module("app.api.openfda")
 throttle = importlib.import_module("app.api.throttle")
+ai = importlib.import_module("app.api.ai")
 
 
 def _no_matches(request: httpx.Request) -> httpx.Response:
@@ -58,6 +64,15 @@ def _no_label_disk_cache():
 @pytest.fixture(autouse=True)
 def _show_unverified_rules(monkeypatch):
     monkeypatch.setenv("SHOW_UNVERIFIED_RULES", "1")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_ai_usage():
+    ai.usage.clock = time.monotonic
+    ai.usage.reset()
+    yield
+    ai.usage.clock = time.monotonic
+    ai.usage.reset()
 
 
 @pytest.fixture(autouse=True)

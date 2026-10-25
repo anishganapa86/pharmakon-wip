@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { startingView } from '../src/survey.ts'
+import { scrollsToSchedule, startingView } from '../src/survey.ts'
 
 test.describe('starting tab mapping', () => {
   test('avoiding interactions opens Interactions', () => {
@@ -36,5 +36,22 @@ test.describe('starting tab mapping', () => {
   test('no answers and no survey keep the default', () => {
     expect(startingView({ tracks: [], goals: [] })).toBe('concentration')
     expect(startingView(null)).toBe('concentration')
+  })
+})
+
+test.describe('schedule scroll', () => {
+  test('reminders without avoiding interactions scrolls to the schedule', () => {
+    expect(scrollsToSchedule({ tracks: ['medications'], goals: ['reminders'] })).toBe(true)
+  })
+
+  test('avoiding interactions wins, so no scroll', () => {
+    expect(
+      scrollsToSchedule({ tracks: [], goals: ['reminders', 'avoid_interactions'] }),
+    ).toBe(false)
+  })
+
+  test('no reminders goal and no survey never scroll', () => {
+    expect(scrollsToSchedule({ tracks: ['skincare'], goals: [] })).toBe(false)
+    expect(scrollsToSchedule(null)).toBe(false)
   })
 })

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import App from "../App";
+import App, { type TabRequest } from "../App";
 import { fetchSurvey, saveSurvey, type AuthUser } from "../api";
-import type { Survey as SurveyData, SurveyAnswers } from "../survey";
+import type { Survey as SurveyData, SurveyAnswers, View } from "../survey";
+import { AskSheet } from "./AskSheet";
 import { LoadingNote } from "./LoadingNote";
 import { Settings } from "./Settings";
 import { Survey } from "./Survey";
@@ -20,6 +21,7 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [screen, setScreen] = useState<"app" | "settings">("app");
+  const [tabRequest, setTabRequest] = useState<TabRequest | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -43,6 +45,11 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
   function retry() {
     setLoad({ kind: "loading" });
     setAttempt((n) => n + 1);
+  }
+
+  function openTab(view: View) {
+    setScreen("app");
+    setTabRequest((prev) => ({ view, nonce: (prev?.nonce ?? 0) + 1 }));
   }
 
   async function save(answers: SurveyAnswers, status: "completed" | "skipped") {
@@ -97,6 +104,7 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
           onLogOut={onLogOut}
           survey={survey}
           onOpenSettings={() => setScreen("settings")}
+          tabRequest={tabRequest}
         />
       </div>
       {screen === "settings" && (
@@ -106,6 +114,7 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
           onSave={(answers) => save(answers, "completed")}
         />
       )}
+      <AskSheet userId={user.id} onOpenTab={openTab} />
     </>
   );
 }
