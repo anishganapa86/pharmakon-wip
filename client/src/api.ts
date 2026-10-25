@@ -121,6 +121,40 @@ export function sendChat(userId: string, messages: ChatTurn[]): Promise<ChatAnsw
   });
 }
 
+export interface ScanIngredient {
+  name: string;
+  strength: string | null;
+  unit: string | null;
+  role: "active" | "inactive" | "unknown";
+}
+
+export interface ScanResult {
+  product_name: string | null;
+  brand: string | null;
+  product_type: "oral_medication" | "supplement" | "topical" | "food_drink" | "unknown";
+  ingredients: ScanIngredient[];
+  label_text_quality: "clear" | "partial" | "unreadable";
+  notes: string | null;
+}
+
+export function scanLabel(userId: string, photo: Blob): Promise<ScanResult> {
+  return request(`/users/${encodeURIComponent(userId)}/scan`, {
+    method: "POST",
+    headers: { "Content-Type": "image/jpeg" },
+    body: photo,
+  });
+}
+
+export function matchIngredients(names: string[]): Promise<{
+  results: { name: string; matched: boolean; substance_id: string | null }[];
+}> {
+  return request("/ingredients/match", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names }),
+  });
+}
+
 export function fetchSurvey(userId: string): Promise<Survey> {
   return request(`/users/${encodeURIComponent(userId)}/survey`);
 }

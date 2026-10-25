@@ -21,8 +21,16 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
@@ -35,6 +43,7 @@ from . import (
     logger,
     my_products,
     openfda,
+    scan,
     schedule,
     service,
     settings,
@@ -438,6 +447,82 @@ def chat(body: ChatRequest, user_id: UserId, session: Db, generator: Gen):
         )
         return ai.parse_chat_answer(text)
     except (ai.AIUnavailable, ai.AIQuotaExceeded, ai.AIFailure) as exc:
+        return ai_failure(exc)
+
+
+class MatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    names: list[str] = Field(min_length=1, max_length=80)
+
+    @field_validator("names")
+    @classmethod
+    def short_names(cls, names: list[str]) -> list[str]:
+        if any(len(n) > 200 for n in names):
+            raise ValueError("each name must be 200 characters or fewer")
+        return names
+
+
+@app.post("/ingredients/match")
+def match_ingredients(body: MatchRequest, registry: Reg) -> dict:
+    results = []
+    for name in body.names:
+        substance_id = registry.resolve(name)
+        results.append(
+            {
+                "name": name,
+                "matched": substance_id is not None,
+                "substance_id": substance_id,
+            }
+        )
+    return {"results": results}
+
+
+async def read_capped_body(request: Request, limit: int) -> bytes | None:
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return None
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@app.post("/users/{id}/scan")
+async def scan_label(request: Request, user_id: UserId, generator: Gen):
+    if isinstance(generator, ai.GeminiGenerator) and not ai.has_key():
+        return _error(503, "ai_unavailable", ai.UNAVAILABLE_MESSAGE)
+    data = await read_capped_body(request, scan.MAX_IMAGE_BYTES)
+    if data is None:
+        return _error(
+            413, "image_too_large", "That photo is too large. The limit is 8 MB."
+        )
+    if not data:
+        return _error(
+            422, "validation_error", "body: send the photo as the request body"
+        )
+    mime = scan.sniff_mime(data)
+    if mime is None:
+        return _error(415, "unsupported_image", "Use a JPEG, PNG or WebP photo.")
+    blocked = ai_gate(generator, user_id, ai.scan_per_hour())
+    if blocked is not None:
+        return blocked
+    try:
+        text = await run_in_threadpool(
+            generator.generate,
+            system=scan.load_prompt(),
+            contents=scan.image_contents(data, mime),
+            schema=scan.ScanResult,
+            max_output_tokens=scan.MAX_OUTPUT_TOKENS,
+        )
+        return scan.parse_scan(text)
+    except ai.AIFailure:
+        return _error(502, "scan_unreadable", scan.READ_FAILED_MESSAGE)
+    except (ai.AIUnavailable, ai.AIQuotaExceeded) as exc:
         return ai_failure(exc)
 
 

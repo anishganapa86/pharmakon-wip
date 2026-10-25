@@ -5,6 +5,7 @@ import type { Survey as SurveyData, SurveyAnswers, View } from "../survey";
 import { AskSheet } from "./AskSheet";
 import { LoadingNote } from "./LoadingNote";
 import { Settings } from "./Settings";
+import { ScanFlow } from "./ScanFlow";
 import { Survey } from "./Survey";
 
 interface AppShellProps {
@@ -20,7 +21,7 @@ type Load =
 export function AppShell({ user, onLogOut }: AppShellProps) {
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
-  const [screen, setScreen] = useState<"app" | "settings">("app");
+  const [screen, setScreen] = useState<"app" | "settings" | "scan">("app");
   const [tabRequest, setTabRequest] = useState<TabRequest | null>(null);
 
   useEffect(() => {
@@ -104,9 +105,13 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
           onLogOut={onLogOut}
           survey={survey}
           onOpenSettings={() => setScreen("settings")}
+          onOpenScan={() => setScreen("scan")}
           tabRequest={tabRequest}
         />
       </div>
+      {screen === "scan" && (
+        <ScanFlow userId={user.id} onClose={() => setScreen("app")} />
+      )}
       {screen === "settings" && (
         <Settings
           survey={survey}

@@ -165,6 +165,7 @@ export interface TabRequest {
 }
 
 interface AppProps {
+  onOpenScan: () => void;
   tabRequest: TabRequest | null;
   user: AuthUser;
   onLogOut: () => void;
@@ -172,7 +173,14 @@ interface AppProps {
   onOpenSettings: () => void;
 }
 
-function App({ user, onLogOut, survey, onOpenSettings, tabRequest }: AppProps) {
+function App({
+  user,
+  onLogOut,
+  survey,
+  onOpenSettings,
+  onOpenScan,
+  tabRequest,
+}: AppProps) {
   const tailoring = survey.status === "completed" ? survey : null;
   const hints = showsHints(tailoring);
   const userId = user.id;
@@ -359,7 +367,12 @@ function App({ user, onLogOut, survey, onOpenSettings, tabRequest }: AppProps) {
       </div>
 
       <section className="panel">
-        <h2>Log a dose</h2>
+        <div className="panel-title-row">
+          <h2>Log a dose</h2>
+          <button type="button" className="control secondary" onClick={onOpenScan}>
+            Scan
+          </button>
+        </div>
         {hints && <p className="hint">{LOG_HINT}</p>}
         <form className="log-row" onSubmit={handleLogDose}>
           <ProductSearch
