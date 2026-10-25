@@ -533,7 +533,23 @@ export interface OverlapWindow {
   description: string;
 }
 
+export interface WhyExplanation {
+  kind: "category" | "ingredient";
+  key: string;
+  title: string;
+  what_this_means: string;
+  what_could_happen: {
+    quote: string;
+    citation: string;
+    source_url: string;
+  } | null;
+  why_it_matters: { text: string; citation: string; source_url: string } | null;
+  poison_control: boolean;
+  closing: string;
+}
+
 export interface Interaction {
+  why?: WhyExplanation;
   finding_kind?: "food";
   substance_a: InteractionSubstanceRef;
   substance_b: InteractionSubstanceRef;
@@ -565,6 +581,7 @@ export interface DuplicateIngredientProduct {
  * always [] on a manual (POST) check, which has no product identity to
  * compare. */
 export interface DuplicateIngredientFinding {
+  why?: WhyExplanation;
   ingredient_name: string;
   product_count: number; // >= 2; distinct products, deduped by product_id
   products: DuplicateIngredientProduct[];

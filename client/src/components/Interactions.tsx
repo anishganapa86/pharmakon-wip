@@ -7,6 +7,7 @@ import type {
 } from "../types/contract";
 import { LoadingNote } from "./LoadingNote";
 import { RulesNotice } from "./RulesNotice";
+import { WhyThisMatters } from "./WhyThisMatters";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -108,6 +109,7 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
               </>
             )}
       </p>
+      {interaction.why && <WhyThisMatters why={interaction.why} />}
       <div className="pharmacist-questions">
         <p className="muted small">Questions for your pharmacist:</p>
         <ul>
@@ -140,6 +142,7 @@ function DuplicateIngredientCard({
           </li>
         ))}
       </ul>
+      {finding.why && <WhyThisMatters why={finding.why} />}
     </div>
   );
 }

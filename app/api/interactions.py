@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 from ..pk.individualize import Patient
 from ..registry.loader import Registry, normalize, strip_salt_tokens
 from . import (
+    explanations,
     food_rules,
     label_cache,
     label_source,
@@ -1056,7 +1057,25 @@ def check_regimen(
     verification.attach_notice(
         result, unverified_rule_count() + food_rules.unverified_count()
     )
+    attach_explanations(result, registry)
     return result
+
+
+def shares_class(a: str, b: str) -> bool:
+    return bool(set(SUBSTANCE_CLASSES.get(a, ())) & set(SUBSTANCE_CLASSES.get(b, ())))
+
+
+def attach_explanations(result: dict, registry: Registry) -> None:
+    for finding in result["interactions"]:
+        finding["why"] = explanations.why_for_interaction(
+            finding,
+            shares_class(finding["substance_a"]["id"], finding["substance_b"]["id"]),
+        )
+    for duplicate in result.get("duplicate_ingredients", []):
+        substance_id = registry.resolve(duplicate["ingredient_name"])
+        duplicate["why"] = explanations.why_for_duplicate(
+            [substance_id] if substance_id else []
+        )
 
 
 def check_manual(names: list[str], registry: Registry, now: datetime) -> dict:
@@ -1113,4 +1132,5 @@ def check_manual(names: list[str], registry: Registry, now: datetime) -> dict:
     # products card -- scoped to the logged/scheduled regimen -- never
     # applies here; included for a consistent response shape.
     result["duplicate_ingredients"] = []
+    attach_explanations(result, registry)
     return result

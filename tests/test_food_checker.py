@@ -478,3 +478,26 @@ def test_the_curated_list_has_about_forty_foods_with_components_only_where_obvio
         assert mapped[f"prod_food_{neutral}"] == [None], neutral
     for p in products.FOOD_PRODUCTS.values():
         assert all(i.strength_mg is None for i in p.ingredients)
+
+
+def test_every_interaction_and_duplicate_finding_carries_a_why_explanation(client):
+    log(client, "tylenol")
+    log(client, "dayquil")
+    log(client, "beer")
+    result = check(client)
+    assert result["duplicate_ingredients"]
+    closing = "A pharmacist can tell you what this means for you."
+    for duplicate in result["duplicate_ingredients"]:
+        assert duplicate["why"]["closing"] == closing
+    for finding in result["interactions"]:
+        assert finding["why"]["closing"] == closing
+    food_finding = food(result)[0]
+    assert food_finding["why"]["key"] == "acetaminophen"
+    assert food_finding["why"]["poison_control"] is True
+
+
+def test_manual_checks_also_carry_explanations(client):
+    r = client.post("/interaction-check", json={"names": ["ibuprofen", "naproxen"]})
+    assert r.status_code == 200
+    for finding in r.json()["interactions"]:
+        assert finding["why"]["key"] == "nsaids"
