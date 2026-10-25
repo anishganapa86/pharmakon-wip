@@ -186,13 +186,11 @@
 
         .field-error {
             margin: 4px 0 0;
+            min-height: 18px;
             font-size: 13px;
+            line-height: 18px;
             font-weight: 500;
             color: var(--error);
-        }
-
-        .field-error:empty {
-            display: none;
         }
 
         .switch {
@@ -338,14 +336,24 @@
             return !text;
         }
 
-        fields.email.addEventListener("blur", checkEmail);
+        fields.email.addEventListener("blur", function () {
+            if (fields.email.value) {
+                checkEmail();
+            }
+        });
         fields.password.addEventListener("blur", function () {
-            checkPassword();
+            if (fields.password.value) {
+                checkPassword();
+            }
             if (fields.confirm.value) {
                 checkConfirm();
             }
         });
-        fields.confirm.addEventListener("blur", checkConfirm);
+        fields.confirm.addEventListener("blur", function () {
+            if (fields.confirm.value) {
+                checkConfirm();
+            }
+        });
         fields.email.addEventListener("input", function () {
             if (errors.email.textContent) {
                 checkEmail();
