@@ -639,3 +639,50 @@ def test_the_retinol_chip_asks_what_it_is_not_what_it_does():
     chips = (ROOT / "client" / "src" / "survey.ts").read_text(encoding="utf-8")
     assert "What is retinol?" in chips
     assert "What does retinol do?" not in chips
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Pharmakon supports logging foods and drinks.",
+        "This tab helps you find your logged items.",
+        "The Interactions tab helps you check for duplicates.",
+        "Scan supports reading a label from a photo.",
+        "The app helps you track what you took.",
+        "Log intake supports adding items you took, ate or drank.",
+        "The Skincare tab helps you compare ingredient lists.",
+    ],
+)
+def test_harmless_app_phrasing_is_allowed(make_client, stub, reply):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    r = ask(client, sign_up(client))
+    assert r.status_code == 200
+    assert r.json()["reply"] == reply
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Retinol supports skin renewal.",
+        "Pharmakon supports logging, and retinol supports healthy skin.",
+        "The Skincare tab helps you find retinol, which improves skin texture.",
+        "Ibuprofen helps with headaches.",
+        "Caffeine is used to treat tiredness.",
+        "The retinol panel supports skin renewal.",
+        "This tab helps you, and vitamin C supports your immune system.",
+        "Pharmakon helps you find items. Acetaminophen relieves pain.",
+        "Scan supports reading labels; aspirin treats pain.",
+    ],
+)
+def test_benefit_claims_about_substances_stay_blocked_next_to_app_phrasing(
+    make_client, stub, reply
+):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    assert ask(client, sign_up(client)).status_code == 502
+
+
+def test_the_allowlist_only_removes_the_app_phrase_not_the_whole_reply():
+    assert ai.breaks_wording_rules("Pharmakon supports logging. Retinol supports skin.")
+    assert not ai.breaks_wording_rules("Pharmakon supports logging. Open Log intake.")

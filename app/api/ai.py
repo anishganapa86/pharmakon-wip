@@ -231,6 +231,17 @@ EFFICACY_CLAIMS = re.compile(
     r"|used\s+(to|for)\s+(treat\w*|relie\w*|reduc\w*|improv\w*|support\w*|manag\w*|prevent\w*|help\w*))\b",
     re.IGNORECASE,
 )
+APP_SUBJECT = (
+    r"(pharmakon|the app|this app|this tab|this panel|this screen|this feature"
+    r"|scan|the scan button|log intake|the log intake panel|the schedule"
+    r"|the (concentration|timeline|skincare|interactions|home|food(\s*&\s*drink)?) tab)"
+)
+APP_PHRASES = re.compile(
+    rf"\b{APP_SUBJECT}\s+(supports?|helps?\s+you)\b"
+    r"|\bhelps?\s+you\s+(find|log|track|check|see|understand|add|open|search|read|review|compare|keep)\b"
+    r"|\bsupports?\s+(logging|scanning|tracking|checking|searching|reading|adding)\b",
+    re.IGNORECASE,
+)
 NOT_SAFE = re.compile(r"\b(not|n't|isn't|aren't)\s+safe\b", re.IGNORECASE)
 SAFE_QUESTION_FRAMES = re.compile(
     r"\b(whether|if)\s+(it|this|that|they|these)(\s+is|\s+are|'s)\s+safe(\s+for\s+you)?",
@@ -260,7 +271,7 @@ def strip_allowed_frames(text: str) -> str:
 def breaks_wording_rules(reply: str) -> bool:
     cleaned = strip_allowed_frames(normalize_text(reply))
     cleaned = NOT_SAFE.sub("", cleaned)
-    if EFFICACY_CLAIMS.search(cleaned):
+    if EFFICACY_CLAIMS.search(APP_PHRASES.sub(" ", cleaned)):
         return True
     return SAFETY_ASSERTIONS.search(cleaned) is not None
 
