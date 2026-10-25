@@ -199,3 +199,11 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.ask-reply p {
+  white-space: pre-line;
+}
+
+.ask-reply .ask-open {
+  margin-right: 8px;
+}

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import App, { type TabRequest } from "../App";
 import { fetchSurvey, saveSurvey, type AuthUser } from "../api";
-import type { Survey as SurveyData, SurveyAnswers, View } from "../survey";
+import type {
+  ChatAction,
+  Survey as SurveyData,
+  SurveyAnswers,
+  View,
+} from "../survey";
 import { AskSheet } from "./AskSheet";
 import { LoadingNote } from "./LoadingNote";
 import { Settings } from "./Settings";
@@ -23,6 +28,8 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
   const [attempt, setAttempt] = useState(0);
   const [screen, setScreen] = useState<"app" | "settings" | "scan">("app");
   const [tabRequest, setTabRequest] = useState<TabRequest | null>(null);
+  const [currentView, setCurrentView] = useState<View>("concentration");
+  const [settingsEdit, setSettingsEdit] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +64,33 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
   function openTab(view: View) {
     setScreen("app");
     setTabRequest((prev) => ({ view, nonce: (prev?.nonce ?? 0) + 1 }));
+  }
+
+  function scrollTo(selector: string) {
+    window.setTimeout(
+      () => document.querySelector(selector)?.scrollIntoView({ block: "start" }),
+      80,
+    );
+  }
+
+  function runAction(action: ChatAction) {
+    if (action === "open_scan") {
+      setScreen("scan");
+    } else if (action === "open_interactions") {
+      openTab("interactions");
+    } else if (action === "open_log_intake") {
+      openTab("concentration");
+      scrollTo(".log-panel");
+    } else if (action === "open_schedule") {
+      openTab("concentration");
+      scrollTo(".schedule-wrap");
+    } else if (action === "open_survey") {
+      setSettingsEdit(true);
+      setScreen("settings");
+    } else {
+      setSettingsEdit(false);
+      setScreen("settings");
+    }
   }
 
   async function save(answers: SurveyAnswers, status: "completed" | "skipped") {
@@ -110,9 +144,13 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
           user={user}
           onLogOut={onLogOut}
           survey={survey}
-          onOpenSettings={() => setScreen("settings")}
+          onOpenSettings={() => {
+            setSettingsEdit(false);
+            setScreen("settings");
+          }}
           onOpenScan={() => setScreen("scan")}
           tabRequest={tabRequest}
+          onViewChange={setCurrentView}
         />
       </div>
       {screen === "scan" && (
@@ -120,13 +158,20 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
       )}
       {screen === "settings" && (
         <Settings
+          key={settingsEdit ? "edit" : "view"}
+          startEditing={settingsEdit}
           survey={survey}
           onLogOut={onLogOut}
           onBack={() => setScreen("app")}
           onSave={(answers) => save(answers, "completed")}
         />
       )}
-      <AskSheet userId={user.id} onOpenTab={openTab} />
+      <AskSheet
+        userId={user.id}
+        view={currentView}
+        onOpenTab={openTab}
+        onAction={runAction}
+      />
     </>
   );
 }

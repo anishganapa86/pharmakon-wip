@@ -22,7 +22,7 @@ test('the sheet shows the notice and suggestion chips, and Esc closes it', async
 }) => {
   await openSheet(page)
   await expect(page.getByText(NOTICE)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Where do I log a dose?' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Where do I log intake?' })).toBeVisible()
   await shot(page, 'ask-1-sheet')
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -123,4 +123,51 @@ test('a network failure shows the connection message and can retry', async ({
   await expect(page.getByRole('alert')).toContainText("Couldn't reach the Pharmakon server")
   await page.getByRole('button', { name: 'Try again' }).click()
   await expect(page.getByText('Connected.')).toBeVisible()
+})
+
+test('chips follow the current tab', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('tab', { name: 'Interactions' }).click()
+  await page.getByRole('button', { name: 'Ask' }).click()
+  await expect(page.getByRole('button', { name: 'What does this finding mean?' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'How do I add a food?' })).toBeVisible()
+})
+
+test('a suggested action renders a second button that opens that flow', async ({
+  page,
+}) => {
+  await page.route('**/users/*/chat', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        reply: '1. Open Scan.\n2. Take a photo of the label.',
+        suggested_tab: null,
+        suggested_action: 'open_scan',
+      }),
+    }),
+  )
+  await openSheet(page)
+  await ask(page, 'how do I scan a label?')
+  await expect(page.getByText('Take a photo of the label.')).toBeVisible()
+  await page.getByRole('button', { name: 'Open Scan' }).click()
+  await expect(page.getByRole('heading', { name: 'Scan a product' })).toBeVisible()
+})
+
+test('open_survey opens the preferences editor', async ({ page }) => {
+  await page.route('**/users/*/chat', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        reply: 'You can change your answers in Settings.',
+        suggested_tab: null,
+        suggested_action: 'open_survey',
+      }),
+    }),
+  )
+  await openSheet(page)
+  await ask(page, 'change my preferences')
+  await page.getByRole('button', { name: 'Open my preferences' }).click()
+  await expect(page.getByText('Step 1 of 4')).toBeVisible()
 })

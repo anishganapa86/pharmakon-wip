@@ -103,6 +103,52 @@ export const TAB_HINTS: Record<View, string> = {
   food: "Food and drink notes quoted from FDA labels for what you logged.",
 };
 
+export type ChatAction =
+  | "open_log_intake"
+  | "open_scan"
+  | "open_interactions"
+  | "open_schedule"
+  | "open_survey"
+  | "open_settings";
+
+export const ACTION_LABELS: Record<ChatAction, string> = {
+  open_log_intake: "Open Log intake",
+  open_scan: "Open Scan",
+  open_interactions: "Open Interactions",
+  open_schedule: "Open Schedule",
+  open_survey: "Open my preferences",
+  open_settings: "Open Settings",
+};
+
+export const CHIPS_BY_VIEW: Record<View, string[]> = {
+  concentration: [
+    "Where do I log intake?",
+    "What is a concentration estimate?",
+    "How do I set a reminder?",
+    "What does Scan do?",
+  ],
+  timeline: [
+    "How do I add a note?",
+    "What is the timeline for?",
+    "Where do I log intake?",
+  ],
+  skincare: [
+    "What is a duplicate ingredient?",
+    "What does retinol do?",
+    "How do I add a product?",
+  ],
+  interactions: [
+    "What does this finding mean?",
+    "How do I add a food?",
+    "What is a duplicate ingredient?",
+  ],
+  food: [
+    "What is this tab for?",
+    "How do I add a food?",
+    "Where do I log intake?",
+  ],
+};
+
 export function labelFor(
   options: readonly { value: string; label: string }[],
   value: string,

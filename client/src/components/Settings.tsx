@@ -11,14 +11,21 @@ import {
 import { Survey } from "./Survey";
 
 interface SettingsProps {
+  startEditing: boolean;
   onLogOut: () => void;
   survey: SurveyData;
   onBack: () => void;
   onSave: (answers: SurveyAnswers) => Promise<void>;
 }
 
-export function Settings({ survey, onBack, onSave, onLogOut }: SettingsProps) {
-  const [editing, setEditing] = useState(false);
+export function Settings({
+  survey,
+  onBack,
+  onSave,
+  onLogOut,
+  startEditing,
+}: SettingsProps) {
+  const [editing, setEditing] = useState(startEditing);
 
   if (editing) {
     return (

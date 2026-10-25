@@ -200,15 +200,51 @@ def survey_context(row: dict | None) -> str:
     )
 
 
-MAX_REPLY_WORDS = 120
-FORBIDDEN_REPLY = re.compile(
-    r"\b(safe|safely|no risk|will cause|causes|prevents)\b", re.IGNORECASE
+MAX_REPLY_WORDS = 150
+MAX_REPLY_CHARS = 1500
+ACTIONS = (
+    "open_log_intake",
+    "open_scan",
+    "open_interactions",
+    "open_schedule",
+    "open_survey",
+    "open_settings",
 )
+SAFETY_ASSERTIONS = re.compile(
+    r"(\b(is|are)|'s)\s+(\w+ly\s+)*safe\b"
+    r"|\bsafe\s+to\s+(take|use|combine|mix|drink|eat)\b"
+    r"|\bsafely\b"
+    r"|\bno\s+risk\b"
+    r"|\brisk[- ]free\b"
+    r"|\bwill\s+cause\b"
+    r"|\bcauses\b"
+    r"|\bprevents\b",
+    re.IGNORECASE,
+)
+SAFE_QUESTION_FRAMES = re.compile(
+    r"(whether|if)\s+(it|this|that|they|these)(\s+is|\s+are|'s)\s+safe(\s+for\s+you)?",
+    re.IGNORECASE,
+)
+
+
+def breaks_wording_rules(reply: str) -> bool:
+    cleaned = SAFE_QUESTION_FRAMES.sub("", reply)
+    return SAFETY_ASSERTIONS.search(cleaned) is not None
+
+
+def cut_words(text: str, limit: int) -> str:
+    count = 0
+    for match in re.finditer(r"\S+", text):
+        count += 1
+        if count == limit:
+            return text[: match.end()]
+    return text
 
 
 class ChatAnswer(BaseModel):
     reply: str
     suggested_tab: str | None = None
+    suggested_action: str | None = None
 
 
 def parse_chat_answer(text: str) -> dict:
@@ -217,10 +253,9 @@ def parse_chat_answer(text: str) -> dict:
     except ValidationError as exc:
         raise AIFailure from exc
     reply = answer.reply.strip()
-    if not reply or FORBIDDEN_REPLY.search(reply):
+    if not reply or breaks_wording_rules(reply):
         raise AIFailure
-    words = reply.split()
-    if len(words) > MAX_REPLY_WORDS:
-        reply = " ".join(words[:MAX_REPLY_WORDS])
+    reply = cut_words(reply, MAX_REPLY_WORDS)[:MAX_REPLY_CHARS]
     tab = answer.suggested_tab if answer.suggested_tab in TABS else None
-    return {"reply": reply[:1200], "suggested_tab": tab}
+    action = answer.suggested_action if answer.suggested_action in ACTIONS else None
+    return {"reply": reply, "suggested_tab": tab, "suggested_action": action}

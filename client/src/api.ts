@@ -111,6 +111,7 @@ export interface ChatTurn {
 export interface ChatAnswer {
   reply: string;
   suggested_tab: string | null;
+  suggested_action: string | null;
 }
 
 export function sendChat(userId: string, messages: ChatTurn[]): Promise<ChatAnswer> {

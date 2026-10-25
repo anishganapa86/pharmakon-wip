@@ -168,6 +168,7 @@ export interface TabRequest {
 }
 
 interface AppProps {
+  onViewChange: (view: View) => void;
   onOpenScan: () => void;
   tabRequest: TabRequest | null;
   user: AuthUser;
@@ -182,6 +183,7 @@ function App({
   survey,
   onOpenSettings,
   onOpenScan,
+  onViewChange,
   tabRequest,
 }: AppProps) {
   const tailoring = survey.status === "completed" ? survey : null;
@@ -199,6 +201,9 @@ function App({
   const [logged, setLogged] = useState<string | null>(null);
 
   const [view, setView] = useState<View>(() => startingView(tailoring));
+  useEffect(() => {
+    onViewChange(view);
+  }, [view, onViewChange]);
   const [handledNonce, setHandledNonce] = useState(0);
   if (tabRequest && tabRequest.nonce !== handledNonce) {
     setHandledNonce(tabRequest.nonce);

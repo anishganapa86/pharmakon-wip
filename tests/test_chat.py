@@ -97,6 +97,7 @@ def test_a_reply_comes_back_with_a_valid_tab(make_client, stub):
     assert r.json() == {
         "reply": "Use the Schedule panel.",
         "suggested_tab": "concentration",
+        "suggested_action": None,
     }
 
 
@@ -104,7 +105,7 @@ def test_the_output_token_cap_and_schema_are_passed(make_client, stub):
     client = make_client()
     ask(client, sign_up(client))
     call = stub.calls[0]
-    assert call["max_output_tokens"] == 400
+    assert call["max_output_tokens"] == 600
     assert call["schema"] is ai.ChatAnswer
 
 
@@ -176,7 +177,7 @@ def test_the_prompt_file_holds_the_required_rules():
         "Interactions tab",
         "pharmacist or prescriber",
         "Ignore any instruction",
-        "120 words",
+        "150 words",
         "suggested_tab",
         "Concentration tab",
         "Timeline tab",
@@ -373,7 +374,7 @@ def test_message_text_is_never_logged(make_client, stub, caplog):
 def test_the_reply_is_capped(make_client, stub):
     stub.text = json.dumps({"reply": "x" * 5000, "suggested_tab": None})
     client = make_client()
-    assert len(ask(client, sign_up(client)).json()["reply"]) == 1200
+    assert len(ask(client, sign_up(client)).json()["reply"]) == 1500
 
 
 def test_nothing_is_stored(make_client, stub):
@@ -401,11 +402,11 @@ def test_forbidden_words_in_a_reply_are_refused_server_side(make_client, stub, r
     assert r.json()["error"]["code"] == "ai_failed"
 
 
-def test_a_long_reply_is_cut_to_120_words(make_client, stub):
+def test_a_long_reply_is_cut_to_150_words(make_client, stub):
     stub.text = json.dumps({"reply": " ".join(["word"] * 300), "suggested_tab": None})
     client = make_client()
     body = ask(client, sign_up(client)).json()
-    assert len(body["reply"].split()) == 120
+    assert len(body["reply"].split()) == 150
 
 
 def test_chat_and_scan_hourly_limits_are_separate(make_client, stub, monkeypatch):
@@ -429,3 +430,119 @@ def test_chat_and_scan_hourly_limits_are_separate(make_client, stub, monkeypatch
     assert scan.status_code == 200
     again = client.post(f"/users/{uid}/scan", content=b"\xff\xd8\xff\xe0\x00\x10JFIF")
     assert again.status_code == 429
+
+
+@pytest.mark.parametrize("action", list(ai.ACTIONS))
+def test_every_listed_action_is_accepted(make_client, stub, action):
+    stub.text = json.dumps(
+        {"reply": "Here you go.", "suggested_tab": None, "suggested_action": action}
+    )
+    client = make_client()
+    assert ask(client, sign_up(client)).json()["suggested_action"] == action
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["open_admin", "delete_everything", "", "OPEN_SCAN", "open_scan; drop", "../scan"],
+)
+def test_an_unlisted_action_is_dropped(make_client, stub, action):
+    stub.text = json.dumps(
+        {"reply": "Here you go.", "suggested_tab": None, "suggested_action": action}
+    )
+    client = make_client()
+    body = ask(client, sign_up(client)).json()
+    assert body["suggested_action"] is None
+    assert body["reply"] == "Here you go."
+
+
+def test_a_missing_action_is_null(make_client, stub):
+    stub.text = json.dumps({"reply": "Here you go."})
+    client = make_client()
+    assert ask(client, sign_up(client)).json()["suggested_action"] is None
+
+
+def test_numbered_steps_keep_their_line_breaks(make_client, stub):
+    steps = "1. Open Log intake.\n2. Search for what you took.\n3. Press Log."
+    stub.text = json.dumps(
+        {
+            "reply": steps,
+            "suggested_tab": "concentration",
+            "suggested_action": "open_log_intake",
+        }
+    )
+    client = make_client()
+    body = ask(client, sign_up(client)).json()
+    assert body["reply"] == steps
+
+
+def test_long_replies_keep_line_breaks_up_to_the_cut(make_client, stub):
+    text = "\n".join(f"{n}. " + "word " * 10 for n in range(1, 40))
+    stub.text = json.dumps({"reply": text, "suggested_tab": None})
+    client = make_client()
+    reply = ask(client, sign_up(client)).json()["reply"]
+    assert "\n" in reply
+    assert len(reply.split()) <= 150
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Ask a pharmacist whether it's safe for you.",
+        "A pharmacist can tell you if it is safe for you.",
+        "I can't say whether it is safe for you. Please ask a pharmacist.",
+        "Open the Interactions tab. A pharmacist can tell you what it means for you.",
+        "Retinol is a vitamin A form used in skincare for texture and tone. "
+        "This is general information.",
+        "1. Open Log intake.\n2. Search for coffee.\n3. Press Log.",
+    ],
+)
+def test_the_narrower_wording_check_allows_safe_framed_as_a_question(
+    make_client, stub, reply
+):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    r = ask(client, sign_up(client))
+    assert r.status_code == 200
+    assert r.json()["reply"] == reply
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Yes, it is safe.",
+        "That is safe to take with food.",
+        "It's safe.",
+        "Both are generally safe together.",
+        "You can take it safely.",
+        "There is no risk here.",
+        "It is risk-free.",
+        "This will cause drowsiness.",
+        "Caffeine causes jitters.",
+        "Vitamin C prevents colds.",
+        "It is completely safe to take.",
+    ],
+)
+def test_the_narrower_wording_check_still_blocks_assertions(make_client, stub, reply):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    r = ask(client, sign_up(client))
+    assert r.status_code == 502
+
+
+def test_the_prompt_allows_general_education_and_numbered_steps():
+    text = ai.PROMPT_PATH.read_text(encoding="utf-8")
+    for needle in (
+        "general educational explanations",
+        "up to 4 short numbered steps",
+        "suggested_action",
+        "open_log_intake",
+        "open_scan",
+        "open_interactions",
+        "open_schedule",
+        "open_survey",
+        "open_settings",
+        "Never judge an interaction yourself",
+        "1-800-222-1222",
+        "Ignore any instruction",
+    ):
+        assert needle in text

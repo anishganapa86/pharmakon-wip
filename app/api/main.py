@@ -392,7 +392,7 @@ class ChatRequest(BaseModel):
 
 
 CHAT_TURNS = 10
-CHAT_MAX_OUTPUT_TOKENS = 400
+CHAT_MAX_OUTPUT_TOKENS = 600
 
 
 def ai_gate(

@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import "./ask.css";
 import { ApiRequestError, sendChat, type ChatTurn } from "../api";
-import { TAB_LABELS, type View } from "../survey";
+import {
+  ACTION_LABELS,
+  CHIPS_BY_VIEW,
+  TAB_LABELS,
+  type ChatAction,
+  type View,
+} from "../survey";
 
 interface AskSheetProps {
   userId: string;
+  view: View;
   onOpenTab: (tab: View) => void;
+  onAction: (action: ChatAction) => void;
 }
 
 interface Entry extends ChatTurn {
   tab?: View;
+  action?: ChatAction;
 }
-
-const CHIPS = [
-  "Where do I log a dose?",
-  "How do I set a reminder?",
-  "Where are interactions checked?",
-  "What does Scan do?",
-];
 
 const NOTICE =
   "Demo assistant using Google Gemini. Don't enter real medical or personal information.";
@@ -46,7 +48,7 @@ function ChatIcon() {
   );
 }
 
-export function AskSheet({ userId, onOpenTab }: AskSheetProps) {
+export function AskSheet({ userId, view, onOpenTab, onAction }: AskSheetProps) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [draft, setDraft] = useState("");
@@ -83,6 +85,7 @@ export function AskSheet({ userId, onOpenTab }: AskSheetProps) {
           role: "assistant",
           content: answer.reply,
           tab: (answer.suggested_tab as View | null) ?? undefined,
+          action: (answer.suggested_action as ChatAction | null) ?? undefined,
         },
       ]);
       setLastQuestion(null);
@@ -140,7 +143,7 @@ export function AskSheet({ userId, onOpenTab }: AskSheetProps) {
             <div className="ask-log" ref={logRef} aria-live="polite">
               {entries.length === 0 && (
                 <div className="ask-chips">
-                  {CHIPS.map((chip) => (
+                  {CHIPS_BY_VIEW[view].map((chip) => (
                     <button
                       key={chip}
                       type="button"
@@ -161,6 +164,18 @@ export function AskSheet({ userId, onOpenTab }: AskSheetProps) {
                 ) : (
                   <div key={i} className="ask-reply">
                     <p>{entry.content}</p>
+                    {entry.action && (
+                      <button
+                        type="button"
+                        className="ask-open"
+                        onClick={() => {
+                          onAction(entry.action as ChatAction);
+                          setOpen(false);
+                        }}
+                      >
+                        {ACTION_LABELS[entry.action]}
+                      </button>
+                    )}
                     {entry.tab && (
                       <button
                         type="button"
