@@ -9,6 +9,13 @@ export default async function globalSetup(): Promise<void> {
   if (response.status() !== 201) {
     throw new Error(`e2e sign-up failed with status ${response.status()}`)
   }
+  const { id } = (await response.json()) as { id: string }
+  const skipped = await api.put(`/users/${id}/survey`, {
+    data: { tracks: [], goals: [], experience: null, guidance: null, status: 'skipped' },
+  })
+  if (skipped.status() !== 200) {
+    throw new Error(`e2e survey skip failed with status ${skipped.status()}`)
+  }
   fs.mkdirSync(path.dirname(AUTH_FILE), { recursive: true })
   await api.storageState({ path: AUTH_FILE })
   await api.dispose()

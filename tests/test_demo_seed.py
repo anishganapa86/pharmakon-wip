@@ -10,7 +10,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.api import auth, demo_seed
-from app.api.db import AlertRecord, Base, DoseEvent, ScheduledDose, User
+from app.api.db import AlertRecord, Base, DoseEvent, ScheduledDose, User, UserSurvey
 from app.registry.loader import load_registry
 
 NOW = datetime(2026, 9, 13, 18, 0, tzinfo=UTC)
@@ -46,6 +46,22 @@ def test_seed_creates_the_user_and_a_small_regimen(db, registry):
     assert auth.authenticate(db, "demo@example.com", PASSWORD).id == result.user_id
     assert len(db.scalars(select(DoseEvent)).all()) == 6
     assert len(db.scalars(select(ScheduledDose)).all()) == 1
+
+
+def test_seed_marks_the_demo_survey_completed(db, registry):
+    result = demo_seed.seed(db, registry, "demo@example.com", PASSWORD, NOW)
+    row = db.get(UserSurvey, result.user_id)
+    assert row.status == "completed"
+    assert row.tracks and row.goals and row.experience and row.guidance
+
+
+def test_seed_does_not_overwrite_a_changed_survey(db, registry):
+    first = demo_seed.seed(db, registry, "demo@example.com", PASSWORD, NOW)
+    row = db.get(UserSurvey, first.user_id)
+    row.status = "skipped"
+    db.commit()
+    demo_seed.seed(db, registry, "demo@example.com", PASSWORD, NOW)
+    assert db.get(UserSurvey, first.user_id).status == "skipped"
 
 
 def test_seeded_regimen_shows_a_duplication_alert(db, registry):

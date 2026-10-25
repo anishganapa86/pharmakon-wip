@@ -13,6 +13,10 @@ async function signUpInBrowser(page: Page, email: string, password: string) {
   await page.getByRole('button', { name: 'Create account' }).click()
 }
 
+async function skipSurvey(page: Page) {
+  await page.getByRole('button', { name: 'Skip' }).click()
+}
+
 async function expectAppLoaded(page: Page) {
   await expect(page).toHaveURL(/\/$/)
   await expect(page.getByRole('heading', { name: 'Pharmakon' })).toBeVisible()
@@ -22,6 +26,8 @@ async function expectAppLoaded(page: Page) {
 test('sign up goes to the app', async ({ page }) => {
   const { email, password } = newCredentials()
   await signUpInBrowser(page, email, password)
+  await expect(page.getByText('Step 1 of 4')).toBeVisible()
+  await skipSurvey(page)
   await expectAppLoaded(page)
   await expect(page.locator('.account-email')).toHaveText(email)
   await shot(page, 'auth-1-signed-up')
@@ -32,6 +38,7 @@ test('log out returns to the login page and locks the app again', async ({
 }) => {
   const { email, password } = newCredentials()
   await signUpInBrowser(page, email, password)
+  await skipSurvey(page)
   await expectAppLoaded(page)
   await page.getByRole('button', { name: 'Log out' }).click()
   await expect(page).toHaveURL(/\/login\.html$/)
@@ -51,6 +58,7 @@ test('log in goes to the app', async ({ page, playwright }) => {
   await page.getByLabel('Email').fill(email.toUpperCase())
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Log in' }).click()
+  await skipSurvey(page)
   await expectAppLoaded(page)
   await shot(page, 'auth-3-logged-in')
 })

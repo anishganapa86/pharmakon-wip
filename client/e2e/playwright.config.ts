@@ -34,7 +34,7 @@ export default defineConfig({
   projects: [
     {
       name: 'desktop',
-      testMatch: /(flow|gate|auth)\.spec\.ts/,
+      testMatch: /(flow|gate|auth|survey|survey-mapping)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } },
     },
     {

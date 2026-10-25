@@ -1,5 +1,5 @@
 import { expect, test } from './fixtures.ts'
-import { LOGGED_OUT } from './auth-state.ts'
+import { LOGGED_OUT, newCredentials } from './auth-state.ts'
 import {
   hasHorizontalOverflow,
   knownBug,
@@ -168,4 +168,32 @@ test.describe('logged out', () => {
       await shot(page, `phone-${url.slice(1).replace('.html', '')}`)
     })
   }
+})
+
+test.describe('survey on a phone', () => {
+  test.use({ storageState: LOGGED_OUT })
+
+  test('phone: the survey fits a 390px screen', async ({ page }) => {
+    const { email, password } = newCredentials()
+    await page.goto('/signup.html')
+    await page.getByLabel('Email').fill(email)
+    await page.getByLabel('Password', { exact: true }).fill(password)
+    await page.getByLabel('Confirm password').fill(password)
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await expect(page.getByText('Step 1 of 4')).toBeVisible()
+    expect(await hasHorizontalOverflow(page)).toBe(false)
+    const small = await page.evaluate(
+      ([minTarget, minFont]) =>
+        Array.from(document.querySelectorAll('button'))
+          .filter((el) => {
+            const box = el.getBoundingClientRect()
+            const font = parseFloat(getComputedStyle(el).fontSize)
+            return box.height < minTarget || font < minFont
+          })
+          .map((el) => (el.textContent ?? '').trim()),
+      [MIN_TARGET_PX, MIN_FONT_PX] as const,
+    )
+    expect(small).toEqual([])
+    await shot(page, 'phone-survey')
+  })
 })
