@@ -357,10 +357,10 @@ test('h. an unknown product can be added from its ingredient list with a four-it
 }) => {
   const panel = logPanel(page)
   await panel.getByRole('combobox', { name: 'Product' }).fill('zzqxv')
-  await expect(page.getByText('No products found for "zzqxv"')).toBeVisible()
+  await expect(page.getByText('Not in our database yet: "zzqxv"')).toBeVisible()
   await shot(page, 'h-1-no-results')
   await page
-    .getByRole('button', { name: 'Add this product with its ingredient list' })
+    .getByRole('button', { name: 'Add it yourself (name and ingredient list)' })
     .click()
   await page.getByLabel('Brand').fill('ZZ Labs')
   await page.getByLabel('Ingredients').fill(MY_PRODUCT_TEXT)
@@ -374,7 +374,7 @@ test('h. saving an added product stores it, logs it, and shows it under My produ
 }) => {
   await logPanel(page).getByRole('combobox', { name: 'Product' }).fill('zzqxv')
   await page
-    .getByRole('button', { name: 'Add this product with its ingredient list' })
+    .getByRole('button', { name: 'Add it yourself (name and ingredient list)' })
     .click()
   await page.getByLabel('Brand').fill('ZZ Labs')
   await page.getByLabel('Ingredients').fill(MY_PRODUCT_TEXT)

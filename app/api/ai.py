@@ -225,6 +225,12 @@ SAFETY_ASSERTIONS = re.compile(
     r"|\bprevented\b",
     re.IGNORECASE,
 )
+EFFICACY_CLAIMS = re.compile(
+    r"\b(supports?|improves?|improved|improving|treats?|treated|treating|cures?"
+    r"|relieves?|helps?\s+with|helps?\s+(to\s+)?(treat|relieve|reduce|improve|manage)"
+    r"|used\s+(to|for)\s+(treat\w*|relie\w*|reduc\w*|improv\w*|support\w*|manag\w*|prevent\w*|help\w*))\b",
+    re.IGNORECASE,
+)
 NOT_SAFE = re.compile(r"\b(not|n't|isn't|aren't)\s+safe\b", re.IGNORECASE)
 SAFE_QUESTION_FRAMES = re.compile(
     r"\b(whether|if)\s+(it|this|that|they|these)(\s+is|\s+are|'s)\s+safe(\s+for\s+you)?",
@@ -254,6 +260,8 @@ def strip_allowed_frames(text: str) -> str:
 def breaks_wording_rules(reply: str) -> bool:
     cleaned = strip_allowed_frames(normalize_text(reply))
     cleaned = NOT_SAFE.sub("", cleaned)
+    if EFFICACY_CLAIMS.search(cleaned):
+        return True
     return SAFETY_ASSERTIONS.search(cleaned) is not None
 
 

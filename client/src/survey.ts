@@ -134,7 +134,7 @@ export const CHIPS_BY_VIEW: Record<View, string[]> = {
   ],
   skincare: [
     "What is a duplicate ingredient?",
-    "What does retinol do?",
+    "What is retinol?",
     "How do I add a product?",
   ],
   interactions: [

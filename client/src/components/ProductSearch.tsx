@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { createMyProduct, searchProducts } from "../api";
+import { createMyProduct, fetchMyProducts, searchProducts } from "../api";
 import { splitIngredientsPreview } from "../ingredientSplit";
 import {
   ingredientLabel,
@@ -66,6 +66,25 @@ export function ProductSearch({
   const [error, setError] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const [recentLoadingId, setRecentLoadingId] = useState<string | null>(null);
+  const [mine, setMine] = useState<RecentProduct[]>([]);
+
+  useEffect(() => {
+    if (userId === undefined) return;
+    let cancelled = false;
+    fetchMyProducts(userId)
+      .then((list) => {
+        if (cancelled) return;
+        setMine(
+          list
+            .slice(0, 5)
+            .map((p) => ({ product_id: p.id, product_name: p.name })),
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, selected]);
   const [addOpen, setAddOpen] = useState(false);
   const [addDraft, setAddDraft] = useState(EMPTY_ADD_DRAFT);
   const [addSaving, setAddSaving] = useState(false);
@@ -224,7 +243,7 @@ export function ProductSearch({
     <div>
       {addError && <p className="error small">{addError}</p>}
       <button type="button" className="button-link" onClick={() => openAddForm()}>
-        Add this product with its ingredient list
+        Add it yourself (name and ingredient list)
       </button>
     </div>
   ) : (
@@ -349,8 +368,9 @@ export function ProductSearch({
                 "No products found. Try a brand or generic name."
               ) : (
                 <>
-                  {`No products found for "${query.trim()}". Try searching by ` +
-                    "brand name (e.g. Tylenol) or generic name (e.g. acetaminophen)."}
+                  {`Not in our database yet: "${query.trim()}". Try a brand name ` +
+                    "(e.g. Tylenol) or a generic name (e.g. acetaminophen), or add it " +
+                    "yourself. It will be logged with no concentration estimate."}
                   {addControl}
                 </>
               )}
@@ -391,6 +411,28 @@ export function ProductSearch({
             </li>
           )}
         </ul>
+      )}
+      {!showDropdown && !selected && mine.length > 0 && (
+        <div className="recent">
+          <div className="recent-label">Your products</div>
+          <ul className="recent-list">
+            {mine.map((r) => (
+              <li key={r.product_id}>
+                <button
+                  type="button"
+                  className="recent-item"
+                  title={r.product_name}
+                  disabled={recentLoadingId === r.product_id}
+                  onClick={() => void chooseRecent(r)}
+                >
+                  {recentLoadingId === r.product_id
+                    ? "Loading…"
+                    : truncateProductName(r.product_name)}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {!showDropdown && !selected && recent.length > 0 && (
         <div className="recent">

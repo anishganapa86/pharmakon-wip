@@ -1,5 +1,6 @@
 import json
 import secrets
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +14,7 @@ from app.api.db import Base
 pytestmark = pytest.mark.real_auth
 
 PASSWORD = secrets.token_urlsafe(16)
+ROOT = Path(__file__).resolve().parent.parent
 SURVEY = {
     "tracks": ["medications", "skincare"],
     "goals": ["avoid_interactions", "reminders"],
@@ -532,7 +534,7 @@ def test_the_narrower_wording_check_still_blocks_assertions(make_client, stub, r
 def test_the_prompt_allows_general_education_and_numbered_steps():
     text = ai.PROMPT_PATH.read_text(encoding="utf-8")
     for needle in (
-        "general educational explanations",
+        "an ingredient's class or category",
         "up to 4 short numbered steps",
         "suggested_action",
         "open_log_intake",
@@ -584,3 +586,56 @@ def test_question_frames_and_negations_are_still_allowed(make_client, stub, repl
     stub.text = json.dumps({"reply": reply, "suggested_tab": None})
     client = make_client()
     assert ask(client, sign_up(client)).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Retinol supports skin renewal.",
+        "It improves the look of skin.",
+        "Ibuprofen is used to treat pain.",
+        "It helps with headaches.",
+        "This ingredient treats acne.",
+        "It is used for relieving pain.",
+        "It relieves a stuffy nose.",
+        "Vitamin C is used to support your immune system.",
+    ],
+)
+def test_benefit_and_efficacy_claims_are_blocked_server_side(make_client, stub, reply):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    assert ask(client, sign_up(client)).status_code == 502
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        "Retinol is a form of vitamin A used in skincare products. Pharmakon logs it "
+        "without a concentration estimate. This is general information.",
+        "Acetaminophen is a pain and fever medicine. Pharmakon gives it a "
+        "concentration estimate and checks it for duplicates across your products.",
+        "This tab helps you find your logged items.",
+        "1. Open Log intake.\n2. Search for the item.\n3. Press Log.",
+    ],
+)
+def test_class_and_tracking_descriptions_are_allowed(make_client, stub, reply):
+    stub.text = json.dumps({"reply": reply, "suggested_tab": None})
+    client = make_client()
+    r = ask(client, sign_up(client))
+    assert r.status_code == 200
+    assert r.json()["reply"] == reply
+
+
+def test_the_prompt_describes_what_things_are_and_forbids_benefit_claims():
+    text = ai.PROMPT_PATH.read_text(encoding="utf-8")
+    assert "an ingredient's class or category" in text
+    assert "what Pharmakon tracks about it" in text
+    assert "Never describe benefits or effects." in text
+    assert "supports, improves, helps with, treats or is used to treat" in text
+    assert "what retinol is generally used for" not in text
+
+
+def test_the_retinol_chip_asks_what_it_is_not_what_it_does():
+    chips = (ROOT / "client" / "src" / "survey.ts").read_text(encoding="utf-8")
+    assert "What is retinol?" in chips
+    assert "What does retinol do?" not in chips
