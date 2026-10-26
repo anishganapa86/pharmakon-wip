@@ -296,9 +296,10 @@ function Results({ result }: { result: InteractionCheckResponse }) {
 
 interface Props {
   userId: string;
+  refreshKey?: number;
 }
 
-export function Interactions({ userId }: Props) {
+export function Interactions({ userId, refreshKey = 0 }: Props) {
   const [regimenResult, setRegimenResult] = useState<InteractionCheckResponse | null>(
     null,
   );
@@ -323,7 +324,7 @@ export function Interactions({ userId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, refreshKey]);
 
   const names = parseNames(namesText);
 

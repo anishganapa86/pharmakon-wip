@@ -624,7 +624,7 @@ function App({
 
       {view === "skincare" && <Skincare userId={userId} />}
 
-      {view === "interactions" && <Interactions userId={userId} />}
+      {view === "interactions" && <Interactions userId={userId} refreshKey={timelineKey} />}
 
       {view === "food" && <FoodGuidance userId={userId} />}
 
