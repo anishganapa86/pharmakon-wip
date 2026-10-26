@@ -118,7 +118,7 @@ test('Why this matters is collapsed on a phone, opens with a button and keeps it
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
 })
 
-test('the Why this matters toggle starts open on a desktop screen', async ({ page }) => {
+test('the Why this matters toggle starts collapsed on a desktop screen', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   const id = userId
   await logItem(page, id, 'prod_tylenol_es_500', 8)
@@ -126,8 +126,8 @@ test('the Why this matters toggle starts open on a desktop screen', async ({ pag
   await openInteractions(page)
   await expect(
     page.getByRole('button', { name: 'Why this matters' }).first(),
-  ).toHaveAttribute('aria-expanded', 'true')
-  await expect(page.getByText(CLOSING).first()).toBeVisible()
+  ).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByText(CLOSING)).toHaveCount(0)
 })
 
 test('the log intake search returns foods typed as Food & drink beside medications', async ({

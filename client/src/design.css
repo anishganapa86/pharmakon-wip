@@ -2003,3 +2003,189 @@ body:has(.survey-page) .ask-button {
   outline-offset: 2px;
   border-radius: var(--radius-6);
 }
+
+/* --- Collapsed findings, ingredient previews, spacing ------------------------- */
+
+.finding-group {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0;
+  background: none;
+  border: 0;
+  margin-bottom: 16px;
+}
+
+.skincare-auto-results {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.finding-group > .finding,
+.finding-group > .skincare-flag,
+.skincare-auto-results > .skincare-flag,
+.panel > .skincare-flag {
+  padding: 16px 20px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-hairline);
+  border-radius: var(--radius-16);
+}
+
+.panel > .skincare-flag + .skincare-flag {
+  margin-top: 16px;
+}
+
+.finding,
+.skincare-flag {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+}
+
+.finding p,
+.skincare-flag p,
+.finding-details-body p,
+.why-body p,
+.why-body li,
+.product-item p {
+  margin: 0;
+  max-width: 70ch;
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.finding p.small,
+.finding p.muted,
+.skincare-flag p.small,
+.skincare-flag p.muted,
+.finding-details-body p,
+.why-body .why-source,
+.product-item p.small,
+.product-item .small {
+  font-size: 14px;
+}
+
+.finding .finding-title,
+.skincare-flag .finding-title {
+  font-size: 15px;
+}
+
+.finding-details,
+.alert-why {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.finding-details > summary,
+.alert-why > summary,
+.more-check > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-accent);
+  cursor: pointer;
+}
+
+.finding-details-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 4px;
+}
+
+.alert-why {
+  margin-top: 8px;
+}
+
+.alert-why > p {
+  margin: 0;
+  max-width: 70ch;
+  font-size: 14px;
+}
+
+.more-check {
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.more-check-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.more-check-body .collapsible {
+  margin-top: 0;
+  padding-top: 8px;
+}
+
+.why {
+  width: 100%;
+  margin-top: 0;
+}
+
+.why-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.why-questions {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.product-item {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.product-item .history-head {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+}
+
+.product-item .history-head .button-link {
+  margin-left: auto;
+}
+
+.product-item .product-note {
+  margin: 0;
+}
+
+.ingredient-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ingredient-toggle {
+  min-height: 44px;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.scan-count {
+  margin: 8px 0 0;
+}
+
+.finding-title .tag-food {
+  margin-left: 8px;
+}

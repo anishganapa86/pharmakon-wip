@@ -8,6 +8,7 @@ import {
   type ScanResult,
 } from "../api";
 import { splitIngredientsPreview } from "../ingredientSplit";
+import { ingredientCount } from "../ingredientCount";
 import { downscaleToJpeg } from "../scanImage";
 import { Icon } from "./Icon";
 
@@ -90,6 +91,7 @@ function Review({ userId, result, onCancel, onRetake, onSaved }: ReviewProps) {
   >({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   const names = useMemo(() => splitIngredientsPreview(text), [text]);
 
@@ -262,8 +264,11 @@ function Review({ userId, result, onCancel, onRetake, onSaved }: ReviewProps) {
       </label>
 
       {names.length > 0 && (
+        <p className="muted small scan-count">{ingredientCount(names.length)}</p>
+      )}
+      {names.length > 0 && (
         <ul className="scan-list">
-          {names.map((n, i) => {
+          {(showAll ? names : names.slice(0, 4)).map((n, i) => {
             const s = status(n);
             const amount = printedAmount(result, n);
             return (
@@ -311,6 +316,17 @@ function Review({ userId, result, onCancel, onRetake, onSaved }: ReviewProps) {
             );
           })}
         </ul>
+      )}
+
+      {names.length > 4 && (
+        <button
+          type="button"
+          className="button-link ingredient-toggle"
+          aria-expanded={showAll}
+          onClick={() => setShowAll(!showAll)}
+        >
+          {showAll ? "Show fewer ingredients" : "Show all ingredients"}
+        </button>
       )}
 
       {overlaps.map((o) => (

@@ -31,15 +31,18 @@ function AlertItem({ alert }: { alert: Alert }) {
       </div>
       <p>{alert.message}</p>
       {alert.substance?.threshold_explanation && (
-        <p className="alert-why muted">
-          <strong>Why this matters:</strong> {alert.substance.threshold_explanation}
-          {!alert.substance.verified && (
-            <>
-              {" "}
-              <span className="tag">Unverified reference</span>
-            </>
-          )}
-        </p>
+        <details className="alert-why">
+          <summary>Why this matters</summary>
+          <p className="muted">
+            {alert.substance.threshold_explanation}
+            {!alert.substance.verified && (
+              <>
+                {" "}
+                <span className="tag">Unverified reference</span>
+              </>
+            )}
+          </p>
+        </details>
       )}
       <p className="alert-action muted">
         <strong>What to do:</strong> {WHAT_TO_DO[alert.severity]}

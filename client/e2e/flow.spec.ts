@@ -160,7 +160,8 @@ test('e. Interactions tab shows the NSAID card with pharmacist questions and a c
     hasText: /naproxen/i,
   })
   await expect(nsaid.first()).toBeVisible()
-  await expect(nsaid.first().locator('.pharmacist-questions li').first()).toBeVisible()
+  await nsaid.first().getByRole('button', { name: 'Why this matters' }).click()
+  await expect(nsaid.first().locator('.why-questions li').first()).toBeVisible()
   await expect(regimen.getByRole('button', { name: 'Copy for my pharmacist' })).toBeVisible()
   await shot(page, 'e-1-interactions')
 
@@ -304,25 +305,19 @@ test('g. no ".." appears anywhere in the skincare text', async ({ page }) => {
 test('g. a niacinamide card lists every product containing niacinamide', async ({
   page,
 }) => {
-  await knownBug(
-    'niacinamide appears only inside pairwise vitamin C findings; the cleanser containing niacinamide is not named by any finding',
-    /niacinamide card lists/,
-    async () => {
-      await openTab(page, 'Skincare')
-      await expect(page.locator('.skincare-auto-results .skincare-flag').first()).toBeVisible()
-      const flags = await cardsOf(page, '.skincare-auto-results .skincare-flag')
-      const niacinamide = flags.filter((c) => /niacinamide/i.test(c.paras[0] ?? ''))
-      expect(niacinamide.length).toBeGreaterThan(0)
-      const listed = niacinamide.map((c) => c.paras[0] ?? '').join(' | ')
-      for (const product of [
-        'La Roche-Posay Toleriane Purifying Foaming Facial Cleanser',
-        'TIRTIR Milk Skin Toner',
-        'Eva Naturals Vitamin C+ Serum',
-      ]) {
-        expect(listed, `niacinamide card lists ${product}`).toContain(product)
-      }
-    },
-  )
+  await openTab(page, 'Skincare')
+  await expect(page.locator('.skincare-auto-results .skincare-flag').first()).toBeVisible()
+  const flags = await cardsOf(page, '.skincare-auto-results .skincare-flag')
+  const niacinamide = flags.filter((c) => /niacinamide/i.test(c.text))
+  expect(niacinamide.length).toBeGreaterThan(0)
+  const listed = niacinamide.map((c) => c.text).join(' | ')
+  for (const product of [
+    'La Roche-Posay Toleriane Purifying Foaming Facial Cleanser',
+    'TIRTIR Milk Skin Toner',
+    'Eva Naturals Vitamin C+ Serum',
+  ]) {
+    expect(listed, 'niacinamide card lists ' + product).toContain(product)
+  }
 })
 
 test('g. every skincare finding carries an "Unverified reference" tag', async ({
