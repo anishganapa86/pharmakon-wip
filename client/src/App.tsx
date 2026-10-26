@@ -216,6 +216,7 @@ function App({
   const [logError, setLogError] = useState<string | null>(null);
   const [logged, setLogged] = useState<string | null>(null);
   const [highlightedAlertId, setHighlightedAlertId] = useState<string | null>(null);
+  const [heroHighlighted, setHeroHighlighted] = useState(false);
 
   const [view, setView] = useState<View>(() => startingView(tailoring));
   useEffect(() => {
@@ -238,10 +239,20 @@ function App({
       `[data-alert-id="${CSS.escape(highlightedAlertId)}"]`,
     );
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card?.querySelector("details.alert-why")?.setAttribute("open", "");
     card?.scrollIntoView({ behavior: reduceMotion ? "instant" : "smooth", block: "center" });
     const timer = window.setTimeout(() => setHighlightedAlertId(null), 1500);
     return () => window.clearTimeout(timer);
   }, [highlightedAlertId]);
+  useEffect(() => {
+    if (!heroHighlighted) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document
+      .querySelector(".hero")
+      ?.scrollIntoView({ behavior: reduceMotion ? "instant" : "smooth", block: "start" });
+    const timer = window.setTimeout(() => setHeroHighlighted(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [heroHighlighted]);
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
@@ -370,7 +381,7 @@ function App({
       setLoading(true);
       const refreshed = await load();
       const newAlert = refreshed?.alerts.find((al) => !alertIdsBefore.has(al.id));
-      if (newAlert) setHighlightedAlertId(newAlert.id);
+      if (newAlert) setHeroHighlighted(true);
       await refreshSkincareNotice();
       await refreshInteractionsNotice();
       await refreshFoodGuidanceChips();
@@ -445,11 +456,8 @@ function App({
         <Hero
           alerts={dashboard.alerts}
           doseCount={dashboard.doseCount}
-          onDetails={() =>
-            document
-              .querySelector(".today-alerts")
-              ?.scrollIntoView({ block: "start", behavior: "smooth" })
-          }
+          highlighted={heroHighlighted}
+          onDetails={(alertId) => setHighlightedAlertId(alertId)}
         />
       )}
 

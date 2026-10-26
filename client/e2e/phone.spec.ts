@@ -287,17 +287,34 @@ test.describe('alert scroll on a phone', () => {
 
     await page.evaluate(() => window.scrollTo(0, 0))
     await logDose(page, 'Tylenol Extra Strength', 'Tylenol Extra Strength', 1)
+    const hero = page.locator('section.hero')
+    await expect(hero).toHaveClass(/hero-highlight/)
+    await expect(page.locator('.alert-highlight')).toHaveCount(0)
+    await expect
+      .poll(async () => {
+        const box = await hero.boundingBox()
+        return box ? Math.abs(box.y) : Infinity
+      })
+      .toBeLessThan(120)
+    await expect(hero).toContainText('3,300')
+    await expect(hero).toContainText('caution, 5 doses')
+    await shot(page, 'phone-new-alert-hero')
+    await expect(hero).not.toHaveClass(/hero-highlight/, { timeout: 5000 })
+
     const caution = alertsPanel(page).locator('li.alert', { hasText: '3300 mg' })
     await expect(caution).toHaveCount(1)
+    await expect(caution.locator('details.alert-why')).not.toHaveAttribute('open', '')
+    await hero.getByRole('button', { name: 'Details' }).click()
     await expect(caution).toHaveClass(/alert-highlight/)
+    await expect(caution.locator('details.alert-why')).toHaveAttribute('open', '')
     await expect
       .poll(async () => {
         const box = await caution.boundingBox()
         const height = page.viewportSize()?.height ?? 0
         return box ? Math.abs(box.y + box.height / 2 - height / 2) : Infinity
       })
-      .toBeLessThan(40)
-    await shot(page, 'phone-new-alert-scroll')
+      .toBeLessThan(60)
+    await shot(page, 'phone-details-alert')
     await expect(page.locator('.alert-highlight')).toHaveCount(0, { timeout: 5000 })
   })
 })

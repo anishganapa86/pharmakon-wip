@@ -493,7 +493,8 @@
   background: #fffaeb;
 }
 
-.alert-highlight {
+.alert-highlight,
+.hero-highlight {
   animation: alert-highlight-fade 1.5s ease-out;
 }
 
