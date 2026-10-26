@@ -161,6 +161,7 @@ export function AppShell({ user, onLogOut }: AppShellProps) {
           key={settingsEdit ? "edit" : "view"}
           startEditing={settingsEdit}
           survey={survey}
+          email={user.email}
           onLogOut={onLogOut}
           onBack={() => setScreen("app")}
           onSave={(answers) => save(answers, "completed")}

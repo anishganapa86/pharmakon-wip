@@ -4,8 +4,10 @@ import {
   EXPERIENCE_OPTIONS,
   GOAL_OPTIONS,
   GUIDANCE_OPTIONS,
+  TAB_LABELS,
   TRACK_OPTIONS,
   labelFor,
+  startingView,
   type SurveyAnswers,
 } from "../survey";
 import { Icon, type IconName } from "./Icon";
@@ -208,17 +210,21 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
                   Back
                 </button>
             </div>
-            <h2 className="screen-title">All set</h2>
+            <div className="done-badge">
+              <Icon name="check" size={32} />
+            </div>
+            <h2 className="screen-title">You're all set</h2>
+            <p className="muted done-lede">Here's how we'll tailor Pharmakon for you.</p>
             <dl className="survey-summary">
-              <dt>Keeping track of</dt>
+              <dt>Tracking</dt>
               <dd>
                 {answers.tracks.map((v) => labelFor(TRACK_OPTIONS, v)).join(", ")}
               </dd>
-              <dt>Matters most</dt>
+              <dt>Focus</dt>
               <dd>
                 {answers.goals.map((v) => labelFor(GOAL_OPTIONS, v)).join(", ")}
               </dd>
-              <dt>Familiarity</dt>
+              <dt>Experience</dt>
               <dd>
                 {answers.experience
                   ? labelFor(EXPERIENCE_OPTIONS, answers.experience)
@@ -229,8 +235,20 @@ export function Survey({ initial, mode, onFinish, onSkip, onCancel }: SurveyProp
                 {answers.guidance ? labelFor(GUIDANCE_OPTIONS, answers.guidance) : ""}
               </dd>
             </dl>
-            <p className="muted small">
-              You can change these any time in Settings.
+            <p className="muted small done-note">
+              {editing ? (
+                "You can change these any time in Settings."
+              ) : (
+                <>
+                  You'll start on{" "}
+                  <strong>
+                    {startingView(answers) === "concentration"
+                      ? "Today"
+                      : TAB_LABELS[startingView(answers)]}
+                  </strong>
+                  . You can edit this anytime in Settings.
+                </>
+              )}
             </p>
             {error && <p className="error">Couldn't save: {error}</p>}
             <div className="survey-nav">

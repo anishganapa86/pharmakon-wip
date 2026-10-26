@@ -108,7 +108,7 @@ test.describe('survey flow', () => {
     await expect(page.locator('.hint')).toHaveCount(0)
 
     await page.getByRole('button', { name: 'Settings' }).click()
-    await page.getByRole('button', { name: 'Edit my preferences' }).click()
+    await page.getByRole('button', { name: 'Retake the survey' }).click()
     await expect(page.getByRole('button', { name: 'Skincare' })).toHaveAttribute(
       'aria-pressed',
       'true',
