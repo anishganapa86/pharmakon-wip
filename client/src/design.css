@@ -1979,3 +1979,7 @@ body:has(.survey-page) .ask-button {
   outline-offset: 2px;
   border-radius: 2px;
 }
+
+.icon {
+  overflow: visible;
+}
