@@ -4,7 +4,18 @@ Pharmakon is a demo. It is educational only and not a medical device. Use made-u
 
 Safari only offers "Add to Home Screen" with a working app, and the camera, over HTTPS. A free Cloudflare quick tunnel gives the dev server an HTTPS address. Nothing here deploys anything.
 
-## Steps
+## Quick start
+
+1. Install `cloudflared` once (`winget install Cloudflare.cloudflared` on Windows, `brew install cloudflared` on Mac).
+2. In `.env`, set `PHARMAKON_DEMO_EMAIL` and `PHARMAKON_DEMO_PASSWORD` (made-up values), and `GEMINI_API_KEY` if you want the chat and scan.
+3. From the repo root, run `scripts/start-phone.ps1` (Windows) or `scripts/start-phone.sh` (Mac). It starts the tunnel, seeds the demo account, starts the app and prints the address to open in Safari on the iPhone. The launcher stops with a message if the email or password is missing.
+4. On the iPhone, open the address, log in, tap Share, then Add to Home Screen.
+
+The quick-tunnel address changes every run, so remove the old home-screen icon and add it again each time.
+
+## Manual steps
+
+Use these if the launcher doesn't work for you.
 
 1. Install `cloudflared` once (`winget install Cloudflare.cloudflared`).
 2. Put your Gemini key in `.env` as `GEMINI_API_KEY=...`. The chat and scan stay off without it.
@@ -29,7 +40,7 @@ Safari only offers "Add to Home Screen" with a working app, and the camera, over
 8. On the iPhone, open the tunnel address in Safari and log in. Tap Share, then Add to Home Screen.
 9. Open Pharmakon from the home screen. On the first Scan, allow the camera.
 
-The tunnel address changes every time cloudflared restarts, so repeat steps 5 and 6 when it does.
+The tunnel address changes every time cloudflared restarts, so repeat steps 5 and 6 when it does, and re-add the home-screen icon.
 
 ## How it fits together
 
