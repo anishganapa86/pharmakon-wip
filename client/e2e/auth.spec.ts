@@ -66,7 +66,7 @@ test('log in goes to the app', async ({ page, playwright }) => {
 test('a logged-out visit to / lands on the login page', async ({ page }) => {
   await page.goto('/')
   await expect(page).toHaveURL(/\/login\.html$/)
-  await expect(page.getByRole('heading', { name: 'Log in' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
   await shot(page, 'auth-4-redirected')
 })
 

@@ -285,6 +285,67 @@
                 transition-duration: 0.01ms !important;
             }
         }
+
+        .login-box label {
+            display: block;
+            margin: 0 0 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-ink);
+        }
+
+        .login-box .lede {
+            margin: 0 0 var(--space-5);
+            font-size: 15px;
+        }
+
+        .field {
+            margin: 0 0 20px;
+        }
+
+        .hint-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 8px 0 0;
+            font-size: 14px;
+            color: #5f6e7c;
+        }
+
+        .hint-row .hint-icon {
+            flex: none;
+            opacity: 0.45;
+        }
+
+        .hint-row.met {
+            color: var(--color-accent);
+        }
+
+        .hint-row.met .hint-icon {
+            opacity: 1;
+        }
+
+        .field-error {
+            min-height: 0;
+            margin: 6px 0 0;
+        }
+
+        .field-error:empty {
+            display: none;
+        }
+
+        .message:empty {
+            display: none;
+        }
+
+        .login-box button {
+            margin-top: 12px;
+        }
+
+        .switch {
+            margin: 20px 0 0;
+            font-size: 15px;
+        }
     </style>
 </head>
 <body>
@@ -295,16 +356,19 @@
         </div>
 
         <form class="login-box" id="login-form" novalidate>
-            <h2>Log in</h2>
+            <h2>Welcome back</h2>
+            <p class="lede">Log in to see your routine.</p>
             <div class="field">
-                <input type="email" id="email" name="email" placeholder="Email" aria-label="Email" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
             </div>
             <div class="field">
-                <input type="password" id="password" name="password" placeholder="Password" aria-label="Password" autocomplete="current-password">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" autocomplete="current-password">
             </div>
             <button type="submit" id="submit">Log in</button>
             <p class="message" id="message" role="status" aria-live="polite"></p>
-            <p class="switch">New here? <a href="/signup.html">Create an account</a></p>
+            <p class="switch">New to Pharmakon? <a href="/signup.html">Create an account</a></p>
         </form>
 
         <p class="disclaimer">Educational and demonstrative use only. Not a medical device.</p>

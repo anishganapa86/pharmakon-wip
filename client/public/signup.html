@@ -285,6 +285,67 @@
                 transition-duration: 0.01ms !important;
             }
         }
+
+        .login-box label {
+            display: block;
+            margin: 0 0 6px;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--color-ink);
+        }
+
+        .login-box .lede {
+            margin: 0 0 var(--space-5);
+            font-size: 15px;
+        }
+
+        .field {
+            margin: 0 0 20px;
+        }
+
+        .hint-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin: 8px 0 0;
+            font-size: 14px;
+            color: #5f6e7c;
+        }
+
+        .hint-row .hint-icon {
+            flex: none;
+            opacity: 0.45;
+        }
+
+        .hint-row.met {
+            color: var(--color-accent);
+        }
+
+        .hint-row.met .hint-icon {
+            opacity: 1;
+        }
+
+        .field-error {
+            min-height: 0;
+            margin: 6px 0 0;
+        }
+
+        .field-error:empty {
+            display: none;
+        }
+
+        .message:empty {
+            display: none;
+        }
+
+        .login-box button {
+            margin-top: 12px;
+        }
+
+        .switch {
+            margin: 20px 0 0;
+            font-size: 15px;
+        }
     </style>
 </head>
 <body>
@@ -295,18 +356,24 @@
         </div>
 
         <form class="login-box" id="signup-form" novalidate>
-            <h2>Create an account</h2>
+            <h2>Create your account</h2>
+            <p class="lede">It takes less than a minute.</p>
             <div class="field">
-                <input type="email" id="email" name="email" placeholder="Email" aria-label="Email" aria-describedby="email-error" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" aria-describedby="email-error" autocomplete="email" inputmode="email" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
                 <p class="field-error" id="email-error" role="alert"></p>
             </div>
             <div class="field">
-                <input type="password" id="password" name="password" placeholder="Password (10–128 characters)" aria-label="Password" aria-describedby="password-error" autocomplete="new-password">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" aria-describedby="password-error" autocomplete="new-password">
                 <p class="field-error" id="password-error" role="alert"></p>
+                <p class="hint-row" id="password-hint"><svg class="hint-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5L5.5 10.5L11.5 3.5"/></svg><span>At least 10 characters</span></p>
             </div>
             <div class="field">
-                <input type="password" id="confirm" name="confirm" placeholder="Confirm password" aria-label="Confirm password" aria-describedby="confirm-error" autocomplete="new-password">
+                <label for="confirm">Confirm password</label>
+                <input type="password" id="confirm" name="confirm" aria-describedby="confirm-error" autocomplete="new-password">
                 <p class="field-error" id="confirm-error" role="alert"></p>
+                <p class="hint-row" id="confirm-hint"><svg class="hint-icon" width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5L5.5 10.5L11.5 3.5"/></svg><span>Passwords match</span></p>
             </div>
             <button type="submit" id="submit">Create account</button>
             <p class="message" id="message" role="status" aria-live="polite"></p>
@@ -452,6 +519,21 @@
                 checkConfirm();
             }
         });
+
+        const passwordHint = document.getElementById("password-hint");
+        const confirmHint = document.getElementById("confirm-hint");
+
+        function updateHints() {
+            const length = fields.password.value.length;
+            passwordHint.classList.toggle("met", length >= PASSWORD_MIN && length <= PASSWORD_MAX);
+            confirmHint.classList.toggle(
+                "met",
+                fields.confirm.value !== "" && fields.confirm.value === fields.password.value
+            );
+        }
+
+        fields.password.addEventListener("input", updateHints);
+        fields.confirm.addEventListener("input", updateHints);
 
         function showMessage(text) {
             message.textContent = text;
