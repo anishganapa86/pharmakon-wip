@@ -3,6 +3,7 @@ import type { Alert } from "../types/contract";
 interface HeroProps {
   alerts: Alert[];
   doseCount: number;
+  onDetails: () => void;
 }
 
 const RANK: Record<Alert["severity"], number> = { urgent: 3, caution: 2, info: 1 };
@@ -15,7 +16,7 @@ function leadingAlert(alerts: Alert[]): Alert | null {
   return [...withTotals].sort((a, b) => RANK[b.severity] - RANK[a.severity])[0];
 }
 
-export function Hero({ alerts, doseCount }: HeroProps) {
+export function Hero({ alerts, doseCount, onDetails }: HeroProps) {
   const lead = leadingAlert(alerts);
   if (lead && lead.substance) {
     const total = lead.contributing_doses.reduce((sum, d) => sum + d.amount_mg, 0);
@@ -26,10 +27,15 @@ export function Hero({ alerts, doseCount }: HeroProps) {
         <p className="hero-number">
           {Math.round(total).toLocaleString()} <span className="hero-unit">mg</span>
         </p>
-        <p className="hero-meta">
+        <div className="hero-meta">
           <span className={`dot dot-${lead.severity}`} />
-          {lead.severity}, {doses} {doses === 1 ? "dose" : "doses"}
-        </p>
+          <span className="hero-status">
+            {lead.severity}, {doses} {doses === 1 ? "dose" : "doses"}
+          </span>
+          <button type="button" className="button-link hero-details" onClick={onDetails}>
+            Details
+          </button>
+        </div>
       </section>
     );
   }

@@ -52,12 +52,12 @@ export async function openTab(page: Page, name: string): Promise<void> {
     )
   } else {
     const bar = page.locator('.bottom-bar')
-    if (name === 'Food & drink') {
+    if (name === 'Food & drink' || name === 'Timeline') {
       await bar.getByRole('button', { name: 'More' }).click()
       await page.locator('.more-menu').getByRole('button', { name }).click()
       await expect(bar.getByRole('button', { name: 'More' })).toHaveClass(/active/)
     } else {
-      const label = name === 'Concentration' ? 'Home' : name
+      const label = name === 'Concentration' ? 'Today' : name
       await bar.getByRole('button', { name: label }).click()
       await expect(bar.getByRole('button', { name: label })).toHaveAttribute(
         'aria-current',

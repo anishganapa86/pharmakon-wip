@@ -58,12 +58,19 @@ import type {
 const MAX_RECENT_PRODUCTS = 5;
 const TAB_ICONS: Record<string, IconName> = {
   concentration: "home",
-  timeline: "clock",
   skincare: "sparkle",
   interactions: "alert",
 };
 
-const BOTTOM_TABS: View[] = ["concentration", "timeline", "skincare", "interactions"];
+const TAB_NAMES: Record<string, string> = {
+  concentration: "Today",
+  interactions: "Interactions",
+  skincare: "Skincare",
+};
+
+function sameLocalDay(a: Date, b: Date): boolean {
+  return a.toDateString() === b.toDateString();
+}
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -371,8 +378,43 @@ function App({
         </div>
       </header>
 
+      <div className="screen-head">
+        <div>
+          {view === "concentration" && (
+            <p className="screen-date">
+              {new Date().toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+            </p>
+          )}
+          <div className="screen-title" aria-hidden="true">
+            {view === "concentration" ? "Today" : TAB_LABELS[view]}
+          </div>
+        </div>
+        {view === "concentration" && (
+          <button
+            type="button"
+            className="avatar"
+            aria-label="Your account"
+            onClick={onOpenSettings}
+          >
+            <Icon name="user" size={20} />
+          </button>
+        )}
+      </div>
+
       {view === "concentration" && dashboard && (
-        <Hero alerts={dashboard.alerts} doseCount={dashboard.doseCount} />
+        <Hero
+          alerts={dashboard.alerts}
+          doseCount={dashboard.doseCount}
+          onDetails={() =>
+            document
+              .querySelector(".today-alerts")
+              ?.scrollIntoView({ block: "start", behavior: "smooth" })
+          }
+        />
       )}
 
       <div ref={scheduleRef} className="schedule-wrap">
@@ -484,7 +526,7 @@ function App({
       </nav>
 
       <nav className="bottom-bar" aria-label="Main">
-        {BOTTOM_TABS.map((tab) => (
+        {(["concentration", "interactions"] as View[]).map((tab) => (
           <button
             key={tab}
             type="button"
@@ -496,12 +538,39 @@ function App({
             }}
           >
             <Icon name={TAB_ICONS[tab]} size={22} />
-            <span>{tab === "concentration" ? "Home" : TAB_LABELS[tab]}</span>
+            <span>{TAB_NAMES[tab]}</span>
           </button>
         ))}
         <button
           type="button"
-          className={moreOpen || view === "food" ? "bottom-item active" : "bottom-item"}
+          className="bottom-item"
+          onClick={() => {
+            setMoreOpen(false);
+            onOpenScan();
+          }}
+        >
+          <Icon name="scan" size={22} />
+          <span>Scan</span>
+        </button>
+        <button
+          type="button"
+          className={view === "skincare" ? "bottom-item active" : "bottom-item"}
+          aria-current={view === "skincare" ? "page" : undefined}
+          onClick={() => {
+            setView("skincare");
+            setMoreOpen(false);
+          }}
+        >
+          <Icon name="sparkle" size={22} />
+          <span>Skincare</span>
+        </button>
+        <button
+          type="button"
+          className={
+            moreOpen || view === "timeline" || view === "food"
+              ? "bottom-item active"
+              : "bottom-item"
+          }
           aria-expanded={moreOpen}
           onClick={() => setMoreOpen(!moreOpen)}
         >
@@ -515,20 +584,24 @@ function App({
           <button
             type="button"
             onClick={() => {
-              setView("food");
+              setView("timeline");
               setMoreOpen(false);
             }}
           >
-            {TAB_LABELS.food}
+            <Icon name="clock" size={20} />
+            <span>{TAB_LABELS.timeline}</span>
+            <Icon name="chevronRight" size={16} />
           </button>
           <button
             type="button"
             onClick={() => {
+              setView("food");
               setMoreOpen(false);
-              onOpenScan();
             }}
           >
-            Scan
+            <Icon name="coffee" size={20} />
+            <span>{TAB_LABELS.food}</span>
+            <Icon name="chevronRight" size={16} />
           </button>
           <button
             type="button"
@@ -537,7 +610,9 @@ function App({
               onOpenSettings();
             }}
           >
-            Settings
+            <Icon name="menu" size={20} />
+            <span>Settings</span>
+            <Icon name="chevronRight" size={16} />
           </button>
           <button type="button" className="more-logout" onClick={onLogOut}>
             Log out
@@ -594,8 +669,11 @@ function App({
               .
             </p>
           )}
-          <section className="panel">
-            <h2>Concentration</h2>
+          <section className="panel today-chart">
+            <div className="section-row">
+              <h2>Concentration</h2>
+              <span className="section-note">Estimated</span>
+            </div>
             {error ? (
               <p className="error">
                 Couldn't reach the API: {error}{" "}
@@ -627,7 +705,50 @@ function App({
             <SideEffectProfile key={sideEffectKey} userId={userId} />
           </section>
 
-          <section className="panel">
+          <section className="panel today-logged">
+            <div className="section-row">
+              <h2>Logged today</h2>
+              <button
+                type="button"
+                className="button-link section-link"
+                onClick={() =>
+                  document
+                    .querySelector(".log-panel")
+                    ?.scrollIntoView({ block: "start", behavior: "smooth" })
+                }
+              >
+                Log intake
+              </button>
+            </div>
+            {dashboard === null ||
+            !dashboard.doses.some((d) => sameLocalDay(new Date(d.taken_at), new Date())) ? (
+              <p className="muted">Nothing logged today.</p>
+            ) : (
+              <ul className="rows">
+                {[...dashboard.doses]
+                  .reverse()
+                  .filter((d) => sameLocalDay(new Date(d.taken_at), new Date()))
+                  .map((d) => (
+                    <li key={d.dose_event_id} className="row">
+                      <div className="row-main">
+                        <strong>
+                          <ProductName name={d.product_name} />
+                        </strong>
+                        <span className="muted small">Quantity {d.quantity}</span>
+                      </div>
+                      <span className="row-time">
+                        {new Date(d.taken_at).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="panel today-history">
             <h2>Dose history</h2>
             {dashboard === null || dashboard.doses.length === 0 ? (
               <p className="muted">No doses logged yet.</p>
@@ -669,12 +790,12 @@ function App({
             )}
           </section>
 
-          <section className="panel">
+          <section className="panel today-feeling">
             <h2>How are you feeling?</h2>
             <SymptomCheck />
           </section>
 
-          <section className="panel">
+          <section className="panel today-alerts">
             <h2>Alerts</h2>
             {dashboard && !error && <AlertList alerts={dashboard.alerts} />}
           </section>
