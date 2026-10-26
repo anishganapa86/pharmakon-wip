@@ -9,10 +9,35 @@ own httpx.MockTransport on top of this (see tests/test_openfda_search.py).
 
 from __future__ import annotations
 
+import importlib
+import os
+import time
+from types import SimpleNamespace
+
 import httpx
 import pytest
 
-from app.api import label_cache, openfda
+for _name in (
+    "PHARMAKON_CORS_ORIGINS",
+    "PHARMAKON_COOKIE_SECURE",
+    "PHARMAKON_DEV_DOCS",
+    "PHARMAKON_DEMO_EMAIL",
+    "PHARMAKON_DEMO_PASSWORD",
+    "GEMINI_API_KEY",
+    "PHARMAKON_AI_MODEL",
+    "PHARMAKON_CHAT_PER_HOUR",
+    "PHARMAKON_SCAN_PER_HOUR",
+    "PHARMAKON_AI_DAILY_CAP",
+    "USDA_FDC_API_KEY",
+):
+    os.environ[_name] = ""
+
+label_cache = importlib.import_module("app.api.label_cache")
+main = importlib.import_module("app.api.main")
+openfda = importlib.import_module("app.api.openfda")
+throttle = importlib.import_module("app.api.throttle")
+ai = importlib.import_module("app.api.ai")
+usda = importlib.import_module("app.api.usda")
 
 
 def _no_matches(request: httpx.Request) -> httpx.Response:
@@ -41,3 +66,40 @@ def _no_label_disk_cache():
 @pytest.fixture(autouse=True)
 def _show_unverified_rules(monkeypatch):
     monkeypatch.setenv("SHOW_UNVERIFIED_RULES", "1")
+
+
+@pytest.fixture(autouse=True)
+def _fresh_usda():
+    usda.clear_cache()
+    yield
+    usda.clear_cache()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_ai_usage():
+    ai.usage.clock = time.monotonic
+    ai.usage.reset()
+    yield
+    ai.usage.clock = time.monotonic
+    ai.usage.reset()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_throttles():
+    throttle.throttles.clock = time.monotonic
+    throttle.throttles.reset()
+    yield
+    throttle.throttles.clock = time.monotonic
+    throttle.throttles.reset()
+
+
+@pytest.fixture(autouse=True)
+def _signed_in_test_user(request):
+    if request.node.get_closest_marker("real_auth"):
+        yield
+        return
+    main.app.dependency_overrides[main.current_user_or_none] = lambda: SimpleNamespace(
+        id="default", email="default@example.com"
+    )
+    yield
+    main.app.dependency_overrides.pop(main.current_user_or_none, None)

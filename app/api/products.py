@@ -13,6 +13,7 @@ unresolved string is `unmatched`; it is never hand-mapped here.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from ..registry.loader import Registry
@@ -75,6 +76,21 @@ PRODUCTS: dict[str, Product] = {
                 LabelIngredient("ACETAMINOPHEN", None),
                 LabelIngredient("PHENYLEPHRINE HCL", 5),
             ),
+        ),
+        Product(
+            "prod_supp_vitamin_c",
+            "Vitamin C",
+            (LabelIngredient("ASCORBIC ACID", None),),
+        ),
+        Product(
+            "prod_supp_vitamin_d",
+            "Vitamin D",
+            (LabelIngredient("CHOLECALCIFEROL", None),),
+        ),
+        Product(
+            "prod_supp_fish_oil",
+            "Fish oil",
+            (LabelIngredient("FISH OIL", None),),
         ),
         # ~14 g ethanol, one US standard drink.
         Product(
@@ -170,6 +186,131 @@ PRODUCTS: dict[str, Product] = {
         ),
     ]
 }
+
+
+FOOD_NOTE_CAFFEINE = "Typical caffeine; varies by product."
+FOOD_LIST_SOURCE = "Source: Pharmakon food list"
+USDA_SOURCE = "Source: USDA FoodData Central"
+
+COMPONENT_INGREDIENT = {
+    "caffeine": "CAFFEINE",
+    "alcohol": "ALCOHOL",
+    "grapefruit": "GRAPEFRUIT",
+    "grapefruit_juice": "GRAPEFRUIT JUICE",
+    "vitamin_k": "VITAMIN K",
+    "tyramine": "TYRAMINE",
+}
+INGREDIENT_COMPONENT = {name: key for key, name in COMPONENT_INGREDIENT.items()}
+
+FOOD_ITEMS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("coffee", "Coffee", ("caffeine",)),
+    ("decaf_coffee", "Decaf coffee", ()),
+    ("tea", "Tea", ("caffeine",)),
+    ("green_tea", "Green tea", ("caffeine",)),
+    ("herbal_tea", "Herbal tea", ()),
+    ("energy_drink", "Energy drink", ("caffeine",)),
+    ("cola", "Cola", ("caffeine",)),
+    ("wine", "Wine", ("alcohol",)),
+    ("spirits", "Spirits", ("alcohol",)),
+    ("grapefruit", "Grapefruit", ("grapefruit",)),
+    ("grapefruit_juice", "Grapefruit juice", ("grapefruit_juice",)),
+    ("kale", "Kale", ("vitamin_k",)),
+    ("spinach", "Spinach", ("vitamin_k",)),
+    ("collard_greens", "Collard greens", ("vitamin_k",)),
+    ("broccoli", "Broccoli", ("vitamin_k",)),
+    ("aged_cheese", "Aged cheese", ("tyramine",)),
+    ("cured_meats", "Cured meats", ("tyramine",)),
+    ("soy_sauce", "Soy sauce", ("tyramine",)),
+    ("chicken", "Chicken", ()),
+    ("rice", "Rice", ()),
+    ("bread", "Bread", ()),
+    ("eggs", "Eggs", ()),
+    ("milk", "Milk", ()),
+    ("apple", "Apple", ()),
+    ("banana", "Banana", ()),
+    ("oatmeal", "Oatmeal", ()),
+    ("pasta", "Pasta", ()),
+    ("potato", "Potato", ()),
+    ("salmon", "Salmon", ()),
+    ("beef", "Beef", ()),
+    ("pork", "Pork", ()),
+    ("yogurt", "Yogurt", ()),
+    ("orange", "Orange", ()),
+    ("orange_juice", "Orange juice", ()),
+    ("carrot", "Carrot", ()),
+    ("tomato", "Tomato", ()),
+    ("peanut_butter", "Peanut butter", ()),
+    ("water", "Water", ()),
+)
+
+
+def _food_product(key: str, name: str, components: tuple[str, ...]) -> Product:
+    if components:
+        ingredients = tuple(
+            LabelIngredient(COMPONENT_INGREDIENT[c], None) for c in components
+        )
+    else:
+        ingredients = (LabelIngredient(name.upper(), None),)
+    return Product(f"prod_food_{key}", name, ingredients)
+
+
+FOOD_PRODUCTS = {
+    f"prod_food_{key}": _food_product(key, name, components)
+    for key, name, components in FOOD_ITEMS
+}
+PRODUCTS.update(FOOD_PRODUCTS)
+
+FOOD_DRINK_IDS = frozenset(FOOD_PRODUCTS) | {"prod_example_beer"}
+SUPPLEMENT_IDS = frozenset(
+    {"prod_supp_vitamin_c", "prod_supp_vitamin_d", "prod_supp_fish_oil"}
+)
+
+
+def is_food(product_id: str) -> bool:
+    return product_id in FOOD_DRINK_IDS or product_id.startswith("usda_")
+
+
+def food_label(product_id: str) -> str | None:
+    if product_id.startswith("usda_"):
+        return USDA_SOURCE
+    if product_id not in FOOD_DRINK_IDS:
+        return None
+    components = {
+        INGREDIENT_COMPONENT.get(i.name) for i in PRODUCTS[product_id].ingredients
+    }
+    if product_id in ("prod_food_coffee", "prod_food_tea", "prod_food_green_tea"):
+        return f"{FOOD_LIST_SOURCE}. {FOOD_NOTE_CAFFEINE}"
+    if "caffeine" in components:
+        return f"{FOOD_LIST_SOURCE}. {FOOD_NOTE_CAFFEINE}"
+    return FOOD_LIST_SOURCE
+
+
+def intake_kind(product_id: str, source: str) -> str | None:
+    if is_food(product_id):
+        return "food_drink"
+    if product_id in SUPPLEMENT_IDS:
+        return "supplement"
+    if source == "skincare_catalog":
+        return "skincare"
+    if source in ("my_product", "user_entered"):
+        return None
+    return "medication"
+
+
+def match_score(query: str, name: str, ingredient_names: list[str]) -> int:
+    needle = query.strip().lower()
+    lowered = name.lower()
+    if lowered == needle:
+        return 100
+    if lowered.startswith(needle):
+        return 80
+    if any(word.startswith(needle) for word in re.split(r"\W+", lowered)):
+        return 60
+    if needle in lowered:
+        return 40
+    if any(needle in ingredient.lower() for ingredient in ingredient_names):
+        return 30
+    return 10
 
 
 def search(q: str, registry: Registry) -> list[Product]:

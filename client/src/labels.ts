@@ -58,6 +58,17 @@ export const NOT_MODELED_NO_PK_DATA =
 /** "Demo data, unverified" for the synthetic catalog; the server's own
  * badge text for a curated-skincare or my-product result (see `label` on
  * ProductSearchResult); nothing for real openFDA data. */
+const KIND_LABELS: Record<string, string> = {
+  medication: "Medication",
+  supplement: "Supplement",
+  food_drink: "Food & drink",
+  skincare: "Skincare",
+};
+
+export function kindLabel(p: Pick<ProductSearchResult, "kind">): string | null {
+  return p.kind ? (KIND_LABELS[p.kind] ?? null) : null;
+}
+
 export function sourceLabel(
   p: Pick<ProductSearchResult, "source" | "label">,
 ): string | null {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css";
 import {
   fetchAlerts,
@@ -9,6 +9,7 @@ import {
   fetchSchedule,
   fetchSkincareCheck,
   logDose,
+  type AuthUser,
 } from "./api";
 import { AlertList } from "./components/AlertList";
 import {
@@ -16,6 +17,7 @@ import {
   type TimeWindow,
 } from "./components/ConcentrationChart";
 import { FoodGuidance } from "./components/FoodGuidance";
+import { Hero } from "./components/Hero";
 import { Interactions } from "./components/Interactions";
 import { LogForm } from "./components/LogForm";
 import { ProductName } from "./components/ProductName";
@@ -25,6 +27,7 @@ import { SideEffectProfile } from "./components/SideEffectProfile";
 import { Skincare } from "./components/Skincare";
 import { SymptomCheck } from "./components/SymptomCheck";
 import { Timeline } from "./components/Timeline";
+import { Icon, type IconName } from "./components/Icon";
 import { TopicalIngredients } from "./components/TopicalIngredients";
 import {
   ingredientLabel,
@@ -32,9 +35,20 @@ import {
   notModeledReason,
   productModelable,
 } from "./labels";
+import {
+  LOG_HINT,
+  TAB_HINTS,
+  TAB_LABELS,
+  scrollsToSchedule,
+  showsHints,
+  startingView,
+  type Survey,
+  type View,
+} from "./survey";
 import { formatDateClock, HOUR_MS } from "./time";
 import type {
   Alert,
+  DuplicateIngredientFinding,
   LoggedDoseEvent,
   ProductSearchResult,
   RecentProduct,
@@ -42,15 +56,22 @@ import type {
   SubstanceCurve,
 } from "./types/contract";
 
-type View =
-  | "concentration"
-  | "timeline"
-  | "skincare"
-  | "interactions"
-  | "food";
-
-const USER_ID = "default";
 const MAX_RECENT_PRODUCTS = 5;
+const TAB_ICONS: Record<string, IconName> = {
+  concentration: "home",
+  skincare: "sparkle",
+  interactions: "alert",
+};
+
+const TAB_NAMES: Record<string, string> = {
+  concentration: "Today",
+  interactions: "Interactions",
+  skincare: "Skincare",
+};
+
+function sameLocalDay(a: Date, b: Date): boolean {
+  return a.toDateString() === b.toDateString();
+}
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -88,12 +109,12 @@ interface Dashboard {
  * hours back if there is none) to six hours past now, or 24 when anything is
  * scheduled, so the next scheduled dose shows up in the projection.
  */
-async function fetchDashboard(): Promise<Dashboard> {
+async function fetchDashboard(userId: string): Promise<Dashboard> {
   const nowMs = Date.now();
   const [doses, alerts, schedule] = await Promise.all([
-    fetchDoses(USER_ID),
-    fetchAlerts(USER_ID),
-    fetchSchedule(USER_ID),
+    fetchDoses(userId),
+    fetchAlerts(userId),
+    fetchSchedule(userId),
   ]);
   const recentLogged = recentProducts(doses);
 
@@ -138,7 +159,7 @@ async function fetchDashboard(): Promise<Dashboard> {
   };
   const curves = await Promise.all(
     substances.map((substance_id) =>
-      fetchCurve(USER_ID, {
+      fetchCurve(userId, {
         substance_id,
         from: new Date(window.fromMs).toISOString(),
         to: new Date(window.toMs).toISOString(),
@@ -157,7 +178,33 @@ async function fetchDashboard(): Promise<Dashboard> {
   };
 }
 
-function App() {
+export interface TabRequest {
+  view: View;
+  nonce: number;
+}
+
+interface AppProps {
+  onViewChange: (view: View) => void;
+  onOpenScan: () => void;
+  tabRequest: TabRequest | null;
+  user: AuthUser;
+  onLogOut: () => void;
+  survey: Survey;
+  onOpenSettings: () => void;
+}
+
+function App({
+  user,
+  onLogOut,
+  survey,
+  onOpenSettings,
+  onOpenScan,
+  onViewChange,
+  tabRequest,
+}: AppProps) {
+  const tailoring = survey.status === "completed" ? survey : null;
+  const hints = showsHints(tailoring);
+  const userId = user.id;
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -168,12 +215,49 @@ function App() {
   const [logging, setLogging] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
   const [logged, setLogged] = useState<string | null>(null);
+  const [highlightedAlertId, setHighlightedAlertId] = useState<string | null>(null);
+  const [heroHighlighted, setHeroHighlighted] = useState(false);
 
-  const [view, setView] = useState<View>("concentration");
+  const [view, setView] = useState<View>(() => startingView(tailoring));
+  useEffect(() => {
+    onViewChange(view);
+  }, [view, onViewChange]);
+  const [handledNonce, setHandledNonce] = useState(0);
+  if (tabRequest && tabRequest.nonce !== handledNonce) {
+    setHandledNonce(tabRequest.nonce);
+    setView(tabRequest.view);
+  }
+  const [moreOpen, setMoreOpen] = useState(false);
+  const scheduleRef = useRef<HTMLDivElement>(null);
+  const jumpToSchedule = scrollsToSchedule(tailoring);
+  useEffect(() => {
+    if (jumpToSchedule) scheduleRef.current?.scrollIntoView({ block: "start" });
+  }, [jumpToSchedule]);
+  useEffect(() => {
+    if (!highlightedAlertId) return;
+    const card = document.querySelector(
+      `[data-alert-id="${CSS.escape(highlightedAlertId)}"]`,
+    );
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card?.querySelector("details.alert-why")?.setAttribute("open", "");
+    card?.scrollIntoView({ behavior: reduceMotion ? "instant" : "smooth", block: "center" });
+    const timer = window.setTimeout(() => setHighlightedAlertId(null), 1500);
+    return () => window.clearTimeout(timer);
+  }, [highlightedAlertId]);
+  useEffect(() => {
+    if (!heroHighlighted) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document
+      .querySelector(".hero")
+      ?.scrollIntoView({ behavior: reduceMotion ? "instant" : "smooth", block: "start" });
+    const timer = window.setTimeout(() => setHeroHighlighted(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [heroHighlighted]);
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
   const [interactionsNotice, setInteractionsNotice] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateIngredientFinding[]>([]);
   const [withFoodNames, setWithFoodNames] = useState<Map<string, FoodChip>>(
     new Map(),
   );
@@ -182,20 +266,55 @@ function App() {
   // effect. Callers that re-load set `loading` themselves.
   const load = useCallback(
     () =>
-      fetchDashboard()
+      fetchDashboard(userId)
         .then((d) => {
           setDashboard(d);
           setError(null);
+          return d;
         })
         .catch((e: unknown) => setError(errorMessage(e)))
         .finally(() => setLoading(false)),
-    [],
+    [userId],
+  );
+
+  const refreshFoodGuidanceChips = useCallback(
+    () =>
+      fetchFoodGuidance(userId)
+        .then((check) => {
+          const chips = new Map<string, FoodChip>();
+          for (const f of check.guidance) {
+            if (f.class !== "take_with_food" && f.class !== "take_with_food_if_upset")
+              continue;
+            const name = f.name.trim().toLowerCase();
+            if (f.class === "take_with_food" || !chips.has(name))
+              chips.set(name, f.class);
+          }
+          setWithFoodNames(chips);
+        })
+        .catch(() => undefined),
+    [userId],
   );
 
   useEffect(() => {
     void load();
     void refreshFoodGuidanceChips();
-  }, [load]);
+  }, [load, refreshFoodGuidanceChips]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchInteractionCheck(userId)
+      .then((check) => {
+        if (cancelled) return;
+        setDuplicates(check.duplicate_ingredients);
+        setInteractionsNotice(
+          check.interactions.length > 0 || check.duplicate_ingredients.length > 0,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   function reload() {
     setLoading(true);
@@ -206,7 +325,7 @@ function App() {
   // dose that was already recorded.
   async function refreshSkincareNotice() {
     try {
-      const check = await fetchSkincareCheck(USER_ID);
+      const check = await fetchSkincareCheck(userId);
       setSkincareNotice(
         check.incompatibilities.length > 0 || check.irritants.length > 0,
       );
@@ -217,26 +336,13 @@ function App() {
 
   async function refreshInteractionsNotice() {
     try {
-      const check = await fetchInteractionCheck(USER_ID);
-      setInteractionsNotice(check.interactions.length > 0);
+      const check = await fetchInteractionCheck(userId);
+      setDuplicates(check.duplicate_ingredients);
+      setInteractionsNotice(
+        check.interactions.length > 0 || check.duplicate_ingredients.length > 0,
+      );
     } catch {
       // Leave the existing notice state as-is.
-    }
-  }
-
-  async function refreshFoodGuidanceChips() {
-    try {
-      const check = await fetchFoodGuidance(USER_ID);
-      const chips = new Map<string, FoodChip>();
-      for (const f of check.guidance) {
-        if (f.class !== "take_with_food" && f.class !== "take_with_food_if_upset")
-          continue;
-        const name = f.name.trim().toLowerCase();
-        if (f.class === "take_with_food" || !chips.has(name)) chips.set(name, f.class);
-      }
-      setWithFoodNames(chips);
-    } catch {
-      // Leave the existing chip state as-is.
     }
   }
 
@@ -259,8 +365,9 @@ function App() {
     setLogging(true);
     setLogError(null);
     setLogged(null);
+    const alertIdsBefore = new Set(dashboard?.alerts.map((al) => al.id));
     try {
-      await logDose(USER_ID, {
+      await logDose(userId, {
         product_id: p.id,
         taken_at: new Date().toISOString(),
         quantity: qtyToLog,
@@ -272,7 +379,9 @@ function App() {
       setTimelineKey((k) => k + 1);
       setSideEffectKey((k) => k + 1);
       setLoading(true);
-      await load();
+      const refreshed = await load();
+      const newAlert = refreshed?.alerts.find((al) => !alertIdsBefore.has(al.id));
+      if (newAlert) setHeroHighlighted(true);
       await refreshSkincareNotice();
       await refreshInteractionsNotice();
       await refreshFoodGuidanceChips();
@@ -290,13 +399,71 @@ function App() {
   }
 
   return (
-    <main className="page">
+    <main className={`page view-${view}`}>
       <header className="page-header">
-        <h1>Pharmakon</h1>
+        <div className="page-header-row">
+          <h1>Pharmakon</h1>
+          <div className="account">
+            <span className="account-email" title={user.email}>
+              {user.email}
+            </span>
+            <button
+              type="button"
+              className="control secondary"
+              onClick={onOpenSettings}
+            >
+              Settings
+            </button>
+            <button
+              type="button"
+              className="control secondary logout"
+              onClick={onLogOut}
+            >
+              Log out
+            </button>
+          </div>
+        </div>
       </header>
 
+      <div className="screen-head">
+        <div>
+          {view === "concentration" && (
+            <p className="screen-date">
+              {new Date().toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+              })}
+            </p>
+          )}
+          <div className="screen-title" aria-hidden="true">
+            {view === "concentration" ? "Today" : TAB_LABELS[view]}
+          </div>
+        </div>
+        {view === "concentration" && (
+          <button
+            type="button"
+            className="avatar"
+            aria-label="Your account"
+            onClick={onOpenSettings}
+          >
+            <Icon name="user" size={20} />
+          </button>
+        )}
+      </div>
+
+      {view === "concentration" && dashboard && (
+        <Hero
+          alerts={dashboard.alerts}
+          doseCount={dashboard.doseCount}
+          highlighted={heroHighlighted}
+          onDetails={(alertId) => setHighlightedAlertId(alertId)}
+        />
+      )}
+
+      <div ref={scheduleRef} className="schedule-wrap">
       <Schedule
-        userId={USER_ID}
+        userId={userId}
         medications={dashboard?.schedule ?? null}
         recent={dashboard?.recent ?? []}
         onChanged={() => void handleScheduleChanged()}
@@ -304,13 +471,20 @@ function App() {
         onViewInteractions={() => setView("interactions")}
         withFoodNames={withFoodNames}
       />
+      </div>
 
-      <section className="panel">
-        <h2>Log a dose</h2>
+      <section className="panel log-panel">
+        <div className="panel-title-row">
+          <h2>Log intake</h2>
+          <button type="button" className="control secondary" onClick={onOpenScan}>
+            Scan
+          </button>
+        </div>
+        {hints && <p className="hint">{LOG_HINT}</p>}
         <form className="log-row" onSubmit={handleLogDose}>
           <ProductSearch
             key={searchKey}
-            userId={USER_ID}
+            userId={userId}
             selected={product}
             onSelect={(p) => {
               setProduct(p);
@@ -395,11 +569,108 @@ function App() {
         </button>
       </nav>
 
-      {view === "skincare" && <Skincare userId={USER_ID} />}
+      <nav className="bottom-bar" aria-label="Main">
+        {(["concentration", "interactions"] as View[]).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            className={view === tab ? "bottom-item active" : "bottom-item"}
+            aria-current={view === tab ? "page" : undefined}
+            onClick={() => {
+              setView(tab);
+              setMoreOpen(false);
+            }}
+          >
+            <Icon name={TAB_ICONS[tab]} size={22} />
+            <span>{TAB_NAMES[tab]}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          className="bottom-item"
+          onClick={() => {
+            setMoreOpen(false);
+            onOpenScan();
+          }}
+        >
+          <Icon name="scan" size={22} />
+          <span>Scan</span>
+        </button>
+        <button
+          type="button"
+          className={view === "skincare" ? "bottom-item active" : "bottom-item"}
+          aria-current={view === "skincare" ? "page" : undefined}
+          onClick={() => {
+            setView("skincare");
+            setMoreOpen(false);
+          }}
+        >
+          <Icon name="sparkle" size={22} />
+          <span>Skincare</span>
+        </button>
+        <button
+          type="button"
+          className={
+            moreOpen || view === "timeline" || view === "food"
+              ? "bottom-item active"
+              : "bottom-item"
+          }
+          aria-expanded={moreOpen}
+          onClick={() => setMoreOpen(!moreOpen)}
+        >
+          <Icon name="menu" size={22} />
+          <span>More</span>
+        </button>
+      </nav>
 
-      {view === "interactions" && <Interactions userId={USER_ID} />}
+      {moreOpen && (
+        <div className="more-menu">
+          <button
+            type="button"
+            onClick={() => {
+              setView("timeline");
+              setMoreOpen(false);
+            }}
+          >
+            <Icon name="clock" size={20} />
+            <span>{TAB_LABELS.timeline}</span>
+            <Icon name="chevronRight" size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setView("food");
+              setMoreOpen(false);
+            }}
+          >
+            <Icon name="coffee" size={20} />
+            <span>{TAB_LABELS.food}</span>
+            <Icon name="chevronRight" size={16} />
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMoreOpen(false);
+              onOpenSettings();
+            }}
+          >
+            <Icon name="menu" size={20} />
+            <span>Settings</span>
+            <Icon name="chevronRight" size={16} />
+          </button>
+          <button type="button" className="more-logout" onClick={onLogOut}>
+            Log out
+          </button>
+        </div>
+      )}
 
-      {view === "food" && <FoodGuidance userId={USER_ID} />}
+      {hints && <p className="hint">{TAB_HINTS[view]}</p>}
+
+      {view === "skincare" && <Skincare userId={userId} />}
+
+      {view === "interactions" && <Interactions userId={userId} refreshKey={timelineKey} />}
+
+      {view === "food" && <FoodGuidance userId={userId} />}
 
       {view === "timeline" && (
         <>
@@ -411,7 +682,7 @@ function App() {
             </p>
             <h2>Add to your timeline</h2>
             <LogForm
-              userId={USER_ID}
+              userId={userId}
               onLogged={() => setTimelineKey((k) => k + 1)}
             />
           </section>
@@ -420,8 +691,8 @@ function App() {
             <h2>Timeline</h2>
             <Timeline
               key={timelineKey}
-              userId={USER_ID}
-              onDeleted={() => setTimelineKey((k) => k + 1)}
+              userId={userId}
+              onDeleted={() => void handleScheduleChanged()}
             />
           </section>
         </>
@@ -442,8 +713,11 @@ function App() {
               .
             </p>
           )}
-          <section className="panel">
-            <h2>Concentration</h2>
+          <section className="panel today-chart">
+            <div className="section-row">
+              <h2>Concentration</h2>
+              <span className="section-note">Estimated</span>
+            </div>
             {error ? (
               <p className="error">
                 Couldn't reach the API: {error}{" "}
@@ -472,10 +746,53 @@ function App() {
                 ))}
               </div>
             )}
-            <SideEffectProfile key={sideEffectKey} userId={USER_ID} />
+            <SideEffectProfile key={sideEffectKey} userId={userId} />
           </section>
 
-          <section className="panel">
+          <section className="panel today-logged">
+            <div className="section-row">
+              <h2>Logged today</h2>
+              <button
+                type="button"
+                className="button-link section-link"
+                onClick={() =>
+                  document
+                    .querySelector(".log-panel")
+                    ?.scrollIntoView({ block: "start", behavior: "smooth" })
+                }
+              >
+                Log intake
+              </button>
+            </div>
+            {dashboard === null ||
+            !dashboard.doses.some((d) => sameLocalDay(new Date(d.taken_at), new Date())) ? (
+              <p className="muted">Nothing logged today.</p>
+            ) : (
+              <ul className="rows">
+                {[...dashboard.doses]
+                  .reverse()
+                  .filter((d) => sameLocalDay(new Date(d.taken_at), new Date()))
+                  .map((d) => (
+                    <li key={d.dose_event_id} className="row">
+                      <div className="row-main">
+                        <strong>
+                          <ProductName name={d.product_name} />
+                        </strong>
+                        <span className="muted small">Quantity {d.quantity}</span>
+                      </div>
+                      <span className="row-time">
+                        {new Date(d.taken_at).toLocaleTimeString([], {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </li>
+                  ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="panel today-history">
             <h2>Dose history</h2>
             {dashboard === null || dashboard.doses.length === 0 ? (
               <p className="muted">No doses logged yet.</p>
@@ -502,7 +819,7 @@ function App() {
                       </div>
                       {d.topical && <TopicalIngredients ingredients={d.ingredients} />}
                       {modeled ? (
-                        <span className="tag tag-modelable">Modeled</span>
+                        <span className="search-estimate">Concentration estimate</span>
                       ) : (
                         <span className="tag tag-logged-only">
                           {d.topical
@@ -517,14 +834,21 @@ function App() {
             )}
           </section>
 
-          <section className="panel">
+          <section className="panel today-feeling">
             <h2>How are you feeling?</h2>
             <SymptomCheck />
           </section>
 
-          <section className="panel">
+          <section className="panel today-alerts">
             <h2>Alerts</h2>
-            {dashboard && !error && <AlertList alerts={dashboard.alerts} />}
+            {dashboard && !error && (
+              <AlertList
+                alerts={dashboard.alerts}
+                highlightedAlertId={highlightedAlertId}
+                duplicates={duplicates}
+                onOpenInteractions={() => setView("interactions")}
+              />
+            )}
           </section>
         </>
       )}

@@ -1,8 +1,9 @@
 """FastAPI app: POST /doses, GET /curve, GET /alerts (docs/api-contract.md), plus
 the medication schedule (app/api/schedule.py).
 
-v1 constraints, from the contract: a single hardcoded user ("default"), no
-authentication, and the deployment runs on seeded synthetic data only.
+Every route except POST /auth/signup, POST /auth/login and GET /health needs a
+logged-in session (app/api/auth.py). A /users/{id}/... route also needs {id}
+to be the logged-in user.
 
 Pharmakon is not a medical device. Outputs are estimates from a
 one-compartment, population-average model, for educational use only.
@@ -15,31 +16,54 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from pydantic import AwareDatetime, BaseModel, Field, model_validator
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 from sqlalchemy.orm import Session, sessionmaker
+from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ..registry.loader import Registry, load_registry
 from . import (
+    ai,
     alternatives,
+    auth,
     food_guidance,
     interactions,
     logger,
     my_products,
     openfda,
+    scan,
     schedule,
     service,
+    settings,
     side_effects,
     skincare,
+    survey,
+    usda,
 )
-from .db import Base, make_engine
-from .products import PRODUCTS, decompose, search
-
-DEFAULT_USER = "default"
+from .db import Base, User, UserSurvey, make_engine
+from .products import (
+    INGREDIENT_COMPONENT,
+    PRODUCTS,
+    decompose,
+    food_label,
+    intake_kind,
+    is_food,
+    match_score,
+    search,
+)
+from .throttle import throttles
 
 _engine = make_engine()
 _SessionLocal = sessionmaker(bind=_engine)
@@ -48,18 +72,8 @@ _SessionLocal = sessionmaker(bind=_engine)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(_engine)
+    auth.warm_dummy_hash()
     yield
-
-
-app = FastAPI(title="Pharmakon", lifespan=lifespan)
-
-# Vite's dev server. No credentials: v1 has no auth.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["Content-Type"],
-)
 
 
 # --- Dependencies (overridden in tests) ---------------------------------------
@@ -78,30 +92,173 @@ def get_registry() -> Registry:
     return load_registry()
 
 
-def require_user(id: str) -> str:
-    if id != DEFAULT_USER:
-        raise HTTPException(404, f"unknown user {id!r}")
+def get_generator() -> ai.Generator:
+    return ai.GeminiGenerator()
+
+
+Db = Annotated[Session, Depends(get_session)]
+Reg = Annotated[Registry, Depends(get_registry)]
+Now = Annotated[datetime, Depends(get_now)]
+Gen = Annotated[ai.Generator, Depends(get_generator)]
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    response.set_cookie(
+        auth.COOKIE_NAME,
+        token,
+        max_age=int(auth.SESSION_TTL.total_seconds()),
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure(),
+        path="/",
+    )
+
+
+def clear_session_cookie(response: Response) -> None:
+    response.delete_cookie(
+        auth.COOKIE_NAME,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure(),
+        path="/",
+    )
+
+
+def current_user_or_none(
+    request: Request, response: Response, session: Db, now: Now
+) -> User | None:
+    token = request.cookies.get(auth.COOKIE_NAME)
+    if not token:
+        return None
+    resolved = auth.resolve_session(session, token, now)
+    if resolved is None:
+        session.commit()
+        return None
+    user, slid = resolved
+    if slid:
+        session.commit()
+        set_session_cookie(response, token)
+    return user
+
+
+OptionalUser = Annotated[User | None, Depends(current_user_or_none)]
+
+
+def current_user(user: OptionalUser) -> User:
+    if user is None:
+        raise HTTPException(401, "authentication required")
+    return user
+
+
+CurrentUser = Annotated[User, Depends(current_user)]
+
+PUBLIC_ROUTES = frozenset(
+    {("POST", "/auth/signup"), ("POST", "/auth/login"), ("GET", "/health")}
+)
+
+
+def require_login(request: Request, user: OptionalUser) -> None:
+    route = request.scope.get("route")
+    path = route.path if route is not None else request.url.path
+    if (request.method, path) in PUBLIC_ROUTES:
+        return
+    if user is None:
+        raise HTTPException(401, "authentication required")
+
+
+def require_user(id: str, user: CurrentUser) -> str:
+    if id != user.id:
+        raise HTTPException(403, "you can only access your own data")
     return id
 
 
 UserId = Annotated[str, Depends(require_user)]
-Db = Annotated[Session, Depends(get_session)]
-Reg = Annotated[Registry, Depends(get_registry)]
-Now = Annotated[datetime, Depends(get_now)]
+
+app = FastAPI(
+    title="Pharmakon",
+    lifespan=lifespan,
+    dependencies=[Depends(require_login)],
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins(),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_headers=["Content-Type"],
+    expose_headers=["Retry-After"],
+)
+
+STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+@app.middleware("http")
+async def reject_foreign_origin(request: Request, call_next):
+    origin = request.headers.get("origin")
+    if (
+        request.method in STATE_CHANGING_METHODS
+        and origin is not None
+        and origin.rstrip("/") not in settings.cors_origins()
+    ):
+        return _error(
+            403,
+            "forbidden",
+            "Request origin is not allowed.",
+            headers={"Cache-Control": "no-store"},
+        )
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+def require_dev_docs() -> None:
+    if not settings.env_flag("PHARMAKON_DEV_DOCS"):
+        raise HTTPException(404, "not found")
+
+
+@app.get(
+    "/openapi.json", include_in_schema=False, dependencies=[Depends(require_dev_docs)]
+)
+def openapi_schema() -> JSONResponse:
+    return JSONResponse(app.openapi())
+
+
+@app.get("/docs", include_in_schema=False, dependencies=[Depends(require_dev_docs)])
+def swagger_docs() -> HTMLResponse:
+    return get_swagger_ui_html(openapi_url="/openapi.json", title="Pharmakon API")
+
+
+@app.get("/redoc", include_in_schema=False, dependencies=[Depends(require_dev_docs)])
+def redoc_docs() -> HTMLResponse:
+    return get_redoc_html(openapi_url="/openapi.json", title="Pharmakon API")
+
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
 
 
 # --- Errors: {"error": {"code", "message"}} on every non-2xx -----------------
 
 
-def _error(status: int, code: str, message: str) -> JSONResponse:
+def _error(
+    status: int, code: str, message: str, headers: dict[str, str] | None = None
+) -> JSONResponse:
     return JSONResponse(
-        status_code=status, content={"error": {"code": code, "message": message}}
+        status_code=status,
+        content={"error": {"code": code, "message": message}},
+        headers=headers,
     )
 
 
 @app.exception_handler(StarletteHTTPException)
 async def http_error(_req: Request, exc: StarletteHTTPException) -> JSONResponse:
-    code = "not_found" if exc.status_code == 404 else "http_error"
+    code = {401: "unauthorized", 403: "forbidden", 404: "not_found"}.get(
+        exc.status_code, "http_error"
+    )
     return _error(exc.status_code, code, str(exc.detail))
 
 
@@ -117,6 +274,273 @@ async def validation_error(_req: Request, exc: RequestValidationError) -> JSONRe
         f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in errors
     )
     return _error(422, code, message)
+
+
+class SignupRequest(BaseModel):
+    email: str = Field(max_length=1000)
+    password: str = Field(max_length=1000)
+
+
+class LoginRequest(BaseModel):
+    email: str = Field(max_length=1000)
+    password: str = Field(max_length=1000)
+
+
+def client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
+
+
+def throttle_pair(ip: str, email: str) -> str:
+    return f"{ip}|{email.strip().lower()[: auth.EMAIL_MAX_LENGTH]}"
+
+
+def rate_limited(retry_after: int) -> JSONResponse:
+    return _error(
+        429,
+        "rate_limited",
+        "Too many attempts. Try again later.",
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+def user_json(user: User) -> dict:
+    return {"id": user.id, "email": user.email}
+
+
+@app.post("/auth/signup", status_code=201)
+def signup(
+    body: SignupRequest, request: Request, response: Response, session: Db, now: Now
+) -> dict:
+    ip = client_ip(request)
+    pair = throttle_pair(ip, body.email)
+    retry = throttles.signup_retry_after(ip, pair)
+    if retry:
+        return rate_limited(retry)
+    throttles.signup_attempted(ip)
+    try:
+        user = auth.create_user(session, body.email, body.password, now)
+    except (auth.InvalidEmailError, auth.InvalidPasswordError) as exc:
+        throttles.signup_failed(pair)
+        return _error(422, "validation_error", str(exc))
+    except auth.DuplicateEmailError:
+        throttles.signup_failed(pair)
+        return _error(409, "email_taken", "An account with that email already exists.")
+    previous = request.cookies.get(auth.COOKIE_NAME)
+    if previous:
+        auth.end_session(session, previous)
+    token = auth.start_session(session, user.id, now)
+    survey.create_pending(session, user.id, now)
+    session.commit()
+    set_session_cookie(response, token)
+    return user_json(user)
+
+
+@app.post("/auth/login")
+def login(
+    body: LoginRequest, request: Request, response: Response, session: Db, now: Now
+) -> dict:
+    ip = client_ip(request)
+    pair = throttle_pair(ip, body.email)
+    retry = throttles.login_retry_after(ip, pair)
+    if retry:
+        return rate_limited(retry)
+    user = auth.authenticate(session, body.email, body.password)
+    if user is None:
+        throttles.login_failed(ip, pair)
+        return _error(401, "invalid_credentials", "Incorrect email or password.")
+    throttles.login_succeeded(pair)
+    previous = request.cookies.get(auth.COOKIE_NAME)
+    if previous:
+        auth.end_session(session, previous)
+    token = auth.start_session(session, user.id, now)
+    session.commit()
+    set_session_cookie(response, token)
+    return user_json(user)
+
+
+@app.post("/auth/logout", status_code=204)
+def logout(
+    request: Request, response: Response, session: Db, user: CurrentUser
+) -> None:
+    token = request.cookies.get(auth.COOKIE_NAME)
+    if token:
+        auth.end_session(session, token)
+        session.commit()
+    clear_session_cookie(response)
+
+
+@app.get("/auth/me")
+def me(user: CurrentUser, session: Db) -> dict:
+    return {**user_json(user), "survey_status": survey.status_for(session, user.id)}
+
+
+@app.get("/users/{id}/survey")
+def get_survey(user_id: UserId, session: Db) -> dict:
+    return survey.survey_json(session.get(UserSurvey, user_id))
+
+
+@app.put("/users/{id}/survey")
+def put_survey(
+    body: survey.SurveyUpdate, user_id: UserId, session: Db, now: Now
+) -> dict:
+    row = survey.save(session, user_id, body, now)
+    session.commit()
+    return survey.survey_json(row)
+
+
+class ChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=1000)
+
+
+class ChatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    messages: list[ChatMessage] = Field(min_length=1, max_length=40)
+
+
+CHAT_TURNS = 10
+CHAT_MAX_OUTPUT_TOKENS = 600
+
+
+def ai_gate(
+    generator: ai.Generator, user_id: str, per_hour: int
+) -> JSONResponse | None:
+    if isinstance(generator, ai.GeminiGenerator) and not ai.has_key():
+        return _error(503, "ai_unavailable", ai.UNAVAILABLE_MESSAGE)
+    blocked = ai.usage.try_use(user_id, per_hour)
+    if blocked is None:
+        return None
+    kind, wait = blocked
+    if kind == "daily":
+        return _error(
+            429,
+            "ai_daily_cap",
+            "The demo assistant has reached its daily limit. Try again tomorrow.",
+            headers={"Retry-After": str(wait)},
+        )
+    return _error(
+        429,
+        "rate_limited",
+        "You've reached the hourly limit for the demo assistant. Try again later.",
+        headers={"Retry-After": str(wait)},
+    )
+
+
+def ai_failure(exc: Exception) -> JSONResponse:
+    if isinstance(exc, ai.AIUnavailable):
+        return _error(503, "ai_unavailable", ai.UNAVAILABLE_MESSAGE)
+    if isinstance(exc, ai.AIQuotaExceeded):
+        return _error(429, "ai_busy", ai.BUSY_MESSAGE)
+    return _error(502, "ai_failed", ai.FAILED_MESSAGE)
+
+
+@app.post("/users/{id}/chat")
+def chat(body: ChatRequest, user_id: UserId, session: Db, generator: Gen):
+    recent = body.messages[-CHAT_TURNS:]
+    if recent[-1].role != "user":
+        return _error(
+            422, "validation_error", "messages: the last message must be from the user"
+        )
+    blocked = ai_gate(generator, f"chat:{user_id}", ai.chat_per_hour())
+    if blocked is not None:
+        return blocked
+    context = ai.survey_context(survey.survey_json(session.get(UserSurvey, user_id)))
+    contents = [
+        {
+            "role": "user" if m.role == "user" else "model",
+            "parts": [{"text": m.content}],
+        }
+        for m in recent
+    ]
+    try:
+        text = generator.generate(
+            system=ai.load_system_prompt(context),
+            contents=contents,
+            schema=ai.ChatAnswer,
+            max_output_tokens=CHAT_MAX_OUTPUT_TOKENS,
+        )
+        return ai.parse_chat_answer(text)
+    except (ai.AIUnavailable, ai.AIQuotaExceeded, ai.AIFailure) as exc:
+        return ai_failure(exc)
+
+
+class MatchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    names: list[str] = Field(min_length=1, max_length=80)
+
+    @field_validator("names")
+    @classmethod
+    def short_names(cls, names: list[str]) -> list[str]:
+        if any(len(n) > 200 for n in names):
+            raise ValueError("each name must be 200 characters or fewer")
+        return names
+
+
+@app.post("/ingredients/match")
+def match_ingredients(body: MatchRequest, registry: Reg) -> dict:
+    results = []
+    for name in body.names:
+        substance_id = registry.resolve(name)
+        results.append(
+            {
+                "name": name,
+                "matched": substance_id is not None,
+                "substance_id": substance_id,
+            }
+        )
+    return {"results": results}
+
+
+async def read_capped_body(request: Request, limit: int) -> bytes | None:
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        return None
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            return None
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@app.post("/users/{id}/scan")
+async def scan_label(request: Request, user_id: UserId, generator: Gen):
+    if isinstance(generator, ai.GeminiGenerator) and not ai.has_key():
+        return _error(503, "ai_unavailable", ai.UNAVAILABLE_MESSAGE)
+    data = await read_capped_body(request, scan.MAX_IMAGE_BYTES)
+    if data is None:
+        return _error(
+            413, "image_too_large", "That photo is too large. The limit is 8 MB."
+        )
+    if not data:
+        return _error(
+            422, "validation_error", "body: send the photo as the request body"
+        )
+    mime = scan.sniff_mime(data)
+    if mime is None:
+        return _error(415, "unsupported_image", "Use a JPEG, PNG or WebP photo.")
+    blocked = ai_gate(generator, f"scan:{user_id}", ai.scan_per_hour())
+    if blocked is not None:
+        return blocked
+    try:
+        text = await run_in_threadpool(
+            generator.generate,
+            system=scan.load_prompt(),
+            contents=scan.image_contents(data, mime),
+            schema=scan.GEMINI_SCHEMA,
+            max_output_tokens=scan.MAX_OUTPUT_TOKENS,
+        )
+        return scan.parse_scan(text)
+    except ai.AIFailure:
+        return _error(502, "scan_unreadable", scan.READ_FAILED_MESSAGE)
+    except (ai.AIUnavailable, ai.AIQuotaExceeded) as exc:
+        return ai_failure(exc)
 
 
 # --- 1. POST /users/{id}/doses -------------------------------------------------
@@ -137,6 +561,9 @@ def _find_product(product_id: str, session: Session, user_id: str):
     if product is not None:
         return product
     product = openfda.get_discovered(product_id)
+    if product is not None:
+        return product
+    product = usda.get_discovered(product_id)
     if product is not None:
         return product
     product = alternatives.get_curated_product(product_id)
@@ -462,7 +889,7 @@ MY_PRODUCT_LABEL = "My product (entered by you)"
 
 
 @app.get("/products/search")
-def search_products(q: str, registry: Reg, session: Db) -> dict:
+def search_products(q: str, registry: Reg, session: Db, user: CurrentUser) -> dict:
     """Synthetic catalog first, then curated skincare entries, then the
     user's own saved products, then openFDA by name, then by what it treats.
 
@@ -516,6 +943,11 @@ def search_products(q: str, registry: Reg, session: Db) -> dict:
                     i["unmodeled_reason"] is not None for i in ingredients
                 ),
                 "source": source,
+                "kind": intake_kind(product.id, source),
+                "modeled": any(i["unmodeled_reason"] is None for i in ingredients),
+                "match_score": match_score(
+                    q, product.brand_name, [i["name"] for i in ingredients]
+                ),
                 # The synthetic catalog doesn't track route.
                 "route": getattr(product, "route", None),
                 "label": label,
@@ -524,7 +956,14 @@ def search_products(q: str, registry: Reg, session: Db) -> dict:
         )
 
     for product in search(q, registry):
-        add(product, "catalog")
+        if is_food(product.id):
+            add(product, "food_list", label=food_label(product.id))
+        else:
+            add(product, "catalog")
+
+    if not any(r["kind"] == "medication" for r in results):
+        for product in usda.search(q):
+            add(product, "usda", label=food_label(product.id))
 
     for curated in alternatives.search_curated(q):
         add(
@@ -536,9 +975,7 @@ def search_products(q: str, registry: Reg, session: Db) -> dict:
             ),
         )
 
-    for record in my_products.search(
-        my_products.list_for_user(session, DEFAULT_USER), q
-    ):
+    for record in my_products.search(my_products.list_for_user(session, user.id), q):
         add(
             my_products.as_loggable(record),
             "my_product",
@@ -557,7 +994,45 @@ def search_products(q: str, registry: Reg, session: Db) -> dict:
         # synthetic catalog already found rather than failing the search.
         pass
 
+    results.sort(
+        key=lambda r: (
+            -r["match_score"],
+            r["source"] != "my_product",
+            r["brand_name"].lower(),
+        )
+    )
+    for result in results:
+        del result["match_score"]
     return {"results": results[: openfda.RESULT_LIMIT], "total": len(results)}
+
+
+@app.get("/foods/search")
+def search_foods(q: str, registry: Reg) -> dict:
+    if not q.strip():
+        return _error(422, "validation_error", "q: must not be empty")
+    found = usda.search(q)
+    source = "usda" if found else "food_list"
+    if not found:
+        found = [p for p in search(q, registry) if is_food(p.id)]
+    results = []
+    for product in found[:10]:
+        components = sorted(
+            {
+                INGREDIENT_COMPONENT[i.name]
+                for i in product.ingredients
+                if i.name in INGREDIENT_COMPONENT
+            }
+        )
+        results.append(
+            {
+                "id": product.id,
+                "name": product.brand_name,
+                "components": components,
+                "nutrients": usda.get_nutrients(product.id),
+                "source": food_label(product.id),
+            }
+        )
+    return {"results": results, "source": source}
 
 
 # --- POST /symptom-check ------------------------------------------------------------
@@ -569,14 +1044,12 @@ class SymptomCheckRequest(BaseModel):
 
 @app.post("/symptom-check")
 def symptom_check(
-    body: SymptomCheckRequest, session: Db, registry: Reg, now: Now
+    body: SymptomCheckRequest, session: Db, registry: Reg, now: Now, user: CurrentUser
 ) -> dict:
-    """v1 has one user, so this checks DEFAULT_USER's doses."""
+    """Checks the symptom against the logged-in user's own doses."""
     if len(side_effects.normalize_symptom(body.symptom)) < 3:
         return _error(422, "validation_error", "symptom: at least 3 letters")
-    return side_effects.check_symptom(
-        session, DEFAULT_USER, registry, now, body.symptom
-    )
+    return side_effects.check_symptom(session, user.id, registry, now, body.symptom)
 
 
 # --- GET /users/{id}/side-effect-profile --------------------------------------

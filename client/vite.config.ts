@@ -1,5 +1,5 @@
 import react from '@vitejs/plugin-react'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig, loadEnv, type Plugin } from 'vite'
 
 // Stamps a visible build-id comment into index.html, so it's obvious in
 // devtools which version is loaded. The __PHARMAKON_BUILD_ID__ placeholder in
@@ -23,7 +23,22 @@ function buildStamp(command: 'build' | 'serve'): Plugin {
   }
 }
 
-// https://vite.dev/config/
-export default defineConfig(({ command }) => ({
-  plugins: [react(), buildStamp(command)],
-}))
+export default defineConfig(({ command, mode }) => {
+  const env = loadEnv(mode, process.cwd(), ['PHARMAKON_'])
+  const allowedHosts = (env.PHARMAKON_ALLOWED_HOSTS ?? '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter(Boolean)
+  const proxy = {
+    '/api': {
+      target: env.PHARMAKON_API_TARGET || 'http://localhost:8000',
+      changeOrigin: true,
+      rewrite: (path: string) => path.replace(/^\/api/, ''),
+    },
+  }
+  return {
+    plugins: [react(), buildStamp(command)],
+    server: { proxy, allowedHosts },
+    preview: { proxy, allowedHosts },
+  }
+})

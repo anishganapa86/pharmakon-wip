@@ -1,0 +1,141 @@
+{
+  "_README": [
+    "One editable file for the Why this matters text shown on findings.",
+    "what_this_means is plain language written for this app.",
+    "what_could_happen is a verbatim quote from an FDA label on DailyMed, found in the label text fetched from openFDA, shown with its citation and link. Ingredient entries carry their own quote. Category entries carry none: the finding card itself shows the label quote that triggered it.",
+    "why_it_matters is optional and is included only where a government or major medical source supports it, with a citation and link.",
+    "A part that cannot be sourced is left out (null), never filled in.",
+    "No part may say safe, no risk, will cause, causes, prevents or harmless."
+  ],
+  "closing": "A pharmacist can tell you what this means for you.",
+  "categories": {
+    "duplicate_ingredient": {
+      "title": "Same ingredient in more than one product",
+      "what_this_means": "The same medicine is in more than one of your products under different brand names, so it's easy to take more than you realize.",
+      "what_could_happen": null,
+      "why_it_matters": null,
+      "poison_control": false
+    },
+    "same_drug_class": {
+      "title": "Same group of medicines",
+      "what_this_means": "Two of your products belong to the same group of medicines. They work in a similar way, so their effects can add up.",
+      "what_could_happen": null,
+      "why_it_matters": null,
+      "poison_control": false
+    },
+    "additive_effect": {
+      "title": "Effects that can add up",
+      "what_this_means": "Two things you took can each have the same kind of effect, such as making you sleepy. Together, those effects can add up.",
+      "what_could_happen": null,
+      "why_it_matters": null,
+      "poison_control": false
+    },
+    "food_or_alcohol": {
+      "title": "Food or drink with a medicine",
+      "what_this_means": "A medicine label mentions a food or drink that you also logged. Some foods and drinks can change how a medicine acts or add to its effects.",
+      "what_could_happen": null,
+      "why_it_matters": null,
+      "poison_control": false
+    },
+    "mentioned_together": {
+      "title": "Mentioned together on a label",
+      "what_this_means": "Two of your medicines are mentioned together on a label. That does not mean anything has gone wrong, but it is worth asking about.",
+      "what_could_happen": null,
+      "why_it_matters": null,
+      "poison_control": false
+    },
+    "absorption_timing": {
+      "title": "Absorption or timing",
+      "what_this_means": "Some products change how much of another medicine your body takes in, or how fast. Taking them close together can matter.",
+      "what_could_happen": null,
+      "why_it_matters": null,
+      "poison_control": false
+    }
+  },
+  "ingredients": {
+    "acetaminophen": {
+      "title": "Acetaminophen",
+      "what_this_means": "A common pain and fever medicine. It is an ingredient in many products, sold under many different brand names.",
+      "what_could_happen": {
+        "quote": "Severe liver damage may occur if you take more than 4,000 mg of acetaminophen in 24 hours with other drugs containing acetaminophen",
+        "section": "warnings",
+        "label_product_name": "Pain Reliever Extra Strength",
+        "set_id": "0005aafa-08f8-4990-a54d-cc097195708f",
+        "source_url": "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=0005aafa-08f8-4990-a54d-cc097195708f",
+        "citation": "FDA label for Pain Reliever Extra Strength, DailyMed set id 0005aafa-08f8-4990-a54d-cc097195708f, warnings section"
+      },
+      "why_it_matters": {
+        "text": "The FDA reported that acetaminophen overdose has become the leading cause of acute liver failure in the U.S., and that about half of those cases were unintentional.",
+        "quotes": [
+          "Acetaminophen overdose has become the leading cause of ALF",
+          "approximately half of the cases of acetaminophen-induced ALF were due to unintentional overdose"
+        ],
+        "citation": "FDA, Federal Register, January 14, 2011, 76 FR 2691",
+        "source_url": "https://www.govinfo.gov/content/pkg/FR-2011-01-14/html/2011-709.htm"
+      },
+      "poison_control": true,
+      "substances": [
+        "acetaminophen"
+      ]
+    },
+    "nsaids": {
+      "title": "NSAIDs (ibuprofen, naproxen, aspirin)",
+      "substances": [
+        "ibuprofen",
+        "naproxen",
+        "aspirin"
+      ],
+      "what_this_means": "NSAIDs are a group of pain and swelling medicines. Ibuprofen, naproxen and aspirin are all NSAIDs.",
+      "what_could_happen": {
+        "quote": "This product contains an NSAID, which may cause severe stomach bleeding.",
+        "section": "warnings",
+        "label_product_name": "Ibuprofen",
+        "set_id": "016299ef-ad40-46fd-acfc-e74ffee3d9b4",
+        "source_url": "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=016299ef-ad40-46fd-acfc-e74ffee3d9b4",
+        "citation": "FDA label for Ibuprofen, DailyMed set id 016299ef-ad40-46fd-acfc-e74ffee3d9b4, warnings section"
+      },
+      "why_it_matters": null,
+      "poison_control": false
+    },
+    "sedating_antihistamines": {
+      "title": "Sedating antihistamines (diphenhydramine, doxylamine)",
+      "substances": [
+        "diphenhydramine",
+        "doxylamine"
+      ],
+      "what_this_means": "These are allergy-type medicines that often make people sleepy. They are found in many sleep and cold products.",
+      "what_could_happen": {
+        "quote": "When using this product avoid alcoholic beverages do not drive a motor vehicle or operate machinery take only at bedtime",
+        "section": "when using",
+        "label_product_name": "Sleep Aid",
+        "set_id": "005b5ad8-d762-46b5-a7a5-e0ff11ba936a",
+        "source_url": "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=005b5ad8-d762-46b5-a7a5-e0ff11ba936a",
+        "citation": "FDA label for Sleep Aid, DailyMed set id 005b5ad8-d762-46b5-a7a5-e0ff11ba936a, when using section"
+      },
+      "why_it_matters": null,
+      "poison_control": false
+    },
+    "decongestants": {
+      "title": "Decongestants (phenylephrine)",
+      "substances": [
+        "phenylephrine"
+      ],
+      "what_this_means": "Decongestants are a class of medicines. They are found in many cold and flu products.",
+      "what_could_happen": {
+        "quote": "Ask a doctor before use if you have liver disease heart disease high blood pressure thyroid disease diabetes glaucoma",
+        "section": "warnings",
+        "label_product_name": "NyQuil Severe plus Vicks VapoCool Cold and Flu",
+        "set_id": "724d0889-5ba5-3125-e053-2a91aa0a92c1",
+        "source_url": "https://dailymed.nlm.nih.gov/dailymed/lookup.cfm?setid=724d0889-5ba5-3125-e053-2a91aa0a92c1",
+        "citation": "FDA label for NyQuil Severe plus Vicks VapoCool Cold and Flu, DailyMed set id 724d0889-5ba5-3125-e053-2a91aa0a92c1, warnings section"
+      },
+      "why_it_matters": null,
+      "poison_control": false
+    }
+  },
+  "dropped": {
+    "dextromethorphan": "No dextromethorphan-only label with an alcohol or drowsiness warning was found in the label text we fetch, so there is no entry.",
+    "pseudoephedrine": "Not in the substance registry and no label text fetched, so there is no entry.",
+    "cold_and_flu_combination_products": "The Federal Register notice does not mention cold and flu products, so that statement is not made."
+  }
+}

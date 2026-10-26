@@ -28,19 +28,52 @@ import type {
   TimelineEntry,
   TimelineQuery,
 } from "./types/contract";
+import type { Survey, SurveyAnswers, SurveyStatus } from "./survey";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = (
+  (import.meta.env.VITE_API_BASE as string | undefined) || "http://localhost:8000"
+).replace(/\/+$/, "");
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export const LOGIN_PAGE = "/login.html";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  survey_status: SurveyStatus;
+}
+
+export class ApiRequestError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
+export function redirectToLogin(): void {
+  window.location.replace(LOGIN_PAGE);
+}
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  options: { redirectOn401?: boolean } = {},
+): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, { ...init, credentials: "include" });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") throw e;
     throw new Error(
       "Couldn't reach the Pharmakon server. Check that it is running, then try again.",
       { cause: e },
     );
+  }
+  if (res.status === 401 && options.redirectOn401 !== false) {
+    redirectToLogin();
+    throw new ApiRequestError("Your session has ended. Please log in again.", 401);
   }
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
@@ -50,7 +83,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Non-JSON error body; keep the status line.
     }
-    throw new Error(message);
+    throw new ApiRequestError(message, res.status);
   }
   if (res.status === 204) return undefined as T; // no body, e.g. DELETE
   return (await res.json()) as T;
@@ -68,6 +101,74 @@ export function fetchCurve(
     resolution: query.resolution ?? "15m",
   });
   return request(`/users/${encodeURIComponent(userId)}/curve?${params}`);
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
+export interface ChatAnswer {
+  reply: string;
+  suggested_tab: string | null;
+  suggested_action: string | null;
+}
+
+export function sendChat(userId: string, messages: ChatTurn[]): Promise<ChatAnswer> {
+  return request(`/users/${encodeURIComponent(userId)}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: messages.slice(-10) }),
+  });
+}
+
+export interface ScanIngredient {
+  name: string;
+  strength: string | null;
+  unit: string | null;
+  role: "active" | "inactive" | "unknown";
+}
+
+export interface ScanResult {
+  product_name: string | null;
+  brand: string | null;
+  product_type: "oral_medication" | "supplement" | "topical" | "food_drink" | "unknown";
+  ingredients: ScanIngredient[];
+  label_text_quality: "clear" | "partial" | "unreadable";
+  notes: string | null;
+}
+
+export function scanLabel(userId: string, photo: Blob): Promise<ScanResult> {
+  return request(`/users/${encodeURIComponent(userId)}/scan`, {
+    method: "POST",
+    headers: { "Content-Type": "image/jpeg" },
+    body: photo,
+  });
+}
+
+export function matchIngredients(names: string[]): Promise<{
+  results: { name: string; matched: boolean; substance_id: string | null }[];
+}> {
+  return request("/ingredients/match", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ names }),
+  });
+}
+
+export function fetchSurvey(userId: string): Promise<Survey> {
+  return request(`/users/${encodeURIComponent(userId)}/survey`);
+}
+
+export function saveSurvey(
+  userId: string,
+  body: SurveyAnswers & { status: "completed" | "skipped" },
+): Promise<Survey> {
+  return request(`/users/${encodeURIComponent(userId)}/survey`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export function logDose(
@@ -272,4 +373,31 @@ export function takeScheduled(
   return request(`${scheduleBase(userId)}/${encodeURIComponent(scheduleId)}/take`, {
     method: "POST",
   });
+}
+
+export async function fetchMe(): Promise<AuthUser | null> {
+  try {
+    return await request<AuthUser>("/auth/me", undefined, { redirectOn401: false });
+  } catch (e) {
+    if (e instanceof ApiRequestError && e.status === 401) return null;
+    throw e;
+  }
+}
+
+async function clearBrowserCaches(): Promise<void> {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.controller?.postMessage("clear-caches");
+  }
+  if ("caches" in window) {
+    const names = await caches.keys();
+    await Promise.all(names.map((name) => caches.delete(name)));
+  }
+}
+
+export async function logout(): Promise<void> {
+  try {
+    await request<void>("/auth/logout", { method: "POST" }, { redirectOn401: false });
+  } finally {
+    await clearBrowserCaches().catch(() => undefined);
+  }
 }

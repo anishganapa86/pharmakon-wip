@@ -17,7 +17,7 @@ if (-not (Test-Path client\node_modules)) {
 if (-not $env:SHOW_UNVERIFIED_RULES) { $env:SHOW_UNVERIFIED_RULES = "1" }
 
 $uvicorn = Start-Process -FilePath python `
-    -ArgumentList "-m", "uvicorn", "app.api.main:app", "--port", "8000", "--reload" `
+    -ArgumentList "-m", "uvicorn", "app.api.main:app", "--port", "8000", "--reload", "--log-level", "warning" `
     -NoNewWindow -PassThru
 
 try {

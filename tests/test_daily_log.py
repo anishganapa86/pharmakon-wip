@@ -115,9 +115,9 @@ def test_empty_field_is_rejected(client, field):
     assert r.json()["error"]["code"] == "validation_error"
 
 
-def test_unknown_user_is_404(client):
+def test_another_users_id_is_403(client):
     r = client.post("/users/someone/log", json={"category": "mood", "value": "okay"})
-    assert r.status_code == 404
+    assert r.status_code == 403
 
 
 # --- GET /users/{id}/log ------------------------------------------------------

@@ -1,8 +1,8 @@
 export function LoadingNote({ label }: { label: string }) {
   return (
     <p className="loading-note muted" role="status" aria-live="polite">
-      <span className="spinner" aria-hidden="true" />
       {label}
+      <span className="skeleton" aria-hidden="true" />
     </p>
   );
 }

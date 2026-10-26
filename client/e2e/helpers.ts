@@ -1,7 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
 import { checkpoint, recordBug, recordShot } from './fixtures.ts'
 
-export const API_URL = process.env.DEMO_API_URL ?? 'http://localhost:8000'
+export { API_URL } from './auth-state.ts'
 
 export async function shot(page: Page, name: string): Promise<void> {
   await checkpoint(page, name)
@@ -13,13 +13,13 @@ function escapeRegExp(text: string): string {
 }
 
 export function exactBrand(brand: string): RegExp {
-  return new RegExp(`^${escapeRegExp(brand)}(Modeled|Logged only)`, 'i')
+  return new RegExp(`^${escapeRegExp(brand)}(Medication|Supplement|Food & drink|Skincare|Concentration estimate|Demo data|My product|From our)`, 'i')
 }
 
 export function logPanel(page: Page): Locator {
   return page
     .locator('section.panel')
-    .filter({ has: page.getByRole('heading', { name: 'Log a dose' }) })
+    .filter({ has: page.getByRole('heading', { name: 'Log intake' }) })
 }
 
 export function alertsPanel(page: Page): Locator {
@@ -43,11 +43,28 @@ export function medCard(page: Page, name: string): Locator {
 }
 
 export async function openTab(page: Page, name: string): Promise<void> {
-  await page.getByRole('tab', { name }).click()
-  await expect(page.getByRole('tab', { name })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
+  const onPhone = (page.viewportSize()?.width ?? 1280) <= 640
+  if (!onPhone) {
+    await page.getByRole('tab', { name }).click()
+    await expect(page.getByRole('tab', { name })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+  } else {
+    const bar = page.locator('.bottom-bar')
+    if (name === 'Food & drink' || name === 'Timeline') {
+      await bar.getByRole('button', { name: 'More' }).click()
+      await page.locator('.more-menu').getByRole('button', { name }).click()
+      await expect(bar.getByRole('button', { name: 'More' })).toHaveClass(/active/)
+    } else {
+      const label = name === 'Concentration' ? 'Today' : name
+      await bar.getByRole('button', { name: label }).click()
+      await expect(bar.getByRole('button', { name: label })).toHaveAttribute(
+        'aria-current',
+        'page',
+      )
+    }
+  }
   await checkpoint(page, `tab ${name}`)
 }
 

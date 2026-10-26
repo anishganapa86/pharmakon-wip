@@ -119,12 +119,13 @@ def test_unknown_product_is_404_with_error_body(client):
     assert r.json()["error"]["code"] == "not_found"
 
 
-def test_unknown_user_is_404(client):
+def test_another_users_id_is_403(client):
     r = client.post(
         "/users/someone/doses",
         json={"product_id": "prod_tylenol_es_500", "taken_at": iso(1), "quantity": 1},
     )
-    assert r.status_code == 404
+    assert r.status_code == 403
+    assert r.json()["error"]["code"] == "forbidden"
 
 
 def test_timestamp_without_offset_is_rejected(client):
@@ -492,8 +493,8 @@ def test_still_over_the_limit_means_still_active(client, clock):
     assert len(client.get("/users/default/alerts").json()) == 1
 
 
-def test_unknown_user_alerts_is_404(client):
-    assert client.get("/users/nobody/alerts").status_code == 404
+def test_another_users_alerts_is_403(client):
+    assert client.get("/users/nobody/alerts").status_code == 403
 
 
 # --- CORS ----------------------------------------------------------------------
@@ -533,6 +534,8 @@ def test_search_matches_brand_name_case_insensitively(client):
         "ingredients",
         "has_unmodeled_ingredients",
         "source",
+        "kind",
+        "modeled",
         "label",
         "verification_note",
         "route",

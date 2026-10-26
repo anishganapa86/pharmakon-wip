@@ -162,6 +162,37 @@ class AlertRecord(Base):
     resolved_at: Mapped[str | None] = mapped_column(String, nullable=True)
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    email: Mapped[str] = mapped_column(String, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String)
+    created_at: Mapped[str] = mapped_column(String)
+
+
+class AuthSession(Base):
+    __tablename__ = "sessions"
+
+    token_hash: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
+    created_at: Mapped[str] = mapped_column(String)
+    expires_at: Mapped[str] = mapped_column(String)
+    last_seen_at: Mapped[str] = mapped_column(String)
+
+
+class UserSurvey(Base):
+    __tablename__ = "user_survey"
+
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    tracks: Mapped[list] = mapped_column(JSON, default=list)
+    goals: Mapped[list] = mapped_column(JSON, default=list)
+    experience: Mapped[str | None] = mapped_column(String, nullable=True)
+    guidance: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, default="pending")
+    updated_at: Mapped[str] = mapped_column(String)
+
+
 def make_engine(url: str = DATABASE_URL):
     connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
     return create_engine(url, connect_args=connect_args)

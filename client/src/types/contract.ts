@@ -189,6 +189,8 @@ export interface Ingredient {
  * app/api/my_products.py) -- distinct from "user_entered", which is
  * in-process-only and never searchable again. */
 export type ProductSource =
+  | "food_list"
+  | "usda"
   | "catalog"
   | "openfda"
   | "user_entered"
@@ -212,7 +214,11 @@ export interface ProductSearchResult {
   // there's nothing to caveat (catalog/openfda), or when a skincare_catalog
   // entry has actually been verified.
   verification_note: string | null;
+  kind?: IntakeKind;
+  modeled?: boolean;
 }
+
+export type IntakeKind = "medication" | "supplement" | "food_drink" | "skincare";
 
 /** `results` is capped at 10; `total` is the full count before that cap, so
  * the client can show "Showing X of Y results" and rely on continued typing
@@ -527,7 +533,25 @@ export interface OverlapWindow {
   description: string;
 }
 
+export interface WhyExplanation {
+  kind: "category" | "ingredient";
+  key: string;
+  title: string;
+  what_this_means: string;
+  what_could_happen: {
+    quote: string;
+    citation: string;
+    source_url: string;
+  } | null;
+  why_it_matters: { text: string; citation: string; source_url: string } | null;
+  poison_control: boolean;
+  closing: string;
+}
+
 export interface Interaction {
+  applies_to?: string;
+  why?: WhyExplanation;
+  finding_kind?: "food";
   substance_a: InteractionSubstanceRef;
   substance_b: InteractionSubstanceRef;
   effect: string | null; // curated only
@@ -558,6 +582,7 @@ export interface DuplicateIngredientProduct {
  * always [] on a manual (POST) check, which has no product identity to
  * compare. */
 export interface DuplicateIngredientFinding {
+  why?: WhyExplanation;
   ingredient_name: string;
   product_count: number; // >= 2; distinct products, deduped by product_id
   products: DuplicateIngredientProduct[];

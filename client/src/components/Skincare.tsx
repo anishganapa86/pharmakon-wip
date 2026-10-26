@@ -14,6 +14,8 @@ import type {
   SkincareProductRequest,
 } from "../types/contract";
 import { splitIngredientsPreview } from "../ingredientSplit";
+import { ingredientCount } from "../ingredientCount";
+import { IngredientPreview } from "./IngredientPreview";
 import { RulesNotice } from "./RulesNotice";
 
 function errorMessage(e: unknown): string {
@@ -125,6 +127,15 @@ function AlternativesSection({
   );
 }
 
+function FlagStatus({ verified }: { verified: boolean }) {
+  return (
+    <p className="finding-status">
+      <span className="dot dot-warn" />
+      <span className="tag">{verified ? "Verified reference" : "Unverified reference"}</span>
+    </p>
+  );
+}
+
 function SkincareResults({
   result,
   alternatives,
@@ -133,6 +144,14 @@ function SkincareResults({
   alternatives: SkincareAlternativesResponse | null;
 }) {
   const flagged = result.incompatibilities.length > 0 || result.irritants.length > 0;
+  const alternativeTargets = [
+    ...result.incompatibilities.flatMap((f) => [
+      { ingredient: f.ingredient_a, product: f.product_a },
+      { ingredient: f.ingredient_b, product: f.product_b },
+    ]),
+    ...result.irritants.map((f) => ({ ingredient: f.ingredient, product: f.product })),
+  ];
+  const hasMore = alternativeTargets.length > 0 || result.clear.length > 0;
 
   if (result.rules_checked === 0) {
     return (
@@ -148,78 +167,91 @@ function SkincareResults({
         <p className="muted">No documented interactions found.</p>
       )}
       {result.incompatibilities.map((f, i) => (
-        <div key={`incompat-${i}`} className="skincare-flag skincare-flag-caution">
-          <p>
-            <strong>{f.ingredient_a}</strong> ({f.product_a}) +{" "}
-            <strong>{f.ingredient_b}</strong> ({f.product_b})
-            {!f.verified && <span className="tag">Unverified reference</span>}
+        <div key={`incompat-${i}`} className="skincare-flag skincare-flag-caution finding">
+          <FlagStatus verified={f.verified} />
+          <p className="finding-title">
+            <strong>{f.ingredient_a}</strong> + <strong>{f.ingredient_b}</strong>
           </p>
-          {f.appears_in_a && <p className="muted small">{f.appears_in_a}</p>}
-          {f.appears_in_b && <p className="muted small">{f.appears_in_b}</p>}
-          <p>{f.effect}</p>
-          <p className="muted small">{f.recommendation}</p>
-          {f.match_note_a && <p className="muted small">{f.match_note_a}</p>}
-          {f.match_note_b && <p className="muted small">{f.match_note_b}</p>}
           <p className="muted small">
-            Matched on: '{f.matched_ingredient_a}' (rule term: '
-            {f.matched_alias_a}') and '{f.matched_ingredient_b}' (rule term: '
-            {f.matched_alias_b}')
+            {[...new Set([...f.products_a, ...f.products_b])].join(" · ")}
           </p>
+          <p>{f.effect}</p>
           <p className="muted small">Source: {f.source}</p>
-          <AlternativesSection
-            ingredient={f.ingredient_a}
-            group={findGroup(alternatives, f.ingredient_a, f.product_a)}
-            disclaimer={alternatives?.disclaimer}
-          />
-          <AlternativesSection
-            ingredient={f.ingredient_b}
-            group={findGroup(alternatives, f.ingredient_b, f.product_b)}
-            disclaimer={alternatives?.disclaimer}
-          />
+          <details className="finding-details">
+            <summary>Details</summary>
+            <div className="finding-details-body">
+              {f.appears_in_a && <p className="muted small">{f.appears_in_a}</p>}
+              {f.appears_in_b && <p className="muted small">{f.appears_in_b}</p>}
+              <p className="muted small">{f.recommendation}</p>
+              {f.match_note_a && <p className="muted small">{f.match_note_a}</p>}
+              {f.match_note_b && <p className="muted small">{f.match_note_b}</p>}
+              <p className="muted small">
+                Matched on: '{f.matched_ingredient_a}' (rule term: '
+                {f.matched_alias_a}') and '{f.matched_ingredient_b}' (rule term: '
+                {f.matched_alias_b}')
+              </p>
+            </div>
+          </details>
         </div>
       ))}
       {result.irritants.map((f, i) => (
-        <div key={`irritant-${i}`} className="skincare-flag skincare-flag-caution">
-          <p>
-            <strong>{f.ingredient}</strong> ({f.product})
-            {!f.verified && <span className="tag">Unverified reference</span>}
+        <div key={`irritant-${i}`} className="skincare-flag skincare-flag-caution finding">
+          <FlagStatus verified={f.verified} />
+          <p className="finding-title">
+            <strong>{f.ingredient}</strong>
           </p>
+          <p className="muted small">{f.product}</p>
           <p>{f.effect}</p>
-          {f.match_note && <p className="muted small">{f.match_note}</p>}
-          {f.note && <p className="muted small">{f.note}</p>}
-          <p className="muted small">
-            Matched on: '{f.matched_ingredient}' (rule term: '{f.matched_alias}
-            ')
-          </p>
           <p className="muted small">Source: {f.source}</p>
-          <AlternativesSection
-            ingredient={f.ingredient}
-            group={findGroup(alternatives, f.ingredient, f.product)}
-            disclaimer={alternatives?.disclaimer}
-          />
+          <details className="finding-details">
+            <summary>Details</summary>
+            <div className="finding-details-body">
+              {f.match_note && <p className="muted small">{f.match_note}</p>}
+              {f.note && <p className="muted small">{f.note}</p>}
+              <p className="muted small">
+                Matched on: '{f.matched_ingredient}' (rule term: '{f.matched_alias}
+                ')
+              </p>
+            </div>
+          </details>
         </div>
       ))}
-      {result.clear.length > 0 && (
-        <details className="collapsible skincare-clear">
-          <summary>
-            {result.clear.length} ingredient{result.clear.length === 1 ? "" : "s"}{" "}
-            had no matching rule among our {result.rules_checked} documented
-            rule{result.rules_checked === 1 ? "" : "s"}. This does not mean
-            none are irritating or incompatible.
-          </summary>
-          <div className="collapsible-body">
-            {groupByProduct(result.clear).map(([product, ingredients]) => (
-              <div key={product} className="skincare-clear-group">
-                <div className="skincare-clear-product">{product}</div>
-                <ul className="effect-tags">
-                  {ingredients.map((ingredient, i) => (
-                    <li key={i} className="effect-tag effect-tag-clear">
-                      {ingredient}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+      {hasMore && (
+        <details className="collapsible more-check">
+          <summary>More about this check</summary>
+          <div className="collapsible-body more-check-body">
+            {alternativeTargets.map((t, i) => (
+              <AlternativesSection
+                key={`alt-${i}`}
+                ingredient={t.ingredient}
+                group={findGroup(alternatives, t.ingredient, t.product)}
+                disclaimer={alternatives?.disclaimer}
+              />
             ))}
+            {result.clear.length > 0 && (
+              <details className="collapsible skincare-clear">
+                <summary>
+                  {result.clear.length} ingredient{result.clear.length === 1 ? "" : "s"}{" "}
+                  had no matching rule among our {result.rules_checked} documented
+                  rule{result.rules_checked === 1 ? "" : "s"}. This does not mean
+                  none are irritating or incompatible.
+                </summary>
+                <div className="collapsible-body">
+                  {groupByProduct(result.clear).map(([product, ingredients]) => (
+                    <div key={product} className="skincare-clear-group">
+                      <div className="skincare-clear-product">{product}</div>
+                      <ul className="effect-tags">
+                        {ingredients.map((ingredient, i) => (
+                          <li key={i} className="effect-tag effect-tag-clear">
+                            {ingredient}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
         </details>
       )}
@@ -298,6 +330,10 @@ export function Skincare({ userId }: Props) {
     }
   }
 
+  const categoryByName = new Map(
+    myProducts.map((p) => [`${p.brand} ${p.name}`.trim().toLowerCase(), p.category]),
+  );
+
   function updateDraft(i: number, patch: Partial<DraftProduct>) {
     setDrafts((prev) => prev.map((d, idx) => (idx === i ? { ...d, ...patch } : d)));
   }
@@ -356,13 +392,16 @@ export function Skincare({ userId }: Props) {
           <>
             <ul className="history">
               {autoResult.products.map((p, i) => (
-                <li key={i} className="history-item">
+                <li key={i} className="history-item product-item">
                   <div className="history-head">
                     <strong>{p.name}</strong>
                     <span className="muted small">
-                      {p.ingredients.join(", ")}
+                      {[categoryByName.get(p.name.toLowerCase()), ingredientCount(p.ingredients.length)]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </span>
                   </div>
+                  <IngredientPreview ingredients={p.ingredients} />
                 </li>
               ))}
             </ul>
@@ -387,12 +426,14 @@ export function Skincare({ userId }: Props) {
         ) : (
           <ul className="history">
             {myProducts.map((p) => (
-              <li key={p.id} className="history-item">
+              <li key={p.id} className="history-item product-item">
                 <div className="history-head">
                   <strong>
                     {p.brand} {p.name}
                   </strong>
-                  <span className="muted small">({p.category})</span>
+                  <span className="muted small">
+                    {p.category} · {ingredientCount(p.ingredients.length)}
+                  </span>
                   <button
                     type="button"
                     className="button-link"
@@ -402,11 +443,11 @@ export function Skincare({ userId }: Props) {
                     Delete
                   </button>
                 </div>
-                <span className="muted small">{p.ingredients.join(", ")}</span>
-                <p className="muted small">
+                <p className="muted small product-note">
                   You entered this list. We haven't verified it. Check it
                   against your packaging.
                 </p>
+                <IngredientPreview ingredients={p.ingredients} />
               </li>
             ))}
           </ul>

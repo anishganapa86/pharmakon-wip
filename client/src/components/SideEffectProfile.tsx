@@ -42,7 +42,7 @@ export function SideEffectProfile({ userId }: Props) {
         ) : error ? (
           <p className="error">Couldn't load side effects: {error}</p>
         ) : !data || data.substances.length === 0 ? (
-          <p className="muted">Log a dose to see potential side effects.</p>
+          <p className="muted">Log an intake to see potential side effects.</p>
         ) : (
           <>
             <UncheckedReasons reasons={data.unchecked_reason} />

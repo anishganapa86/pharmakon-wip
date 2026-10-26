@@ -7,6 +7,7 @@ import type {
 } from "../types/contract";
 import { LoadingNote } from "./LoadingNote";
 import { RulesNotice } from "./RulesNotice";
+import { WhyThisMatters } from "./WhyThisMatters";
 
 function errorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -25,6 +26,9 @@ function parseNames(text: string): string[] {
 function pharmacistQuestions(interaction: Interaction): string[] {
   const a = interaction.substance_a.display_name;
   const b = interaction.substance_b.display_name;
+  if (interaction.finding_kind === "food") {
+    return [`What should I know about ${b.toLowerCase()} while I use ${a}?`];
+  }
   return [
     `Is it OK for me to take both ${a} and ${b}?`,
     "Which one should I use?",
@@ -55,39 +59,57 @@ function SourceTag({ interaction }: { interaction: Interaction }) {
   );
 }
 
+type Filter = "all" | "attention" | "worth";
+
+function needsAttention(interaction: Interaction): boolean {
+  return (
+    interaction.severity !== null ||
+    (interaction.source_type === "fda_label" && interaction.finding_kind !== "food")
+  );
+}
+
+function productNames(interaction: Interaction): string[] {
+  const labels = [
+    ...interaction.substance_a.sources,
+    ...interaction.substance_b.sources,
+  ].map((s) => s.label);
+  return [...new Set(labels)];
+}
+
 function InteractionCard({ interaction }: { interaction: Interaction }) {
   const a = interaction.substance_a;
   const b = interaction.substance_b;
+  const names = productNames(interaction);
+  const questions = pharmacistQuestions(interaction);
   return (
-    <div className="skincare-flag skincare-flag-caution">
-      <p>
+    <div className="skincare-flag skincare-flag-caution finding">
+      <p className="finding-status">
+        <span
+          className={`dot ${
+            needsAttention(interaction)
+              ? "dot-urgent"
+              : interaction.finding_kind === "food"
+                ? "dot-ok"
+                : "dot-info"
+          }`}
+        />
+        <SourceTag interaction={interaction} />
+      </p>
+      <p className="finding-title">
         <strong>{a.display_name}</strong>
-        {a.description && <span className="muted small"> — {a.description}</span>}
         {" + "}
         <strong>{b.display_name}</strong>
-        {b.description && <span className="muted small"> — {b.description}</span>}
+        {interaction.finding_kind === "food" && (
+          <span className="tag tag-food">Food</span>
+        )}
       </p>
+      {names.length > 0 && <p className="muted small">{names.join(" · ")}</p>}
       <p>{interaction.effect ?? interaction.message}</p>
-      {interaction.recommendation && (
-        <p className="muted small">{interaction.recommendation}</p>
-      )}
       {interaction.quoted_text && (
-        <p className="muted small">"{interaction.quoted_text}"</p>
-      )}
-      {interaction.label_attribution && (
-        <p className="muted small">{interaction.label_attribution}</p>
-      )}
-      {interaction.overlap && (
-        <ul className="effect-tags">
-          {interaction.overlap.map((w, i) => (
-            <li key={i} className="effect-tag" title="Estimated from the concentration model">
-              {w.description}
-            </li>
-          ))}
-        </ul>
+        <p className="muted small label-quote">"{interaction.quoted_text}"</p>
       )}
       <p className="muted small">
-        <SourceTag interaction={interaction} /> Source: {interaction.source}
+        Source: {interaction.source}
         {interaction.source_type === "fda_label"
           ? interaction.quote_source !== null && (
               <>
@@ -102,16 +124,60 @@ function InteractionCard({ interaction }: { interaction: Interaction }) {
               </>
             )}
       </p>
-      <div className="pharmacist-questions">
-        <p className="muted small">Questions for your pharmacist:</p>
-        <ul>
-          {pharmacistQuestions(interaction).map((q, i) => (
-            <li key={i} className="muted small">
-              {q}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <details className="finding-details">
+        <summary>Details</summary>
+        <div className="finding-details-body">
+          {a.description && (
+            <p className="muted small">
+              {a.display_name}: {a.description}
+            </p>
+          )}
+          {b.description && (
+            <p className="muted small">
+              {b.display_name}: {b.description}
+            </p>
+          )}
+          {interaction.recommendation && (
+            <p className="muted small">{interaction.recommendation}</p>
+          )}
+          {interaction.applies_to && (
+            <p className="muted small">
+              What the label says this applies to: {interaction.applies_to}
+            </p>
+          )}
+          {interaction.label_attribution && (
+            <p className="muted small">{interaction.label_attribution}</p>
+          )}
+          {interaction.overlap && (
+            <ul className="effect-tags">
+              {interaction.overlap.map((w, i) => (
+                <li
+                  key={i}
+                  className="effect-tag"
+                  title="Estimated from the concentration model"
+                >
+                  {w.description}
+                </li>
+              ))}
+            </ul>
+          )}
+          {!interaction.why && (
+            <div className="pharmacist-questions">
+              <p className="muted small">Questions for your pharmacist:</p>
+              <ul>
+                {questions.map((q, i) => (
+                  <li key={i} className="muted small">
+                    {q}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </details>
+      {interaction.why && (
+        <WhyThisMatters why={interaction.why} questions={questions} />
+      )}
     </div>
   );
 }
@@ -122,8 +188,12 @@ function DuplicateIngredientCard({
   finding: DuplicateIngredientFinding;
 }) {
   return (
-    <div className="skincare-flag skincare-flag-caution">
-      <p>{finding.message}</p>
+    <div className="skincare-flag skincare-flag-caution finding">
+      <p className="finding-status">
+        <span className="dot dot-info" />
+        <span className="tag">Same ingredient</span>
+      </p>
+      <p className="finding-title">{finding.message}</p>
       {finding.strength_note && (
         <p className="muted small">{finding.strength_note}</p>
       )}
@@ -134,6 +204,7 @@ function DuplicateIngredientCard({
           </li>
         ))}
       </ul>
+      {finding.why && <WhyThisMatters why={finding.why} />}
     </div>
   );
 }
@@ -163,7 +234,41 @@ function CopyForPharmacist({ result }: { result: InteractionCheckResponse }) {
   );
 }
 
+function FilterControl({
+  value,
+  onChange,
+}: {
+  value: Filter;
+  onChange: (next: Filter) => void;
+}) {
+  const options: { id: Filter; label: string }[] = [
+    { id: "all", label: "All" },
+    { id: "attention", label: "Needs attention" },
+    { id: "worth", label: "Worth knowing" },
+  ];
+  return (
+    <div className="segmented" role="group" aria-label="Filter findings">
+      {options.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          className={value === o.id ? "segment active" : "segment"}
+          aria-pressed={value === o.id}
+          onClick={() => onChange(o.id)}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function Results({ result }: { result: InteractionCheckResponse }) {
+  const [filter, setFilter] = useState<Filter>("all");
+  const attention = result.interactions.filter(needsAttention);
+  const worth = result.interactions.filter((i) => !needsAttention(i));
+  const showAttention = filter !== "worth";
+  const showWorth = filter !== "attention";
   return (
     <>
       <RulesNotice notice={result.rules_awaiting_verification} />
@@ -176,17 +281,45 @@ function Results({ result }: { result: InteractionCheckResponse }) {
           ))}
         </ul>
       )}
-      {result.duplicate_ingredients.map((finding, i) => (
-        <DuplicateIngredientCard key={i} finding={finding} />
-      ))}
+      {result.duplicate_ingredients.length > 0 && (
+        <div className="finding-group">
+          {result.duplicate_ingredients.map((finding, i) => (
+            <DuplicateIngredientCard key={`d${i}`} finding={finding} />
+          ))}
+        </div>
+      )}
       {result.interactions.length === 0 ? (
         <p className="muted">{result.message}</p>
       ) : (
         <>
+          <FilterControl value={filter} onChange={setFilter} />
           <CopyForPharmacist result={result} />
-          {result.interactions.map((interaction, i) => (
-            <InteractionCard key={i} interaction={interaction} />
-          ))}
+        </>
+      )}
+      {filter === "attention" && attention.length === 0 && (
+        <p className="muted">No findings need attention.</p>
+      )}
+      {filter === "worth" && worth.length === 0 && (
+        <p className="muted">Nothing else to know.</p>
+      )}
+      {showAttention && attention.length > 0 && (
+        <>
+          <h3 className="section-title">Needs attention</h3>
+          <div className="finding-group">
+            {attention.map((interaction, i) => (
+              <InteractionCard key={`a${i}`} interaction={interaction} />
+            ))}
+          </div>
+        </>
+      )}
+      {showWorth && worth.length > 0 && (
+        <>
+          <h3 className="section-title">Worth knowing</h3>
+          <div className="finding-group">
+            {worth.map((interaction, i) => (
+              <InteractionCard key={`w${i}`} interaction={interaction} />
+            ))}
+          </div>
         </>
       )}
     </>
@@ -195,9 +328,10 @@ function Results({ result }: { result: InteractionCheckResponse }) {
 
 interface Props {
   userId: string;
+  refreshKey?: number;
 }
 
-export function Interactions({ userId }: Props) {
+export function Interactions({ userId, refreshKey = 0 }: Props) {
   const [regimenResult, setRegimenResult] = useState<InteractionCheckResponse | null>(
     null,
   );
@@ -222,7 +356,7 @@ export function Interactions({ userId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, refreshKey]);
 
   const names = parseNames(namesText);
 
@@ -249,8 +383,8 @@ export function Interactions({ userId }: Props) {
         medication without talking to your prescriber or pharmacist.
       </p>
 
-      <section className="panel">
-        <h2>Your regimen</h2>
+      <section className="panel bare">
+        <h2 className="sr-only">Your regimen</h2>
         {regimenLoading ? (
           <LoadingNote label="Checking your regimen against FDA labels…" />
         ) : regimenError ? (

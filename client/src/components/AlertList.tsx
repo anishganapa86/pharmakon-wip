@@ -1,5 +1,9 @@
 import { formatDateClock } from "../time";
-import type { Alert, AlertSeverity } from "../types/contract";
+import type {
+  Alert,
+  AlertSeverity,
+  DuplicateIngredientFinding,
+} from "../types/contract";
 
 /** Presentational only -- not sent by the server. Conservative and generic
  * by design: this is guidance about the alert mechanism, not medical advice
@@ -10,9 +14,18 @@ const WHAT_TO_DO: Record<AlertSeverity, string> = {
   info: "No action needed — for your awareness.",
 };
 
-function AlertItem({ alert }: { alert: Alert }) {
+function AlertItem({
+  alert,
+  highlighted,
+}: {
+  alert: Alert;
+  highlighted: boolean;
+}) {
   return (
-    <li className="alert">
+    <li
+      className={highlighted ? "alert alert-highlight" : "alert"}
+      data-alert-id={alert.id}
+    >
       <div className="alert-head">
         <span className={`badge badge-${alert.severity}`}>{alert.severity}</span>
         {alert.substance && (
@@ -27,15 +40,18 @@ function AlertItem({ alert }: { alert: Alert }) {
       </div>
       <p>{alert.message}</p>
       {alert.substance?.threshold_explanation && (
-        <p className="alert-why muted">
-          <strong>Why this matters:</strong> {alert.substance.threshold_explanation}
-          {!alert.substance.verified && (
-            <>
-              {" "}
-              <span className="tag">Unverified reference</span>
-            </>
-          )}
-        </p>
+        <details className="alert-why">
+          <summary>Why this matters</summary>
+          <p className="muted">
+            {alert.substance.threshold_explanation}
+            {!alert.substance.verified && (
+              <>
+                {" "}
+                <span className="tag">Unverified reference</span>
+              </>
+            )}
+          </p>
+        </details>
       )}
       <p className="alert-action muted">
         <strong>What to do:</strong> {WHAT_TO_DO[alert.severity]}
@@ -80,13 +96,66 @@ function AlertItem({ alert }: { alert: Alert }) {
   );
 }
 
-export function AlertList({ alerts }: { alerts: Alert[] }) {
-  if (alerts.length === 0) return <p className="muted">No active alerts.</p>;
+function DuplicateAlertItem({
+  finding,
+  onOpenInteractions,
+}: {
+  finding: DuplicateIngredientFinding;
+  onOpenInteractions: () => void;
+}) {
+  return (
+    <li className="duplicate-alert">
+      <p className="finding-status">
+        <span className="dot dot-info" />
+        <span className="tag">Same ingredient</span>
+      </p>
+      <p>{finding.message}</p>
+      <button className="button-link" onClick={onOpenInteractions} type="button">
+        Open Interactions
+      </button>
+    </li>
+  );
+}
+
+interface AlertListProps {
+  alerts: Alert[];
+  highlightedAlertId?: string | null;
+  duplicates?: DuplicateIngredientFinding[];
+  onOpenInteractions?: () => void;
+}
+
+export function AlertList({
+  alerts,
+  highlightedAlertId = null,
+  duplicates = [],
+  onOpenInteractions,
+}: AlertListProps) {
+  if (alerts.length === 0 && duplicates.length === 0) {
+    return (
+      <>
+        <p className="muted">No active alerts.</p>
+        {onOpenInteractions && (
+          <p className="muted small">
+            Alerts appear here once the doses you log add up. Duplicate ingredients
+            show on Interactions.
+          </p>
+        )}
+      </>
+    );
+  }
   return (
     <ul className="alerts">
       {alerts.map((a) => (
-        <AlertItem key={a.id} alert={a} />
+        <AlertItem key={a.id} alert={a} highlighted={a.id === highlightedAlertId} />
       ))}
+      {onOpenInteractions &&
+        duplicates.map((d) => (
+          <DuplicateAlertItem
+            key={d.ingredient_name}
+            finding={d}
+            onOpenInteractions={onOpenInteractions}
+          />
+        ))}
     </ul>
   );
 }

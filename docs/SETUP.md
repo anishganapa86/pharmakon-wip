@@ -121,3 +121,67 @@ let `.vscode/settings.json` do its job.
 
 **Notebook shows old outputs** — Restart, then Run All. Committed outputs are
 from whoever ran it last.
+
+## Accounts and sign-in
+
+Every API route except `POST /auth/signup`, `POST /auth/login` and
+`GET /health` needs a logged-in session. Sign-in is email and password; there
+is no email verification and no password reset. The session lives in an
+`HttpOnly`, `SameSite=Lax` cookie named `pharmakon_session`, valid for seven
+days and renewed while it is used.
+
+Settings come from environment variables, loaded from a gitignored `.env`
+(copy `.env.example`).
+
+| Variable | Meaning |
+|---|---|
+| `PHARMAKON_COOKIE_SECURE` | Set to `1` whenever the site is served over HTTPS so the cookie is marked `Secure`. Truthy values are `1`, `true`, `yes`, `on`. |
+| `PHARMAKON_CORS_ORIGINS` | Comma-separated origins allowed to call the API with cookies (default: the two Vite dev origins). A `*` is ignored. A `POST`, `PUT`, `PATCH` or `DELETE` whose `Origin` header is not on this list is refused with `403`. |
+| `PHARMAKON_DEV_DOCS` | Set to `1` to serve `/docs`, `/redoc` and `/openapi.json` to a logged-in user. Off by default. Read on every request. |
+
+### A demo account
+
+`python scripts/seed_demo_user.py` creates one account from
+`PHARMAKON_DEMO_EMAIL` and `PHARMAKON_DEMO_PASSWORD` (set both in `.env`; the
+script refuses to run if either is missing and never prints the password) and
+gives it a small synthetic regimen: six doses over the last ten hours that add
+up to a hidden acetaminophen duplication across Tylenol, DayQuil and NyQuil, and
+one daily schedule entry. Running it again leaves an existing account and its
+password alone. The doses are made up for the demo; nobody should log real
+medications into a shared instance.
+
+### The food demo scenario and the verification gate
+
+`python scripts/seed_demo_user.py --food-demo` logs Tylenol, DayQuil, coffee,
+a beer and chicken instead of the default regimen. The food-drug rules are all
+`verified: false`, so what the Interactions tab shows depends on
+`SHOW_UNVERIFIED_RULES`. With it on (`run.sh` and `run.ps1` turn it on unless
+you set it), the beer adds one food finding quoting the acetaminophen label's
+alcohol warning, the duplicate-acetaminophen card shows, and coffee and chicken
+add nothing. With it off (the `.env.example` default), the food finding and the
+curated rules are hidden, the duplicate-acetaminophen card still shows, and the
+tab says how many rules are awaiting verification.
+
+### Pointing the client at the API
+
+The React app reads `VITE_API_BASE` (default `http://localhost:8000`) at build
+time. Set it to `/api` to go through the Vite proxy, which forwards `/api/...`
+to the API (`PHARMAKON_API_TARGET`, default `http://localhost:8000`) and is
+what the iPhone demo uses (see `docs/IPHONE_HTTPS.md`). The static
+`login.html` and `signup.html` use `http://localhost:8000` when opened on
+`localhost` or `127.0.0.1` and `/api` anywhere else. Open the app at
+`http://localhost:5173`, not `127.0.0.1`: the session cookie is `SameSite=Lax`
+and is only sent to the API when both addresses share a host name.
+`PHARMAKON_ALLOWED_HOSTS` is a comma-separated list of extra host names the
+Vite server will answer to, such as a tunnel address.
+
+### Login throttling is per process
+
+Failed logins and sign-up attempts are counted in memory, by IP and email
+together and by IP alone, and a lockout doubles each time it is hit again,
+with a `Retry-After` header on the `429`. The counters live inside one API
+process. Restarting the API clears them, and running several workers gives
+each worker its own counters, so the effective limit is multiplied by the
+number of workers. Run a single worker for the demo. The IP is the address of
+the direct connection, so behind a reverse proxy every visitor shares the
+proxy's address until a trusted-proxy setting is added.

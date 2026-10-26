@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import sys
 import time
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 
-USER = "default"
+USER = ""
 MY_PRODUCT_TEXT = "Water, Glycerin (Kosher, Vegetable), 1,2-Hexanediol, Retinol"
 MY_PRODUCT_NAME = "Smoke Retinol Serum"
 
@@ -126,10 +128,35 @@ def log_dose(
     )
 
 
+def sign_up(smoke: Smoke) -> bool:
+    global USER
+    credentials = {
+        "email": f"smoke-{uuid.uuid4().hex[:10]}@example.com",
+        "password": secrets.token_urlsafe(18),
+    }
+    entry, body = smoke.call(
+        "sign up", "POST", "/auth/signup", 201, json_body=credentials
+    )
+    if not isinstance(body, dict) or not body.get("id"):
+        return False
+    USER = body["id"]
+    entry, body = smoke.call("auth me", "GET", "/auth/me", 200)
+    if isinstance(body, dict):
+        smoke.expect(entry, body.get("id") == USER, "auth/me returned another user")
+    with httpx.Client(base_url=smoke.client.base_url, timeout=60) as anonymous:
+        logged_out = Smoke(anonymous)
+        logged_out.call("logged-out doses refused", "GET", f"/users/{USER}/doses", 401)
+        logged_out.call("logged-out search refused", "GET", "/products/search", 401)
+        smoke.entries.extend(logged_out.entries)
+    return True
+
+
 def run(base: str) -> list[dict]:
     now = datetime.now(UTC)
     with httpx.Client(base_url=base, timeout=60) as client:
         smoke = Smoke(client)
+        if not sign_up(smoke):
+            return smoke.entries
 
         ids = {
             "nodoz": find_product(smoke, "NoDoz", "NoDoz"),
