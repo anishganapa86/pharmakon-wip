@@ -9,7 +9,7 @@
   --color-accent-border: rgba(11, 122, 107, 0.4);
   --color-coral: #e5533d;
   --color-coral-text: #c2321f;
-  --color-danger: #d92d20;
+  --color-danger: #c8281b;
   --color-warn: #d98a0b;
   --color-warn-text: #8a5a00;
   --color-warn-surface: #fbf4e3;
@@ -1982,4 +1982,10 @@ body:has(.survey-page) .ask-button {
 
 .icon {
   overflow: visible;
+}
+
+.hero-details:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-6);
 }

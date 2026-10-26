@@ -249,6 +249,13 @@ function Results({ result }: { result: InteractionCheckResponse }) {
           ))}
         </ul>
       )}
+      {result.duplicate_ingredients.length > 0 && (
+        <div className="finding-group">
+          {result.duplicate_ingredients.map((finding, i) => (
+            <DuplicateIngredientCard key={`d${i}`} finding={finding} />
+          ))}
+        </div>
+      )}
       {result.interactions.length === 0 ? (
         <p className="muted">{result.message}</p>
       ) : (
@@ -256,6 +263,12 @@ function Results({ result }: { result: InteractionCheckResponse }) {
           <FilterControl value={filter} onChange={setFilter} />
           <CopyForPharmacist result={result} />
         </>
+      )}
+      {filter === "attention" && attention.length === 0 && (
+        <p className="muted">No findings need attention.</p>
+      )}
+      {filter === "worth" && worth.length === 0 && (
+        <p className="muted">Nothing else to know.</p>
       )}
       {showAttention && attention.length > 0 && (
         <>
@@ -267,13 +280,10 @@ function Results({ result }: { result: InteractionCheckResponse }) {
           </div>
         </>
       )}
-      {showWorth && (worth.length > 0 || result.duplicate_ingredients.length > 0) && (
+      {showWorth && worth.length > 0 && (
         <>
           <h3 className="section-title">Worth knowing</h3>
           <div className="finding-group">
-            {result.duplicate_ingredients.map((finding, i) => (
-              <DuplicateIngredientCard key={`d${i}`} finding={finding} />
-            ))}
             {worth.map((interaction, i) => (
               <InteractionCard key={`w${i}`} interaction={interaction} />
             ))}
