@@ -1,6 +1,7 @@
 import { expect, test } from './fixtures.ts'
 import { LOGGED_OUT, newCredentials } from './auth-state.ts'
 import {
+  alertsPanel,
   hasHorizontalOverflow,
   knownBug,
   logDose,
@@ -199,5 +200,51 @@ test.describe('survey on a phone', () => {
     )
     expect(small).toEqual([])
     await shot(page, 'phone-survey')
+  })
+})
+
+test.describe('new account on a phone', () => {
+  test.use({ storageState: LOGGED_OUT })
+
+  test('phone: a duplicate ingredient shows on Today and Interactions after logging', async ({
+    page,
+  }) => {
+    const { email, password } = newCredentials()
+    await page.goto('/signup.html')
+    await page.getByLabel('Email').fill(email)
+    await page.getByLabel('Password', { exact: true }).fill(password)
+    await page.getByLabel('Confirm password').fill(password)
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await expect(page.getByText('Step 1 of 4')).toBeVisible()
+
+    const next = page.getByRole('button', { name: 'Continue' })
+    await page.getByRole('button', { name: 'Medications' }).click()
+    await next.click()
+    await page.getByRole('button', { name: 'Avoiding interactions' }).click()
+    await next.click()
+    await page.getByRole('button', { name: 'Somewhat' }).click()
+    await next.click()
+    await page.getByRole('button', { name: 'Walk me through it' }).click()
+    await next.click()
+    await page.getByRole('button', { name: 'Start using Pharmakon' }).click()
+
+    await logDose(page, 'Tylenol Extra Strength', 'Tylenol Extra Strength', 1)
+    await logDose(page, 'DayQuil', 'DayQuil', 1)
+
+    const duplicate = /Acetaminophen appears in 2 of your products/
+    await expect(page.locator('.finding-title', { hasText: duplicate })).toBeVisible()
+
+    await openTab(page, 'Concentration')
+    const card = alertsPanel(page).locator('li.duplicate-alert')
+    await expect(card).toHaveCount(1)
+    await expect(card).toContainText(duplicate)
+    await expect(card.locator('.dot')).toBeVisible()
+    await expect(card.getByRole('button', { name: 'Open Interactions' })).toBeVisible()
+    expect(await hasHorizontalOverflow(page)).toBe(false)
+    await shot(page, 'phone-duplicate-today')
+
+    await card.getByRole('button', { name: 'Open Interactions' }).click()
+    await expect(page.locator('.finding-title', { hasText: duplicate })).toBeVisible()
+    await shot(page, 'phone-duplicate-interactions')
   })
 })

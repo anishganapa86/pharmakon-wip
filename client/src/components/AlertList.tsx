@@ -1,5 +1,9 @@
 import { formatDateClock } from "../time";
-import type { Alert, AlertSeverity } from "../types/contract";
+import type {
+  Alert,
+  AlertSeverity,
+  DuplicateIngredientFinding,
+} from "../types/contract";
 
 /** Presentational only -- not sent by the server. Conservative and generic
  * by design: this is guidance about the alert mechanism, not medical advice
@@ -80,13 +84,64 @@ function AlertItem({ alert }: { alert: Alert }) {
   );
 }
 
-export function AlertList({ alerts }: { alerts: Alert[] }) {
-  if (alerts.length === 0) return <p className="muted">No active alerts.</p>;
+function DuplicateAlertItem({
+  finding,
+  onOpenInteractions,
+}: {
+  finding: DuplicateIngredientFinding;
+  onOpenInteractions: () => void;
+}) {
+  return (
+    <li className="duplicate-alert">
+      <p className="finding-status">
+        <span className="dot dot-info" />
+        <span className="tag">Same ingredient</span>
+      </p>
+      <p>{finding.message}</p>
+      <button className="button-link" onClick={onOpenInteractions} type="button">
+        Open Interactions
+      </button>
+    </li>
+  );
+}
+
+interface AlertListProps {
+  alerts: Alert[];
+  duplicates?: DuplicateIngredientFinding[];
+  onOpenInteractions?: () => void;
+}
+
+export function AlertList({
+  alerts,
+  duplicates = [],
+  onOpenInteractions,
+}: AlertListProps) {
+  if (alerts.length === 0 && duplicates.length === 0) {
+    return (
+      <>
+        <p className="muted">No active alerts.</p>
+        {onOpenInteractions && (
+          <p className="muted small">
+            Alerts appear here once the doses you log add up. Duplicate ingredients
+            show on Interactions.
+          </p>
+        )}
+      </>
+    );
+  }
   return (
     <ul className="alerts">
       {alerts.map((a) => (
         <AlertItem key={a.id} alert={a} />
       ))}
+      {onOpenInteractions &&
+        duplicates.map((d) => (
+          <DuplicateAlertItem
+            key={d.ingredient_name}
+            finding={d}
+            onOpenInteractions={onOpenInteractions}
+          />
+        ))}
     </ul>
   );
 }

@@ -48,6 +48,7 @@ import {
 import { formatDateClock, HOUR_MS } from "./time";
 import type {
   Alert,
+  DuplicateIngredientFinding,
   LoggedDoseEvent,
   ProductSearchResult,
   RecentProduct,
@@ -234,6 +235,7 @@ function App({
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
   const [interactionsNotice, setInteractionsNotice] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateIngredientFinding[]>([]);
   const [withFoodNames, setWithFoodNames] = useState<Map<string, FoodChip>>(
     new Map(),
   );
@@ -275,6 +277,22 @@ function App({
     void refreshFoodGuidanceChips();
   }, [load, refreshFoodGuidanceChips]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchInteractionCheck(userId)
+      .then((check) => {
+        if (cancelled) return;
+        setDuplicates(check.duplicate_ingredients);
+        setInteractionsNotice(
+          check.interactions.length > 0 || check.duplicate_ingredients.length > 0,
+        );
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
   function reload() {
     setLoading(true);
     void load();
@@ -296,7 +314,10 @@ function App({
   async function refreshInteractionsNotice() {
     try {
       const check = await fetchInteractionCheck(userId);
-      setInteractionsNotice(check.interactions.length > 0);
+      setDuplicates(check.duplicate_ingredients);
+      setInteractionsNotice(
+        check.interactions.length > 0 || check.duplicate_ingredients.length > 0,
+      );
     } catch {
       // Leave the existing notice state as-is.
     }
@@ -648,7 +669,7 @@ function App({
             <Timeline
               key={timelineKey}
               userId={userId}
-              onDeleted={() => setTimelineKey((k) => k + 1)}
+              onDeleted={() => void handleScheduleChanged()}
             />
           </section>
         </>
@@ -797,7 +818,13 @@ function App({
 
           <section className="panel today-alerts">
             <h2>Alerts</h2>
-            {dashboard && !error && <AlertList alerts={dashboard.alerts} />}
+            {dashboard && !error && (
+              <AlertList
+                alerts={dashboard.alerts}
+                duplicates={duplicates}
+                onOpenInteractions={() => setView("interactions")}
+              />
+            )}
           </section>
         </>
       )}
