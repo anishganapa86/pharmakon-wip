@@ -14,9 +14,18 @@ const WHAT_TO_DO: Record<AlertSeverity, string> = {
   info: "No action needed — for your awareness.",
 };
 
-function AlertItem({ alert }: { alert: Alert }) {
+function AlertItem({
+  alert,
+  highlighted,
+}: {
+  alert: Alert;
+  highlighted: boolean;
+}) {
   return (
-    <li className="alert">
+    <li
+      className={highlighted ? "alert alert-highlight" : "alert"}
+      data-alert-id={alert.id}
+    >
       <div className="alert-head">
         <span className={`badge badge-${alert.severity}`}>{alert.severity}</span>
         {alert.substance && (
@@ -110,12 +119,14 @@ function DuplicateAlertItem({
 
 interface AlertListProps {
   alerts: Alert[];
+  highlightedAlertId?: string | null;
   duplicates?: DuplicateIngredientFinding[];
   onOpenInteractions?: () => void;
 }
 
 export function AlertList({
   alerts,
+  highlightedAlertId = null,
   duplicates = [],
   onOpenInteractions,
 }: AlertListProps) {
@@ -135,7 +146,7 @@ export function AlertList({
   return (
     <ul className="alerts">
       {alerts.map((a) => (
-        <AlertItem key={a.id} alert={a} />
+        <AlertItem key={a.id} alert={a} highlighted={a.id === highlightedAlertId} />
       ))}
       {onOpenInteractions &&
         duplicates.map((d) => (

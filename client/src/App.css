@@ -493,6 +493,21 @@
   background: #fffaeb;
 }
 
+.alert-highlight {
+  animation: alert-highlight-fade 1.5s ease-out;
+}
+
+@keyframes alert-highlight-fade {
+  from {
+    outline: 3px solid var(--accent-border);
+    outline-offset: 3px;
+  }
+  to {
+    outline: 3px solid transparent;
+    outline-offset: 3px;
+  }
+}
+
 .alert-head {
   display: flex;
   flex-wrap: wrap;

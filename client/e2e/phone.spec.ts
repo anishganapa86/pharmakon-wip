@@ -2,6 +2,7 @@ import { expect, test } from './fixtures.ts'
 import { LOGGED_OUT, newCredentials } from './auth-state.ts'
 import {
   alertsPanel,
+  API_URL,
   hasHorizontalOverflow,
   knownBug,
   logDose,
@@ -246,5 +247,57 @@ test.describe('new account on a phone', () => {
     await card.getByRole('button', { name: 'Open Interactions' }).click()
     await expect(page.locator('.finding-title', { hasText: duplicate })).toBeVisible()
     await shot(page, 'phone-duplicate-interactions')
+  })
+})
+
+test.describe('alert scroll on a phone', () => {
+  test.use({ storageState: LOGGED_OUT })
+
+  test('phone: a new alert scrolls into view and highlights, an uneventful log does not', async ({
+    page,
+  }) => {
+    const signup = await page.request.post(`${API_URL}/auth/signup`, { data: newCredentials() })
+    expect(signup.status()).toBe(201)
+    const me = (await signup.json()) as { id: string }
+    const skipped = await page.request.put(`${API_URL}/users/${me.id}/survey`, {
+      data: { tracks: [], goals: [], experience: null, guidance: null, status: 'skipped' },
+    })
+    expect(skipped.status()).toBe(200)
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
+    for (const [product_id, quantity, hours] of [
+      ['prod_dayquil_liquicap', 2, 6],
+      ['prod_tylenol_es_500', 2, 4],
+      ['prod_tylenol_es_500', 1, 2],
+    ] as const) {
+      const seeded = await page.request.post(`${API_URL}/users/${me.id}/doses`, {
+        data: { product_id, quantity, taken_at: hoursAgo(hours) },
+      })
+      expect(seeded.status()).toBe(201)
+    }
+    const before = await (await page.request.get(`${API_URL}/users/${me.id}/alerts`)).json()
+    expect(before).toEqual([])
+
+    await page.goto('/')
+    await expect(page.getByRole('heading', { name: 'Pharmakon' })).toBeVisible()
+    await page.waitForLoadState('networkidle')
+
+    await logDose(page, 'DayQuil', 'DayQuil', 2)
+    await expect(alertsPanel(page).locator('li.alert')).toHaveCount(0)
+    await expect(page.locator('.alert-highlight')).toHaveCount(0)
+
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await logDose(page, 'Tylenol Extra Strength', 'Tylenol Extra Strength', 1)
+    const caution = alertsPanel(page).locator('li.alert', { hasText: '3300 mg' })
+    await expect(caution).toHaveCount(1)
+    await expect(caution).toHaveClass(/alert-highlight/)
+    await expect
+      .poll(async () => {
+        const box = await caution.boundingBox()
+        const height = page.viewportSize()?.height ?? 0
+        return box ? Math.abs(box.y + box.height / 2 - height / 2) : Infinity
+      })
+      .toBeLessThan(40)
+    await shot(page, 'phone-new-alert-scroll')
+    await expect(page.locator('.alert-highlight')).toHaveCount(0, { timeout: 5000 })
   })
 })

@@ -215,6 +215,7 @@ function App({
   const [logging, setLogging] = useState(false);
   const [logError, setLogError] = useState<string | null>(null);
   const [logged, setLogged] = useState<string | null>(null);
+  const [highlightedAlertId, setHighlightedAlertId] = useState<string | null>(null);
 
   const [view, setView] = useState<View>(() => startingView(tailoring));
   useEffect(() => {
@@ -231,6 +232,16 @@ function App({
   useEffect(() => {
     if (jumpToSchedule) scheduleRef.current?.scrollIntoView({ block: "start" });
   }, [jumpToSchedule]);
+  useEffect(() => {
+    if (!highlightedAlertId) return;
+    const card = document.querySelector(
+      `[data-alert-id="${CSS.escape(highlightedAlertId)}"]`,
+    );
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card?.scrollIntoView({ behavior: reduceMotion ? "instant" : "smooth", block: "center" });
+    const timer = window.setTimeout(() => setHighlightedAlertId(null), 1500);
+    return () => window.clearTimeout(timer);
+  }, [highlightedAlertId]);
   const [timelineKey, setTimelineKey] = useState(0); // bump to force a refetch
   const [sideEffectKey, setSideEffectKey] = useState(0); // bump to force a refetch
   const [skincareNotice, setSkincareNotice] = useState(false);
@@ -248,6 +259,7 @@ function App({
         .then((d) => {
           setDashboard(d);
           setError(null);
+          return d;
         })
         .catch((e: unknown) => setError(errorMessage(e)))
         .finally(() => setLoading(false)),
@@ -342,6 +354,7 @@ function App({
     setLogging(true);
     setLogError(null);
     setLogged(null);
+    const alertIdsBefore = new Set(dashboard?.alerts.map((al) => al.id));
     try {
       await logDose(userId, {
         product_id: p.id,
@@ -355,7 +368,9 @@ function App({
       setTimelineKey((k) => k + 1);
       setSideEffectKey((k) => k + 1);
       setLoading(true);
-      await load();
+      const refreshed = await load();
+      const newAlert = refreshed?.alerts.find((al) => !alertIdsBefore.has(al.id));
+      if (newAlert) setHighlightedAlertId(newAlert.id);
       await refreshSkincareNotice();
       await refreshInteractionsNotice();
       await refreshFoodGuidanceChips();
@@ -821,6 +836,7 @@ function App({
             {dashboard && !error && (
               <AlertList
                 alerts={dashboard.alerts}
+                highlightedAlertId={highlightedAlertId}
                 duplicates={duplicates}
                 onOpenInteractions={() => setView("interactions")}
               />
