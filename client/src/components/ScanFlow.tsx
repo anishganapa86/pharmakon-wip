@@ -9,6 +9,7 @@ import {
 } from "../api";
 import { splitIngredientsPreview } from "../ingredientSplit";
 import { downscaleToJpeg } from "../scanImage";
+import { Icon } from "./Icon";
 
 interface ScanFlowProps {
   userId: string;
@@ -69,10 +70,11 @@ interface ReviewProps {
   userId: string;
   result: ScanResult;
   onCancel: () => void;
+  onRetake: () => void;
   onSaved: (name: string) => void;
 }
 
-function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
+function Review({ userId, result, onCancel, onRetake, onSaved }: ReviewProps) {
   const [name, setName] = useState(result.product_name ?? "");
   const [brand, setBrand] = useState(result.brand ?? "");
   const [type, setType] = useState(result.product_type);
@@ -172,8 +174,18 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
 
   return (
     <section className="panel scan-review">
+      <button type="button" className="survey-back scan-retake" onClick={onRetake}>
+        <Icon name="chevronLeft" size={20} />
+        Retake
+      </button>
       <h2 className="screen-title">Check what we read</h2>
-      <p className="warning">{WARNING}</p>
+      {result.label_text_quality === "clear" && (
+        <p className="muted scan-sub">Read from your photo. The label was clear.</p>
+      )}
+      <p className="warning scan-warning">
+        <Icon name="alert" size={18} />
+        <span>{WARNING}</span>
+      </p>
       {result.label_text_quality === "partial" && (
         <p className="muted">
           Part of the label was hard to read. Fill in anything missing.
@@ -187,6 +199,7 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
       )}
       {result.notes && <p className="muted">{result.notes}</p>}
 
+      <div className="group scan-fields">
       <label className="scan-field">
         <span>Product name</span>
         <input
@@ -235,6 +248,9 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
           ))}
         </select>
       </label>
+      </div>
+
+      <h3 className="group-title">Ingredients</h3>
       <label className="scan-field">
         <span>Ingredients (separate with commas or new lines)</span>
         <textarea
@@ -298,7 +314,8 @@ function Review({ userId, result, onCancel, onSaved }: ReviewProps) {
       )}
 
       {overlaps.map((o) => (
-        <p key={o.n} className="muted">
+        <p key={o.n} className="muted scan-duplicate">
+          <span className="dot dot-urgent" />
           {o.n} is already in a product you logged (
           {loggedSubstances[o.id as string]}).
         </p>
@@ -347,7 +364,13 @@ export function ScanFlow({ userId, onClose }: ScanFlowProps) {
   }
 
   return (
-    <main className="page scan-capture">
+    <main
+      className={
+        stage.kind === "pick" || stage.kind === "reading"
+          ? "page scan-capture"
+          : "page scan-plain"
+      }
+    >
       <header className="page-header">
         <div className="page-header-row">
           <h1>Pharmakon</h1>
@@ -358,35 +381,60 @@ export function ScanFlow({ userId, onClose }: ScanFlowProps) {
       </header>
 
       {(stage.kind === "pick" || stage.kind === "reading") && (
-        <section className="panel">
-          <h2 className="screen-title">Scan a product</h2>
-          <p className="muted">
-            Take a photo of the label. We read the printed text and show it to
-            you to check. Nothing is saved until you say so, and the photo is
-            not stored.
-          </p>
-          <p className="warning">{DEMO_NOTICE}</p>
-          <p className="muted small">
-            The photo is sent to Google Gemini to read the label. Label reading
-            can be wrong.
-          </p>
-          <div className="scan-actions">
+        <section className="capture">
+          <div className="capture-top">
             <button
               type="button"
-              className="control button"
-              disabled={stage.kind === "reading"}
-              onClick={() => cameraRef.current?.click()}
+              className="round-btn"
+              aria-label="Back to app"
+              onClick={onClose}
             >
-              Take a photo
+              <Icon name="x" size={20} />
             </button>
+          </div>
+          <h2 className="screen-title">Scan a product</h2>
+          <p className="capture-tip">Fit the ingredients panel in the frame</p>
+          <p className="capture-sub">Drug Facts, Supplement Facts or the ingredient list</p>
+          <div className="capture-stage" aria-hidden="true">
+            <span className="bottle-cap" />
+            <span className="bottle" />
+            <svg className="brackets" viewBox="0 0 286 250" fill="none">
+              <path d="M4 40V24A20 20 0 0 1 24 4H40" />
+              <path d="M246 4H262A20 20 0 0 1 282 24V40" />
+              <path d="M4 210V226A20 20 0 0 0 24 246H40" />
+              <path d="M246 246H262A20 20 0 0 0 282 226V210" />
+            </svg>
+          </div>
+          <div className="capture-notes">
+            <p className="muted">
+              Take a photo of the label. We read the printed text and show it to
+              you to check. Nothing is saved until you say so, and the photo is
+              not stored.
+            </p>
+            <p className="warning">{DEMO_NOTICE}</p>
+            <p className="muted small">
+              The photo is sent to Google Gemini to read the label. Label reading
+              can be wrong.
+            </p>
+          </div>
+          <div className="shutter-bar">
             <button
               type="button"
-              className="control secondary"
+              className="round-btn round-lg"
+              aria-label="Choose a photo"
               disabled={stage.kind === "reading"}
               onClick={() => libraryRef.current?.click()}
             >
-              Choose a photo
+              <Icon name="image" size={22} />
             </button>
+            <button
+              type="button"
+              className="shutter"
+              aria-label="Take a photo"
+              disabled={stage.kind === "reading"}
+              onClick={() => cameraRef.current?.click()}
+            />
+            <span className="shutter-spacer" aria-hidden="true" />
           </div>
           <input
             ref={cameraRef}
@@ -429,6 +477,7 @@ export function ScanFlow({ userId, onClose }: ScanFlowProps) {
           userId={userId}
           result={stage.result}
           onCancel={onClose}
+          onRetake={() => setStage({ kind: "pick" })}
           onSaved={(name) => setStage({ kind: "saved", name })}
         />
       )}
